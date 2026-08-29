@@ -15,8 +15,19 @@ mvn spring-boot:run -Dspring-boot.run.profiles=dev
 
 Arranca con un club de ejemplo cargado:
 
-- Grilla pública: `http://localhost:8080/api/public/club-necochea/availability?date=2026-09-03`
-- Panel: `dueno@clubnecochea.test` / `padel1234`
+- App del jugador: `http://localhost:8080/club/club-necochea`
+- Panel del club: `http://localhost:8080/admin` — `dueno@clubnecochea.test` / `padel1234`
+
+La app del jugador se sirve desde `target/classes/static`, que produce el build de
+`player-app`. Para trabajar sobre ella con recarga en caliente:
+
+```bash
+cd player-app && npm install && npm run dev
+```
+
+Vite queda en el 5173 y delega `/api` en Spring. El `mvn package -Pproduction`
+compila el bundle del jugador dentro del jar, así que el artefacto final sirve las
+dos aplicaciones sin necesidad de un servidor de estáticos aparte.
 
 Los WhatsApp no se envían: el adaptador de desarrollo los escribe en la consola con
 los links completos, listos para pegar en el navegador.
@@ -66,6 +77,12 @@ que él mismo escribió: las 18:00 quedaban como 06:00 y un cierre 23:30 como 11
 El dueño abría la configuración, tocaba Guardar sin cambiar nada y le movía el
 horario al club. Usa es-ES, que formatea en 24 horas.
 
+**La raíz es del jugador, no del panel.** El link que el club comparte por WhatsApp
+es la grilla pública, así que Vaadin se mapea bajo `/admin` y las rutas de la SPA
+(`/club/…`, `/manage/…`, `/confirm/…`) las reenvía `SpaForwardingController` al
+index. Sin ese reenvío, entrar directo a un link de WhatsApp o refrescar la página
+daría 404 — y esos links son justamente los que recibe el jugador.
+
 **Los teléfonos argentinos se fuerzan a celular.** Escrito sin el 15 ni el 9,
 `2262 415000` es indistinguible de una línea fija. Sin esa corrección, el mismo
 jugador queda como dos clientes según cómo haya tipeado, con su historial y su marca
@@ -73,7 +90,7 @@ de confianza partidos.
 
 ## Estado
 
-Backend y panel del club funcionando. 86 tests.
+Las tres piezas funcionando de punta a punta. 86 tests.
 
 - Motor de disponibilidad, precios por franja y por cancha
 - Reserva con seña (MercadoPago) y de palabra (confirmación por WhatsApp)
@@ -84,8 +101,11 @@ Backend y panel del club funcionando. 86 tests.
 - Panel del club en Vaadin 25: agenda de canchas por horario con carga manual de
   turnos, cobro en mostrador, ausentes y bajas; jugadores con marca de confianza;
   turnos fijos; alertas; configuración de horarios, tarifas y cobros
+- App del jugador en React: grilla por horario con precios, checkout de dos campos,
+  confirmación desde el link de WhatsApp y portal de gestión con cancelación
 
-Falta: la app del jugador (React). El backend que consume ya está.
+Lo que falta para salir a producción no es código: número de WhatsApp habilitado,
+plantillas aprobadas por Meta y las credenciales de MercadoPago de cada club.
 
 ## Configuración de producción
 

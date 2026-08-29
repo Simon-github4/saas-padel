@@ -58,7 +58,7 @@ public class BookingRateLimiter {
             }
             if (timestamps.size() >= MAX_ATTEMPTS) {
                 throw new BusinessRuleException(
-                        "Hiciste muchos intentos seguidos. Espera unos minutos y proba de nuevo.");
+                        "Hiciste muchos intentos seguidos. Esperá unos minutos y probá de nuevo.");
             }
             timestamps.addLast(now);
         }

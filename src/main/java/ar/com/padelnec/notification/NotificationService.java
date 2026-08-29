@@ -54,9 +54,9 @@ public class NotificationService {
                 link);
 
         dispatch(club, booking, NotificationTemplate.CONFIRMATION_REQUEST, variables, """
-                Hola %s! Estas por reservar %s en %s para el %s a las %s hs.
-                Confirma tocando este link, tenes %d minutos: %s
-                Si no confirmas, la cancha vuelve a quedar libre."""
+                ¡Hola %s! Estás por reservar %s en %s para el %s a las %s hs.
+                Confirmá tocando este link, tenés %d minutos: %s
+                Si no confirmás, la cancha vuelve a quedar libre."""
                 .formatted(firstName(booking), booking.getCourt().getName(), club.getName(),
                         date(club, booking), time(club, booking),
                         club.getConfirmationTtlMinutes(), link));
@@ -74,10 +74,10 @@ public class NotificationService {
                 link);
 
         dispatch(club, booking, NotificationTemplate.BOOKING_CONFIRMED_UNPAID, variables, """
-                Listo %s, tu turno quedo confirmado.
+                Listo %s, tu turno quedó confirmado.
                 %s - %s a las %s hs.
                 Se abona %s en el club.
-                Podes ver o cancelar tu turno aca: %s"""
+                Podés ver o cancelar tu turno acá: %s"""
                 .formatted(firstName(booking), booking.getCourt().getName(), date(club, booking),
                         time(club, booking), money(booking.getTotalPrice()), link));
     }
@@ -94,10 +94,10 @@ public class NotificationService {
                 link);
 
         dispatch(club, booking, NotificationTemplate.BOOKING_CONFIRMED_PAID, variables, """
-                Pago acreditado, %s. Tu turno quedo confirmado.
+                Pago acreditado, %s. Tu turno quedó confirmado.
                 %s - %s a las %s hs.
                 Saldo a pagar en el club: %s
-                Podes ver o cancelar tu turno aca: %s"""
+                Podés ver o cancelar tu turno acá: %s"""
                 .formatted(firstName(booking), booking.getCourt().getName(), date(club, booking),
                         time(club, booking), money(booking.balanceDue()), link));
     }
@@ -112,8 +112,8 @@ public class NotificationService {
 
         dispatch(club, booking, NotificationTemplate.CONFIRMATION_EXPIRED, variables, """
                 Hola %s, no llegamos a confirmar tu turno de %s el %s a las %s hs,
-                asi que la cancha volvio a quedar disponible.
-                Si todavia queres jugar, podes reservarla de nuevo."""
+                así que la cancha volvió a quedar disponible.
+                Si todavía querés jugar, podés reservarla de nuevo."""
                 .formatted(firstName(booking), booking.getCourt().getName(),
                         date(club, booking), time(club, booking)));
     }
@@ -143,7 +143,7 @@ public class NotificationService {
                 money(booking.balanceDue()));
 
         dispatch(club, booking, NotificationTemplate.BOOKING_REMINDER, variables, """
-                Hola %s, te esperamos manana en %s, %s a las %s hs.
+                Hola %s, te esperamos mañana en %s, %s a las %s hs.
                 Saldo a pagar en el club: %s"""
                 .formatted(firstName(booking), booking.getCourt().getName(), date(club, booking),
                         time(club, booking), money(booking.balanceDue())));

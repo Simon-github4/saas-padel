@@ -26,3 +26,8 @@ pgdata/
 
 .env
 *.log
+
+# App del jugador (React): dependencias y build
+player-app/node_modules/
+player-app/dist/
+player-app/tsconfig.tsbuildinfo

@@ -32,13 +32,13 @@ public class PhoneNumbers {
      */
     public String normalize(String raw) {
         if (raw == null || raw.isBlank()) {
-            throw new BusinessRuleException("Necesitamos tu telefono para confirmarte el turno");
+            throw new BusinessRuleException("Necesitamos tu teléfono para confirmarte el turno");
         }
         PhoneNumber parsed;
         try {
             parsed = util.parse(raw.trim(), DEFAULT_REGION);
         } catch (NumberParseException ex) {
-            throw new BusinessRuleException("El telefono " + raw + " no parece valido");
+            throw new BusinessRuleException("El teléfono " + raw + " no parece válido");
         }
         if (!util.isValidNumber(parsed)) {
             throw new BusinessRuleException("El telefono " + raw + " no parece valido");

@@ -41,8 +41,8 @@ public class AlertService {
     /** El jugador cancelo un turno con sena paga: hay que coordinar la devolucion. */
     @Transactional
     public void refundRequired(Booking booking) {
-        raise(AlertType.REFUND_REQUIRED, booking, ("Cancelo %s (%s) un turno con $%s ya pagados. "
-                + "Coordina la devolucion por WhatsApp.").formatted(
+        raise(AlertType.REFUND_REQUIRED, booking, ("Canceló %s (%s) un turno con $%s ya pagados. "
+                + "Coordiná la devolución por WhatsApp.").formatted(
                 booking.getCustomer().getFullName(),
                 booking.getCustomer().getPhoneNumber(),
                 booking.getPaidAmount().toPlainString()));
@@ -55,8 +55,8 @@ public class AlertService {
      */
     @Transactional
     public void orphanPayment(Booking booking, String amount) {
-        raise(AlertType.ORPHAN_PAYMENT, booking, ("Entro un pago de $%s para un turno que ya se "
-                + "habia liberado por falta de pago. Revisa si hay que devolverlo o reubicar "
+        raise(AlertType.ORPHAN_PAYMENT, booking, ("Entró un pago de $%s para un turno que ya se "
+                + "había liberado por falta de pago. Revisá si hay que devolverlo o reubicar "
                 + "al jugador.").formatted(amount));
     }
 

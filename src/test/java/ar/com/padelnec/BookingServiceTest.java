@@ -136,7 +136,7 @@ class BookingServiceTest {
 
         assertThatThrownBy(() -> bookingService.confirmByToken(booking.getConfirmationToken()))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("vencio el plazo");
+                .hasMessageContaining("venció el plazo");
     }
 
     @Test
@@ -148,7 +148,7 @@ class BookingServiceTest {
 
         assertThatThrownBy(() -> reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("sena");
+                .hasMessageContaining("seña");
     }
 
     @Test
@@ -240,7 +240,7 @@ class BookingServiceTest {
 
         assertThatThrownBy(() -> reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("ya paso");
+                .hasMessageContaining("ya pasó");
     }
 
     @Test

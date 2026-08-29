@@ -24,6 +24,8 @@
         <twilio.version>13.0.0</twilio.version>
         <embedded-postgres.version>2.2.2</embedded-postgres.version>
         <libphonenumber.version>9.0.38</libphonenumber.version>
+        <frontend-plugin.version>2.0.2</frontend-plugin.version>
+        <node.version>v24.15.0</node.version>
         <!--
           El SDK de Twilio arrastra commons-io 2.14, pero commons-compress (que usa
           el Postgres embebido para desempaquetar los binarios) necesita el
@@ -221,6 +223,48 @@
                                     <goal>build-frontend</goal>
                                 </goals>
                                 <phase>compile</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <!--
+                      Compila la app del jugador dentro del jar. Su salida va a
+                      target/classes/static (definido en vite.config.ts), asi que
+                      el artefacto final sirve el panel y la app sin necesidad de
+                      un servidor de estaticos aparte.
+                    -->
+                    <plugin>
+                        <groupId>com.github.eirslett</groupId>
+                        <artifactId>frontend-maven-plugin</artifactId>
+                        <version>${frontend-plugin.version}</version>
+                        <configuration>
+                            <workingDirectory>player-app</workingDirectory>
+                            <nodeVersion>${node.version}</nodeVersion>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>instalar-node</id>
+                                <goals>
+                                    <goal>install-node-and-npm</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <id>npm-ci</id>
+                                <goals>
+                                    <goal>npm</goal>
+                                </goals>
+                                <configuration>
+                                    <arguments>ci --no-audit --no-fund</arguments>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>build-app-jugador</id>
+                                <goals>
+                                    <goal>npm</goal>
+                                </goals>
+                                <phase>prepare-package</phase>
+                                <configuration>
+                                    <arguments>run build</arguments>
+                                </configuration>
                             </execution>
                         </executions>
                     </plugin>

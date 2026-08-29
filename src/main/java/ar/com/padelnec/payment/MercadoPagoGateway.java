@@ -91,11 +91,11 @@ public class MercadoPagoGateway {
             log.error("MercadoPago rechazo la preferencia del club {}: {} - {}",
                     club.getSlug(), ex.getStatusCode(), ex.getApiResponse().getContent());
             throw new PaymentGatewayException(
-                    "No pudimos generar el link de pago. Proba de nuevo en un momento.");
+                    "No pudimos generar el link de pago. Probá de nuevo en un momento.");
         } catch (MPException ex) {
             log.error("Fallo la comunicacion con MercadoPago para el club {}", club.getSlug(), ex);
             throw new PaymentGatewayException(
-                    "No pudimos generar el link de pago. Proba de nuevo en un momento.");
+                    "No pudimos generar el link de pago. Probá de nuevo en un momento.");
         }
     }
 

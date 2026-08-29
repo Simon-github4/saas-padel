@@ -109,9 +109,9 @@ public class PublicBookingController {
         BookingService.CancellationResult result = bookingService.cancelByManagementToken(token);
 
         String message = result.refundNeeded()
-                ? ("Turno cancelado. Para coordinar la devolucion de tu sena, escribinos por "
+                ? ("Turno cancelado. Para coordinar la devolución de tu seña, escribinos por "
                         + "WhatsApp al " + result.clubWhatsapp() + ".")
-                : "Turno cancelado. La cancha ya volvio a estar disponible.";
+                : "Turno cancelado. La cancha ya volvió a estar disponible.";
 
         return new CancellationResponse(
                 result.booking().getStatus().name(),
@@ -122,10 +122,10 @@ public class PublicBookingController {
 
     private String messageFor(Tenant club, CheckoutResult result) {
         if (result.requiresWhatsappConfirmation()) {
-            return ("Te mandamos un WhatsApp para confirmar. Tenes %d minutos antes de que la "
+            return ("Te mandamos un WhatsApp para confirmar. Tenés %d minutos antes de que la "
                     + "cancha vuelva a quedar libre.").formatted(club.getConfirmationTtlMinutes());
         }
-        return ("Te llevamos a MercadoPago para pagar la sena. Tenes %d minutos para completar "
+        return ("Te llevamos a MercadoPago para pagar la seña. Tenés %d minutos para completar "
                 + "el pago.").formatted(club.getDraftTtlMinutes());
     }
 }

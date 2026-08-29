@@ -82,7 +82,7 @@ public class BookingService {
     public Booking create(Tenant club, NewBooking request) {
         Court court = courtRepository.findById(request.courtId())
                 .filter(Court::isActive)
-                .orElseThrow(() -> new ResourceNotFoundException("La cancha no existe o no esta activa"));
+                .orElseThrow(() -> new ResourceNotFoundException("La cancha no existe o no está activa"));
 
         ResolvedSlot slot = slotGenerator.resolve(club, request.startTime())
                 .orElseThrow(() -> new BusinessRuleException(
@@ -95,7 +95,7 @@ public class BookingService {
                 .resolve(pricingService.rulesFor(slot.operatingDate().getDayOfWeek()),
                         court, slot.operatingDate().getDayOfWeek(), slot.slot().startTime())
                 .orElseThrow(() -> new BusinessRuleException(
-                        "Ese horario todavia no tiene tarifa publicada. Consulta con el club."));
+                        "Ese horario todavía no tiene tarifa publicada. Consultá con el club."));
 
         Customer customer = customerService.findOrCreate(request.phoneNumber(), request.fullName());
         validateQuota(club, customer, now);
@@ -103,7 +103,7 @@ public class BookingService {
         boolean payAtClub = resolvePaymentMode(club, customer, request.paymentChoice());
 
         if (!availabilityService.isCourtFree(court, slot.slot().startsAt(), slot.slot().endsAt())) {
-            throw new SlotUnavailableException("Justo tomaron ese turno. Elegi otro horario.");
+            throw new SlotUnavailableException("Justo tomaron ese turno. Elegí otro horario.");
         }
 
         Booking booking = new Booking();
@@ -187,7 +187,7 @@ public class BookingService {
         if (booking.getConfirmationExpiresAt() != null
                 && booking.getConfirmationExpiresAt().isBefore(clock.instant())) {
             throw new BusinessRuleException(
-                    "Se vencio el plazo para confirmar y la cancha volvio a quedar disponible");
+                    "Se venció el plazo para confirmar y la cancha volvió a quedar disponible");
         }
 
         booking.markConfirmed();
@@ -219,11 +219,11 @@ public class BookingService {
         Booking booking = managed.booking();
 
         if (!booking.getStatus().isCancellable()) {
-            throw new BusinessRuleException("Este turno ya no esta activo");
+            throw new BusinessRuleException("Este turno ya no está activo");
         }
         if (!booking.isWithinCancellationWindow(club.getCancellationLimitHours(), clock.instant())) {
             throw new BusinessRuleException(
-                    ("Faltan menos de %d horas para tu turno, asi que la cancelacion la tiene que "
+                    ("Faltan menos de %d horas para tu turno, así que la cancelación la tiene que "
                             + "hacer el club. Escribinos a %s.")
                             .formatted(club.getCancellationLimitHours(), club.getWhatsappNumber()));
         }
@@ -306,7 +306,7 @@ public class BookingService {
             if (isOverlapViolation(ex)) {
                 log.info("Choque de reservas en la cancha {} a las {}",
                         booking.getCourt().getId(), booking.getStartTime());
-                throw new SlotUnavailableException("Justo tomaron ese turno. Elegi otro horario.");
+                throw new SlotUnavailableException("Justo tomaron ese turno. Elegí otro horario.");
             }
             throw ex;
         }
@@ -336,11 +336,11 @@ public class BookingService {
     private ManagedBooking resolveByToken(String token) {
         UUID clubId = TenantContext.get();
         if (TenantContext.UNSCOPED.equals(clubId)) {
-            throw new ResourceNotFoundException("Este link no corresponde a ningun turno");
+            throw new ResourceNotFoundException("Este link no corresponde a ningún turno");
         }
 
         Tenant club = tenantRepository.findById(clubId)
-                .orElseThrow(() -> new ResourceNotFoundException("El club ya no esta disponible"));
+                .orElseThrow(() -> new ResourceNotFoundException("El club ya no está disponible"));
         Booking booking = bookingRepository.findByManagementToken(token)
                 .or(() -> bookingRepository.findByConfirmationToken(token))
                 .orElseThrow(() -> new ResourceNotFoundException("Este link no corresponde a ningun turno"));
@@ -355,12 +355,12 @@ public class BookingService {
 
     private void validateWindow(Tenant club, ResolvedSlot slot, Instant now) {
         if (!slot.slot().startsAt().isAfter(now)) {
-            throw new BusinessRuleException("Ese horario ya paso");
+            throw new BusinessRuleException("Ese horario ya pasó");
         }
         LocalDate today = now.atZone(club.zoneId()).toLocalDate();
         if (slot.operatingDate().isAfter(today.plusDays(club.getBookingHorizonDays()))) {
             throw new BusinessRuleException(
-                    "Todavia no se pueden reservar turnos para esa fecha");
+                    "Todavía no se pueden reservar turnos para esa fecha");
         }
     }
 
@@ -371,7 +371,7 @@ public class BookingService {
         long active = bookingRepository.countActiveUpcoming(customer.getId(), now, ACTIVE);
         if (active >= club.getMaxActiveBookings()) {
             throw new BusinessRuleException(
-                    ("Ya tenes %d turnos reservados. Cancela alguno o escribinos a %s.")
+                    ("Ya tenés %d turnos reservados. Cancelá alguno o escribinos a %s.")
                             .formatted(active, club.getWhatsappNumber()));
         }
     }
@@ -385,7 +385,7 @@ public class BookingService {
         if (choice == PaymentChoice.PAY_AT_CLUB) {
             if (!canPayAtClub) {
                 throw new BusinessRuleException(
-                        "Este club pide sena para reservar online");
+                        "Este club pide seña para reservar online");
             }
             return true;
         }
@@ -394,7 +394,7 @@ public class BookingService {
             // sigue por ahi, y si no, no hay forma de reservar online.
             if (!canPayAtClub) {
                 throw new BusinessRuleException(
-                        "El club todavia no tiene habilitado el pago online. Escribinos por WhatsApp.");
+                        "El club todavía no tiene habilitado el pago online. Escribinos por WhatsApp.");
             }
             return true;
         }

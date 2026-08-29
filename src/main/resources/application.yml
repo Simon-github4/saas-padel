@@ -33,6 +33,9 @@ spring:
       enabled: true
 
 vaadin:
+  # El panel vive bajo /admin porque la raiz es del jugador: el link que el club
+  # comparte por WhatsApp es la grilla publica, no el panel interno.
+  url-mapping: /admin/*
   frontend:
     # Sin servidor de desarrollo: el panel no agrega frontend propio, asi que
     # Vaadin sirve su bundle prearmado. Evita depender de Node y de Vite en cada

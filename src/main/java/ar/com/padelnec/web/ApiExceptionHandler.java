@@ -51,7 +51,7 @@ public class ApiExceptionHandler {
         String message = ex.getBindingResult().getFieldErrors().stream()
                 .findFirst()
                 .map(error -> error.getDefaultMessage())
-                .orElse("Revisa los datos del formulario");
+                .orElse("Revisá los datos del formulario");
         return body(HttpStatus.BAD_REQUEST, message, "INVALID_REQUEST");
     }
 
@@ -59,7 +59,7 @@ public class ApiExceptionHandler {
     public ResponseEntity<Map<String, Object>> onUnexpected(Exception ex) {
         log.error("Error no contemplado en la API publica", ex);
         return body(HttpStatus.INTERNAL_SERVER_ERROR,
-                "Tuvimos un problema procesando tu pedido. Proba de nuevo en un momento.",
+                "Tuvimos un problema procesando tu pedido. Probá de nuevo en un momento.",
                 "INTERNAL_ERROR");
     }
 

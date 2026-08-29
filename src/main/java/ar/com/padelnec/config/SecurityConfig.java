@@ -57,6 +57,29 @@ public class SecurityConfig {
     }
 
     /**
+     * App del jugador.
+     *
+     * <p>Tiene que declararse antes que la cadena del panel, porque esa ultima no
+     * lleva {@code securityMatcher} y se queda con todo lo que no matcheo antes. Sin
+     * esto, el link que le llega al jugador por WhatsApp lo manda al login del club.
+     *
+     * <p>Son rutas de una SPA, no recursos del servidor: las resuelve React y el
+     * backend solo devuelve el index. Lo que protege el turno es el token de la URL.
+     */
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE + 2)
+    public SecurityFilterChain playerAppChain(HttpSecurity http) throws Exception {
+        return http
+                .securityMatcher("/", "/index.html", "/favicon.ico", "/assets/**",
+                        "/club/**", "/manage/**", "/confirm/**")
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .build();
+    }
+
+    /**
      * Panel del club.
      *
      * <p>Vaadin aporta su propio configurador: el acceso a cada vista lo decide la

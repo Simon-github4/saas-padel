@@ -17,13 +17,13 @@ public final class BookingDtos {
 
     /** Lo que manda el checkout. */
     public record CreateBookingRequest(
-            @NotNull(message = "Elegi una cancha") UUID courtId,
-            @NotNull(message = "Elegi un horario") Instant startTime,
+            @NotNull(message = "Elegí una cancha") UUID courtId,
+            @NotNull(message = "Elegí un horario") Instant startTime,
             @NotBlank(message = "Necesitamos tu nombre")
             @Size(max = 120) String fullName,
-            @NotBlank(message = "Necesitamos tu telefono")
+            @NotBlank(message = "Necesitamos tu teléfono")
             @Size(max = 25) String phoneNumber,
-            @NotNull(message = "Elegi como queres pagar") PaymentChoiceDto paymentChoice) {
+            @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice) {
     }
 
     public enum PaymentChoiceDto {
