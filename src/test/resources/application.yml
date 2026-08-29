@@ -12,7 +12,10 @@ app:
   whatsapp:
     provider: log
   jobs:
+    # Los @Scheduled quedan apagados: los tests invocan el trabajo directamente.
     enabled: false
+    # Horizonte corto para que la cuenta de turnos fijos sea legible en los tests.
+    recurring-horizon-weeks: 4
 
 logging:
   level:
