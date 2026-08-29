@@ -18,16 +18,9 @@ Arranca con un club de ejemplo cargado:
 - App del jugador: `http://localhost:8080/club/club-necochea`
 - Panel del club: `http://localhost:8080/admin` — `dueno@clubnecochea.test` / `padel1234`
 
-La app del jugador se sirve desde `target/classes/static`, que produce el build de
-`player-app`. Para trabajar sobre ella con recarga en caliente:
-
-```bash
-cd player-app && npm install && npm run dev
-```
-
-Vite queda en el 5173 y delega `/api` en Spring. El `mvn package -Pproduction`
-compila el bundle del jugador dentro del jar, así que el artefacto final sirve las
-dos aplicaciones sin necesidad de un servidor de estáticos aparte.
+El `mvn package -Pproduction` compila el bundle del jugador dentro del jar, así que
+el artefacto final sirve las dos aplicaciones sin un servidor de estáticos aparte.
+Para probar en desarrollo, ver más abajo.
 
 Los WhatsApp no se envían: el adaptador de desarrollo los escribe en la consola con
 los links completos, listos para pegar en el navegador.
@@ -43,6 +36,63 @@ mvn test
 Los tests corren contra un PostgreSQL real y efímero. No es un capricho: la garantía
 más importante del sistema es una restricción de exclusión de PostgreSQL, y contra
 una base en memoria no existiría.
+
+## Probarlo a mano
+
+### Opción A: todo en un puerto
+
+La app del jugador se sirve desde `target/classes/static`, que produce el build de
+`player-app`. Después de un `mvn clean` hay que volver a generarlo, o `/club/…`
+devuelve 404.
+
+```bash
+cd player-app && npm install && npm run build && cd .. && mvn spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+### Opción B: con recarga en caliente del frontend
+
+Dos terminales. Vite sirve la app en el 5173 y delega `/api` en Spring.
+
+```bash
+mvn spring-boot:run -Dspring-boot.run.profiles=dev "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5173"
+```
+
+```bash
+cd player-app && npm run dev
+```
+
+El `app.base-url` no es opcional acá: con el valor por defecto, los links que viajan
+por WhatsApp apuntan al 8080 y te sacan de la versión con recarga en caliente.
+
+### El recorrido
+
+| Dónde | Qué |
+|---|---|
+| `/club/club-necochea` | Grilla del jugador. Reservá un turno con "Pagar en el club" |
+| Consola del backend | Ahí sale el WhatsApp con el link de confirmación. **No se envía nada**: el adaptador de desarrollo lo imprime |
+| `/confirm/{token}` | Abrir ese link confirma el turno |
+| `/manage/{token}` | Portal del jugador: detalle y cancelación |
+| `/admin` | Panel del club — `dueno@clubnecochea.test` / `padel1234` |
+
+Cosas que vale la pena probar porque es donde están las reglas:
+
+- **Reservar dos veces el mismo horario y cancha.** La segunda tiene que dar 409 y
+  la grilla refrescarse sola.
+- **Cancelar un turno de hoy a la tarde.** Con el límite de 12 horas, la app no te
+  deja y te ofrece escribirle al club. Un turno de pasado mañana sí se cancela.
+- **No tocar el link de confirmación.** A los 15 minutos el turno se cae solo y la
+  cancha vuelve a la grilla. El job corre cada minuto.
+- **En el panel**, tocá un hueco de la agenda para cargar un turno que "entró por
+  teléfono", y después cobralo en mostrador.
+- **Turnos fijos**: creá uno y fijate que bloquee ese horario en la grilla pública.
+
+El pago con seña no se puede probar así: el club de ejemplo no tiene MercadoPago
+cargado, y por eso la app solo ofrece "Pagar en el club". Para ejercitarlo hacen
+falta credenciales de prueba de MercadoPago cargadas desde el panel, en
+Configuración → Cobros online.
+
+La base se recrea vacía en cada arranque, así que para volver a foja cero alcanza
+con reiniciar.
 
 ## Decisiones que conviene conocer antes de tocar el código
 
