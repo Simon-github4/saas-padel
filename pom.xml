@@ -23,6 +23,7 @@
         <mercadopago.version>3.7.0</mercadopago.version>
         <twilio.version>13.0.0</twilio.version>
         <embedded-postgres.version>2.2.2</embedded-postgres.version>
+        <libphonenumber.version>9.0.38</libphonenumber.version>
         <!--
           El SDK de Twilio arrastra commons-io 2.14, pero commons-compress (que usa
           el Postgres embebido para desempaquetar los binarios) necesita el
@@ -109,6 +110,18 @@
             <groupId>com.twilio.sdk</groupId>
             <artifactId>twilio</artifactId>
             <version>${twilio.version}</version>
+        </dependency>
+
+        <!--
+          El telefono es la identidad del jugador dentro del club, asi que
+          normalizarlo bien no es cosmetico: las reglas argentinas del 0 de larga
+          distancia y el 15 de celular deciden si "2262 15-415000" y "+5492262415000"
+          son la misma persona o dos clientes distintos.
+        -->
+        <dependency>
+            <groupId>com.googlecode.libphonenumber</groupId>
+            <artifactId>libphonenumber</artifactId>
+            <version>${libphonenumber.version}</version>
         </dependency>
 
         <!-- Postgres embebido para desarrollo local sin Docker -->

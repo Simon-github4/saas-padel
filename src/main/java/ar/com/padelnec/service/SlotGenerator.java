@@ -9,6 +9,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /**
@@ -50,6 +51,38 @@ public class SlotGenerator {
             cursor = slotEnd;
         }
         return slots;
+    }
+
+    /**
+     * Un turno de la grilla junto con el dia operativo al que pertenece.
+     *
+     * <p>Los dos datos no siempre coinciden: en un club que cierra a la 01:00, el
+     * turno que arranca 00:30 del miercoles es parte de la noche del martes, y es la
+     * tarifa del martes la que corresponde cobrarle.
+     */
+    public record ResolvedSlot(java.time.LocalDate operatingDate, Slot slot) {
+    }
+
+    /**
+     * Determina a que turno de la grilla corresponde un instante.
+     *
+     * <p>Es lo que impide que alguien reserve a las 18:07 llamando a la API por fuera
+     * de la app: si el horario no es exactamente el inicio de un bloque, no existe.
+     */
+    public Optional<ResolvedSlot> resolve(Tenant club, Instant startsAt) {
+        LocalDate localDate = startsAt.atZone(club.zoneId()).toLocalDate();
+
+        // Se prueba tambien el dia anterior, porque un turno de madrugada pertenece
+        // a la jornada que arranco la tarde previa.
+        for (LocalDate candidate : List.of(localDate, localDate.minusDays(1))) {
+            Optional<Slot> match = generate(club, candidate).stream()
+                    .filter(slot -> slot.startsAt().equals(startsAt))
+                    .findFirst();
+            if (match.isPresent()) {
+                return Optional.of(new ResolvedSlot(candidate, match.get()));
+            }
+        }
+        return Optional.empty();
     }
 
     /** Instante en que arranca el dia operativo, para acotar las consultas a la base. */

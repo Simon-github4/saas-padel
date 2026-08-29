@@ -29,6 +29,9 @@ CREATE TABLE tenant (
     booking_horizon_days      INT          NOT NULL DEFAULT 21 CHECK (booking_horizon_days BETWEEN 1 AND 120),
     draft_ttl_minutes         INT          NOT NULL DEFAULT 10 CHECK (draft_ttl_minutes BETWEEN 5 AND 60),
     confirmation_ttl_minutes  INT          NOT NULL DEFAULT 15 CHECK (confirmation_ttl_minutes BETWEEN 5 AND 120),
+    -- Techo de turnos futuros por telefono. Reservar bloquea la grilla sin pagar
+    -- nada, asi que sin un limite cualquiera voltea la agenda del club en un minuto.
+    max_active_bookings       INT          NOT NULL DEFAULT 3 CHECK (max_active_bookings BETWEEN 1 AND 50),
     active                    BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at                TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at                TIMESTAMPTZ  NOT NULL DEFAULT now()

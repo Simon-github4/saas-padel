@@ -79,6 +79,10 @@ public class Tenant extends BaseEntity {
     @Column(name = "confirmation_ttl_minutes", nullable = false)
     private int confirmationTtlMinutes = 15;
 
+    /** Cuantos turnos futuros puede tener tomados un mismo telefono a la vez. */
+    @Column(name = "max_active_bookings", nullable = false)
+    private int maxActiveBookings = 3;
+
     @Column(nullable = false)
     private boolean active = true;
 

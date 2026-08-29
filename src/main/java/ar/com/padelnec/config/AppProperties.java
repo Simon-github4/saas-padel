@@ -1,6 +1,8 @@
 package ar.com.padelnec.config;
 
 import jakarta.validation.constraints.NotBlank;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -50,10 +52,11 @@ public class AppProperties {
         private String authToken;
 
         /**
-         * Prefijo de pais que se aplica a los telefonos que el jugador escribe sin
-         * codigo internacional. Argentina: +54.
+         * Content SID de cada plantilla aprobada, indexado por el nombre del valor de
+         * {@code NotificationTemplate}. Sin esto, los mensajes que inicia el sistema
+         * no llegan fuera de la ventana de 24 horas.
          */
-        private String defaultCountryCode = "+54";
+        private Map<String, String> templates = new HashMap<>();
     }
 
     @Getter
