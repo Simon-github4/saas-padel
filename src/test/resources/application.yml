@@ -1,0 +1,19 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+app:
+  base-url: http://localhost:8080
+  security:
+    encryption-key: cGFkZWwtZGV2LWtleS0zMi1ieXRlcy1leGFjdGx5ISE=
+  whatsapp:
+    provider: log
+  jobs:
+    enabled: false
+
+logging:
+  level:
+    org.hibernate.SQL: WARN

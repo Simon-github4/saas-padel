@@ -1,0 +1,87 @@
+spring:
+  application:
+    name: padel-saas
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/padel}
+    username: ${DB_USER:padel}
+    password: ${DB_PASSWORD:padel}
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # El esquema lo gobierna Flyway. Hibernate solo valida que coincida.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+          batch_size: 25
+        order_inserts: true
+        order_updates: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: ${PORT:8080}
+  forward-headers-strategy: framework
+  error:
+    include-message: never
+    include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+app:
+  base-url: ${APP_BASE_URL:http://localhost:8080}
+  security:
+    # openssl rand -base64 32
+    encryption-key: ${APP_ENCRYPTION_KEY:}
+  whatsapp:
+    provider: ${WHATSAPP_PROVIDER:log}
+    from-number: ${WHATSAPP_FROM:}
+    account-sid: ${TWILIO_ACCOUNT_SID:}
+    auth-token: ${TWILIO_AUTH_TOKEN:}
+    default-country-code: "+54"
+  jobs:
+    enabled: true
+    recurring-horizon-weeks: 8
+
+logging:
+  level:
+    ar.com.padelnec: INFO
+
+---
+# Desarrollo local: Postgres embebido (no hace falta Docker ni instalar el motor)
+# y una clave de cifrado fija para no tener que exportar variables.
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+
+app:
+  security:
+    encryption-key: cGFkZWwtZGV2LWtleS0zMi1ieXRlcy1leGFjdGx5ISE=
+
+logging:
+  level:
+    ar.com.padelnec: DEBUG
+    org.hibernate.SQL: DEBUG

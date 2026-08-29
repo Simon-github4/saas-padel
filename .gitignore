@@ -1,0 +1,25 @@
+target/
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/
+*.iml
+.idea/
+.vscode/
+.classpath
+.project
+.settings/
+
+# Vaadin
+node_modules/
+frontend/generated/
+src/main/bundles/
+vite.generated.ts
+package-lock.json
+package.json
+tsconfig.json
+types.d.ts
+
+# Postgres embebido de desarrollo
+pgdata/
+
+.env
+*.log
