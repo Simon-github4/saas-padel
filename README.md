@@ -5,7 +5,8 @@ todo por WhatsApp. Multi-tenant: una sola instancia atiende a varios clubes.
 
 ## Cómo correrlo
 
-Hace falta Java 21 y Maven. No hace falta Docker ni instalar PostgreSQL: el perfil
+Hace falta Java 21, Maven y Node (lo usa Vaadin para armar el bundle del panel;
+la primera corrida tarda unos minutos y después queda cacheado). No hace falta Docker ni instalar PostgreSQL: el perfil
 `dev` levanta un PostgreSQL embebido real en el puerto 54329.
 
 ```bash
@@ -59,6 +60,12 @@ un turno que no existe.
 la JVM: con dos clubes cobrando en paralelo terminaría acreditándole a uno la seña
 del otro.
 
+**El panel no usa el locale es-AR en los selectores de hora.** Con es-AR, el
+TimePicker de Vaadin formatea en 12 horas con "a. m." y después no puede releer lo
+que él mismo escribió: las 18:00 quedaban como 06:00 y un cierre 23:30 como 11:30.
+El dueño abría la configuración, tocaba Guardar sin cambiar nada y le movía el
+horario al club. Usa es-ES, que formatea en 24 horas.
+
 **Los teléfonos argentinos se fuerzan a celular.** Escrito sin el 15 ni el 9,
 `2262 415000` es indistinguible de una línea fija. Sin esa corrección, el mismo
 jugador queda como dos clientes según cómo haya tipeado, con su historial y su marca
@@ -66,7 +73,7 @@ de confianza partidos.
 
 ## Estado
 
-Backend completo y probado: 86 tests.
+Backend y panel del club funcionando. 86 tests.
 
 - Motor de disponibilidad, precios por franja y por cancha
 - Reserva con seña (MercadoPago) y de palabra (confirmación por WhatsApp)
@@ -74,9 +81,11 @@ Backend completo y probado: 86 tests.
 - Turnos fijos con horizonte móvil y excepciones por semana
 - Vencimientos automáticos y cierre de turnos jugados
 - Webhook de MercadoPago con validación de firma e idempotencia
+- Panel del club en Vaadin 25: agenda de canchas por horario con carga manual de
+  turnos, cobro en mostrador, ausentes y bajas; jugadores con marca de confianza;
+  turnos fijos; alertas; configuración de horarios, tarifas y cobros
 
-Falta: panel del club (Vaadin) y app del jugador (React). El backend que ambos
-consumen ya está.
+Falta: la app del jugador (React). El backend que consume ya está.
 
 ## Configuración de producción
 
