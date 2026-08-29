@@ -8,11 +8,14 @@ target/
 .project
 .settings/
 
-# Vaadin
+# Vaadin: todo lo que regenera prepare-frontend en cada build.
+# En Vaadin 25 el frontend vive bajo src/main/frontend, no en la raiz.
 node_modules/
-frontend/generated/
+src/main/frontend/generated/
+src/main/frontend/index.html
 src/main/bundles/
 vite.generated.ts
+vite.config.ts
 package-lock.json
 package.json
 tsconfig.json
