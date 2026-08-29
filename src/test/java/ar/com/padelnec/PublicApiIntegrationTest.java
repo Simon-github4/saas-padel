@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
-import com.fasterxml.jackson.databind.JsonNode;
+import tools.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -14,11 +14,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.client.RestTestClient;
 
 /**
  * Recorre la API como la recorre la app del jugador, sobre HTTP real.
@@ -36,13 +36,15 @@ class PublicApiIntegrationTest {
 
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
 
-    @Autowired private TestRestTemplate rest;
+    @LocalServerPort private int port;
     @Autowired private ClubFixture fixture;
 
+    private RestTestClient client;
     private LocalDate matchDay;
 
     @BeforeEach
     void setUp() {
+        client = RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
         fixture.reset();
 
         Tenant club = fixture.club("club-necochea");
@@ -69,41 +71,45 @@ class PublicApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("El circuito completo del jugador: reservar, confirmar, ver y cancelar")
+    @DisplayName("El circuito completo del jugador: reservar, ver el turno y cancelar")
     void fullPlayerJourney() {
         JsonNode slot = firstFreeSlot();
 
-        // --- reserva -------------------------------------------------------
-        ResponseEntity<JsonNode> created = rest.postForEntity(
-                "/api/public/club-necochea/bookings", bookingBody(slot), JsonNode.class);
+        JsonNode booking = client.post().uri("/api/public/club-necochea/bookings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(bookingBody(slot))
+                .exchange()
+                .expectStatus().isCreated()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
 
-        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        JsonNode booking = created.getBody();
         assertThat(booking.get("status").asText()).isEqualTo("AWAITING_CONFIRMATION");
-        String managementToken = tokenFrom(booking.get("managementUrl").asText(), "/manage/");
+        String token = tokenFrom(booking.get("managementUrl").asText());
 
-        // --- el turno ya bloquea la grilla ---------------------------------
+        // El turno ya retiene la cancha.
         assertThat(freeCourtsAt(slot.get("startTime").asText())).isEqualTo(1);
 
-        // --- portal de gestion ---------------------------------------------
-        // Este es el paso que fallaba: el link no lleva el slug, asi que el club
-        // tiene que salir del token antes de que se abra ninguna transaccion.
-        ResponseEntity<JsonNode> detail = rest.getForEntity(
-                "/api/public/manage/" + managementToken, JsonNode.class);
+        // Este es el paso que fallaba: el link no lleva el slug del club, asi que el
+        // tenant tiene que salir del propio token antes de abrir ninguna transaccion.
+        JsonNode detail = client.get().uri("/api/public/manage/" + token)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
 
-        assertThat(detail.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(detail.getBody().get("courtName").asText()).isNotBlank();
-        assertThat(detail.getBody().get("cancellableOnline").asBoolean()).isTrue();
+        assertThat(detail.get("courtName").asText()).isNotBlank();
+        assertThat(detail.get("cancellableOnline").asBoolean()).isTrue();
 
-        // --- cancelacion ----------------------------------------------------
-        ResponseEntity<JsonNode> cancelled = rest.postForEntity(
-                "/api/public/manage/" + managementToken + "/cancel", null, JsonNode.class);
+        JsonNode cancelled = client.post().uri("/api/public/manage/" + token + "/cancel")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
 
-        assertThat(cancelled.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(cancelled.getBody().get("status").asText()).isEqualTo("CANCELLED");
-        assertThat(cancelled.getBody().get("refundNeeded").asBoolean()).isFalse();
+        assertThat(cancelled.get("status").asText()).isEqualTo("CANCELLED");
+        assertThat(cancelled.get("refundNeeded").asBoolean()).isFalse();
 
-        // --- la cancha volvio al mercado ------------------------------------
+        // La cancha volvio al mercado.
         assertThat(freeCourtsAt(slot.get("startTime").asText())).isEqualTo(2);
     }
 
@@ -111,63 +117,72 @@ class PublicApiIntegrationTest {
     @DisplayName("Dos jugadores sobre el mismo turno: el segundo recibe 409")
     void theSecondBookingGetsAConflict() {
         JsonNode slot = firstFreeSlot();
-        rest.postForEntity("/api/public/club-necochea/bookings", bookingBody(slot), JsonNode.class);
+        book(slot).expectStatus().isCreated();
 
-        ResponseEntity<JsonNode> second = rest.postForEntity(
-                "/api/public/club-necochea/bookings", bookingBody(slot), JsonNode.class);
+        JsonNode error = book(slot)
+                .expectStatus().isEqualTo(409)
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
 
-        // 409 y un codigo propio para que la app sepa que tiene que refrescar la
-        // grilla en vez de mostrar un cartel de error.
-        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(second.getBody().get("code").asText()).isEqualTo("SLOT_TAKEN");
+        // Codigo propio para que la app refresque la grilla en vez de mostrar un
+        // cartel de error generico.
+        assertThat(error.get("code").asText()).isEqualTo("SLOT_TAKEN");
     }
 
     @Test
     @DisplayName("Un token inventado devuelve 404 y no filtra nada")
     void unknownTokensReturnNotFound() {
-        ResponseEntity<JsonNode> response = rest.getForEntity(
-                "/api/public/manage/token-que-no-existe", JsonNode.class);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        client.get().uri("/api/public/manage/token-que-no-existe")
+                .exchange()
+                .expectStatus().isNotFound();
     }
 
     @Test
     @DisplayName("Un club inexistente devuelve 404")
     void unknownClubReturnsNotFound() {
-        ResponseEntity<JsonNode> response = rest.getForEntity(
-                "/api/public/club-que-no-existe/availability?date=" + matchDay, JsonNode.class);
-
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        client.get().uri("/api/public/club-que-no-existe/availability?date=" + matchDay)
+                .exchange()
+                .expectStatus().isNotFound();
     }
 
     @Test
     @DisplayName("Un formulario incompleto devuelve 400 con el mensaje para el jugador")
     void invalidPayloadIsRejected() {
-        ResponseEntity<JsonNode> response = rest.postForEntity(
-                "/api/public/club-necochea/bookings",
-                Map.of("fullName", "", "phoneNumber", "", "paymentChoice", "PAY_AT_CLUB"),
-                JsonNode.class);
+        JsonNode error = client.post().uri("/api/public/club-necochea/bookings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("fullName", "", "phoneNumber", "", "paymentChoice", "PAY_AT_CLUB"))
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(response.getBody().get("message").asText()).isNotBlank();
+        assertThat(error.get("message").asText()).isNotBlank();
     }
 
     @Test
     @DisplayName("El webhook de MercadoPago sin firma valida se rechaza")
     void unsignedWebhooksAreRejected() {
-        ResponseEntity<Void> response = rest.postForEntity(
-                "/api/webhooks/mercadopago/club-necochea?type=payment&data.id=123",
-                null, Void.class);
-
         // Sin esta barrera, cualquiera confirmaria turnos que nadie pago.
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        client.post().uri("/api/webhooks/mercadopago/club-necochea?type=payment&data.id=123")
+                .exchange()
+                .expectStatus().isUnauthorized();
     }
 
     // ------------------------------------------------------------ utilidades
 
+    private RestTestClient.ResponseSpec book(JsonNode slot) {
+        return client.post().uri("/api/public/club-necochea/bookings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(bookingBody(slot))
+                .exchange();
+    }
+
     private JsonNode availability() {
-        return rest.getForObject(
-                "/api/public/club-necochea/availability?date=" + matchDay, JsonNode.class);
+        return client.get().uri("/api/public/club-necochea/availability?date=" + matchDay)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
     }
 
     private JsonNode firstFreeSlot() {
@@ -197,7 +212,7 @@ class PublicApiIntegrationTest {
                 "paymentChoice", "PAY_AT_CLUB");
     }
 
-    private String tokenFrom(String url, String marker) {
-        return url.substring(url.indexOf(marker) + marker.length());
+    private String tokenFrom(String managementUrl) {
+        return managementUrl.substring(managementUrl.indexOf("/manage/") + "/manage/".length());
     }
 }

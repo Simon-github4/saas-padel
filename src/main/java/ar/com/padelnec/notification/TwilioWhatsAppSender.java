@@ -1,8 +1,8 @@
 package ar.com.padelnec.notification;
 
 import ar.com.padelnec.config.AppProperties;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import com.twilio.Twilio;
 import com.twilio.exception.ApiException;
 import com.twilio.rest.api.v2010.account.Message;
@@ -99,7 +99,7 @@ public class TwilioWhatsAppSender implements WhatsAppSender {
         }
         try {
             return objectMapper.writeValueAsString(indexed);
-        } catch (JsonProcessingException ex) {
+        } catch (JacksonException ex) {
             throw new IllegalStateException("No se pudieron serializar las variables de la plantilla", ex);
         }
     }
