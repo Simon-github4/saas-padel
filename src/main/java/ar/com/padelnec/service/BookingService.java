@@ -326,15 +326,18 @@ public class BookingService {
     }
 
     /**
-     * Resuelve el club a partir de un token y deja el contexto puesto.
+     * Carga la reserva a la que apunta un token de WhatsApp.
      *
-     * <p>Los links que viajan por WhatsApp no llevan el slug, asi que el tenant se
-     * averigua desde el propio token antes de poder leer nada.
+     * <p>Da por hecho que el club ya esta en contexto: lo resuelve
+     * {@code TenantContextFilter} antes de que arranque la transaccion. Tiene que ser
+     * asi porque Hibernate fija el tenant al abrir la sesion, y establecerlo aca
+     * adentro llegaria tarde: las consultas seguirian filtrando por el club anterior.
      */
     private ManagedBooking resolveByToken(String token) {
-        UUID clubId = bookingRepository.findClubIdByAnyToken(token)
-                .orElseThrow(() -> new ResourceNotFoundException("Este link no corresponde a ningun turno"));
-        TenantContext.set(clubId);
+        UUID clubId = TenantContext.get();
+        if (TenantContext.UNSCOPED.equals(clubId)) {
+            throw new ResourceNotFoundException("Este link no corresponde a ningun turno");
+        }
 
         Tenant club = tenantRepository.findById(clubId)
                 .orElseThrow(() -> new ResourceNotFoundException("El club ya no esta disponible"));

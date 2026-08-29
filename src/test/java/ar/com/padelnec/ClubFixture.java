@@ -94,6 +94,17 @@ public class ClubFixture {
         return pricingRuleRepository.saveAndFlush(rule);
     }
 
+    /** Tarifa acotada a una franja concreta del dia. */
+    @Transactional
+    public PricingRule priceWindow(DayOfWeek day, LocalTime from, LocalTime to, String price) {
+        PricingRule rule = new PricingRule();
+        rule.setDay(day);
+        rule.setStartTime(from);
+        rule.setEndTime(to);
+        rule.setPrice(new BigDecimal(price));
+        return pricingRuleRepository.saveAndFlush(rule);
+    }
+
     @Transactional
     public Tenant save(Tenant club) {
         return tenantRepository.saveAndFlush(club);

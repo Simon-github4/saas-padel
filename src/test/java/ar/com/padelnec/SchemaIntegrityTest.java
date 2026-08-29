@@ -9,6 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -21,6 +22,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  * requests concurrentes la pasan las dos; la garantia vive en la base.
  */
 @SpringBootTest
+@ActiveProfiles("test")
 @Import(TestDatabaseConfig.class)
 class SchemaIntegrityTest {
 

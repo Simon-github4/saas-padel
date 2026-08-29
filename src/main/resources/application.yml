@@ -15,7 +15,11 @@ spring:
     properties:
       hibernate:
         jdbc:
-          time_zone: UTC
+          # Sin time_zone a proposito. Todos los instantes viven en timestamptz, que
+          # ya es absoluto y no necesita ayuda. Forzar UTC aca ademas convierte las
+          # columnas TIME, y esas son horas de reloj de pared: el club que abre a las
+          # 18:00 terminaba guardado como 21:00, y su cierre 23:59 como 02:59, que
+          # encima viola el CHECK de que el fin sea posterior al inicio.
           batch_size: 25
         order_inserts: true
         order_updates: true
