@@ -1,0 +1,27 @@
+{
+  "name": "padel-player-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@fontsource-variable/archivo": "^5.3.0",
+    "@fontsource/bebas-neue": "^5.3.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.1",
+    "@vitejs/plugin-react": "^5.0.4",
+    "tailwindcss": "^4.1.14",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9"
+  }
+}

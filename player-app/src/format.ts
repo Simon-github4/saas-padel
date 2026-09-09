@@ -10,6 +10,11 @@ export function money(amount: number): string {
   }).format(amount);
 }
 
+/** Precio por persona, el numero que vende: el total del turno dividido los jugadores. */
+export function perPerson(amount: number, playersPerCourt: number): string {
+  return money(amount / playersPerCourt);
+}
+
 /** "martes 1 de septiembre" */
 export function longDate(isoDate: string, timeZone?: string): string {
   const date = isoDate.length === 10 ? new Date(`${isoDate}T12:00:00`) : new Date(isoDate);
@@ -52,10 +57,53 @@ export function addDays(isoDate: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Minutos entre dos instantes ISO. */
+export function durationMinutes(startInstant: string, endInstant: string): number {
+  const start = new Date(startInstant);
+  const end = new Date(endInstant);
+  return Math.round((end.getTime() - start.getTime()) / 60000);
+}
+
+/** "4 h 30 min" / "2 h" / "45 min". */
+export function formatHours(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) {
+    return `${minutes} min`;
+  }
+  if (minutes === 0) {
+    return `${hours} h`;
+  }
+  return `${hours} h ${minutes} min`;
+}
+
+/** "agosto", el mes solo, para los rotulos del grafico de actividad. */
+export function monthName(date: Date): string {
+  return new Intl.DateTimeFormat(LOCALE, { month: 'long' }).format(date);
+}
+
 /** Link para escribirle al club por WhatsApp. */
 export function whatsappLink(phone: string, message?: string): string {
   const digits = phone.replace(/[^0-9]/g, '');
   return message
     ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
     : `https://wa.me/${digits}`;
+}
+
+/**
+ * Comparte el turno con quien elija el jugador. En el celular abre el selector
+ * nativo (WhatsApp, mensajes, lo que tenga instalado); en desktop, donde
+ * `navigator.share` no existe, cae a un link de WhatsApp sin numero fijo, que
+ * abre el selector de contactos de WhatsApp Web.
+ */
+export async function shareBooking(text: string, url: string): Promise<void> {
+  if (navigator.share) {
+    try {
+      await navigator.share({ text, url });
+    } catch {
+      // El usuario cerro el selector: no es un error que haya que mostrar.
+    }
+    return;
+  }
+  window.open(whatsappLink('', `${text} ${url}`), '_blank', 'noreferrer');
 }

@@ -1,29 +1,48 @@
-import { Card, Screen } from '../components/Ui';
+import { useEffect } from 'react';
+import { BrandSection } from './marketing/BrandSection';
+import { ClosingSection } from './marketing/ClosingSection';
+import { BRAND } from './marketing/config';
+import { FaqSection } from './marketing/FaqSection';
+import { FeaturesSection } from './marketing/FeaturesSection';
+import { HeroSection } from './marketing/HeroSection';
+import { MarketingFooter, MarketingNav } from './marketing/MarketingNav';
+import { NetworkSection } from './marketing/NetworkSection';
+import { PanelSection } from './marketing/PanelSection';
+import { PricingSection } from './marketing/PricingSection';
+import { StepsSection } from './marketing/StepsSection';
 
 /**
- * Portada.
+ * Landing comercial: vende el sistema al dueño de club que entra a la raíz.
  *
- * <p>Nadie entra por aca en la practica: cada club comparte su propio link y el
- * jugador llega directo a su grilla. Existe para que la raiz no quede en blanco.
+ * <p>El jugador no pasa por acá: cada club reparte su propio link de
+ * /club/{slug} por WhatsApp. Quien sí cae en "/" es, sobre todo, el dueño de
+ * club evaluando el producto — por eso esta página tiene su propio título de
+ * pestaña, distinto del de la SPA, y lo restaura al salir.
  */
 export function Landing() {
-  return (
-    <Screen>
-      <div className="pt-16 text-center">
-        <h1 className="text-3xl font-bold tracking-tight">Reservá tu cancha</h1>
-        <p className="mt-3 text-slate-600">
-          Cada club tiene su propio link. Pedíselo por WhatsApp y reservá en dos toques.
-        </p>
-      </div>
+  useEffect(() => {
+    const previous = document.title;
+    document.title = `Reservas online para tu club — ${BRAND}`;
+    return () => {
+      document.title = previous;
+    };
+  }, []);
 
-      <Card className="mt-8">
-        <p className="text-sm text-slate-600">
-          Si el club ya te pasó su link, va a verse parecido a esto:
-        </p>
-        <code className="mt-2 block rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">
-          /club/nombre-del-club
-        </code>
-      </Card>
-    </Screen>
+  return (
+    <div className="min-h-dvh overflow-x-clip bg-pista">
+      <MarketingNav />
+      <HeroSection />
+      <div className="mx-auto w-full max-w-5xl px-4">
+        <FeaturesSection />
+        <PanelSection />
+        <BrandSection />
+        <NetworkSection />
+        <StepsSection />
+        <PricingSection />
+        <FaqSection />
+      </div>
+      <ClosingSection />
+      <MarketingFooter />
+    </div>
   );
 }

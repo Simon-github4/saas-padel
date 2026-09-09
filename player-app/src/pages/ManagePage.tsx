@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError, type BookingDetail, type Cancellation } from '../api/client';
-import { clockTime, longDate, money, whatsappLink } from '../format';
-import { Alert, Button, Card, Loading, Screen, WhatsappLink } from '../components/Ui';
+import { clockTime, longDate, money, shareBooking, whatsappLink } from '../format';
+import { forgetGuestBooking } from '../guestBookings';
+import { Alert, Button, Card, Loading, Screen, StatusBadge, TopBar, WhatsappLink } from '../components/Ui';
+import { AccountButton } from '../components/AccountButton';
 
 /**
  * Portal del turno, al que se llega con el link que viajo por WhatsApp.
@@ -11,6 +13,7 @@ import { Alert, Button, Card, Loading, Screen, WhatsappLink } from '../component
  * se registre para ver su propio turno lo devuelve directo a WhatsApp.
  */
 export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
+  const navigate = useNavigate();
   const { token = '' } = useParams();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [cancelled, setCancelled] = useState<Cancellation | null>(null);
@@ -38,6 +41,10 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
     setError(null);
     try {
       setCancelled(await api.cancel(token));
+      if (booking) {
+        // Cancelado, ya no sirve tenerlo a mano en el dispositivo.
+        forgetGuestBooking(booking.bookingId);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No pudimos cancelar el turno.');
       setConfirmingCancel(false);
@@ -48,7 +55,7 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
 
   if (loading) {
     return (
-      <Screen>
+      <Screen className="pt-6">
         <Loading />
       </Screen>
     );
@@ -56,7 +63,7 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
 
   if (!booking) {
     return (
-      <Screen>
+      <Screen className="pt-6">
         <Alert>{error ?? 'Este link no corresponde a ningún turno.'}</Alert>
       </Screen>
     );
@@ -64,7 +71,7 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
 
   if (cancelled) {
     return (
-      <Screen>
+      <Screen className="pt-6">
         <Cancelled result={cancelled} />
       </Screen>
     );
@@ -73,10 +80,9 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
   const active = booking.status === 'CONFIRMED' || booking.status === 'AWAITING_CONFIRMATION';
 
   return (
-    <Screen>
-      <header className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight">Tu turno</h1>
-        <p className="text-sm text-slate-500">{booking.clubName}</p>
+    <Screen className="pt-6" top={<TopBar name={booking.clubName} accountSlot={<AccountButton />} onTitleClick={() => navigate(`/club/${booking.clubSlug}`)} />}>
+      <header className="mb-5 mt-6">
+        <h1 className="text-3xl">Tu turno</h1>
       </header>
 
       {mode === 'confirm' && booking.status === 'CONFIRMED' && (
@@ -87,10 +93,14 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
 
       <Card>
         <dl className="space-y-3">
+          {/* Fecha y hora en filas separadas: juntas desbordaban el ancho y
+              dejaban el "hs" colgando solo en la segunda linea. */}
           <Row label="Cuándo">
             {/* Solo la inicial: "capitalize" pone en mayuscula cada palabra y deja
                 "Sabado, 5 De Septiembre". */}
-            <span className="first-letter:uppercase">{longDate(booking.startTime)}</span>,{' '}
+            <span className="first-letter:uppercase">{longDate(booking.startTime)}</span>
+          </Row>
+          <Row label="Hora">
             {clockTime(booking.startTime, Intl.DateTimeFormat().resolvedOptions().timeZone)} hs
           </Row>
           <Row label="Cancha">{booking.courtName}</Row>
@@ -107,6 +117,24 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
         </dl>
       </Card>
 
+      {booking.status === 'CONFIRMED' && (
+        <div className="mt-4">
+          <Button
+            variant="secondary"
+            onClick={() =>
+              shareBooking(
+                `Turno confirmado en ${booking.clubName}, cancha ${booking.courtName}, ` +
+                  `${longDate(booking.startTime)} a las ` +
+                  `${clockTime(booking.startTime, Intl.DateTimeFormat().resolvedOptions().timeZone)} hs.`,
+                booking.shareUrl,
+              )
+            }
+          >
+            Compartir turno
+          </Button>
+        </div>
+      )}
+
       {error && (
         <div className="mt-4">
           <Alert>{error}</Alert>
@@ -118,7 +146,7 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
           {booking.cancellableOnline ? (
             confirmingCancel ? (
               <Card>
-                <p className="mb-3 text-sm text-slate-700">
+                <p className="mb-4 text-sm text-ink-soft">
                   ¿Seguro que querés cancelar? La cancha vuelve a quedar disponible para
                   otros jugadores.
                 </p>
@@ -157,28 +185,10 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-4">
-      <dt className="text-sm text-slate-500">{label}</dt>
-      <dd className="text-right font-medium">{children}</dd>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { text: string; className: string }> = {
-    CONFIRMED: { text: 'Confirmado', className: 'bg-emerald-100 text-emerald-800' },
-    AWAITING_CONFIRMATION: { text: 'Sin confirmar', className: 'bg-amber-100 text-amber-800' },
-    DRAFT: { text: 'Esperando pago', className: 'bg-amber-100 text-amber-800' },
-    COMPLETED: { text: 'Jugado', className: 'bg-slate-100 text-slate-700' },
-    CANCELLED: { text: 'Cancelado', className: 'bg-red-100 text-red-800' },
-    NO_SHOW: { text: 'No te presentaste', className: 'bg-red-100 text-red-800' },
-  };
-  const badge = map[status] ?? { text: status, className: 'bg-slate-100 text-slate-700' };
-
-  return (
-    <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${badge.className}`}>
-      {badge.text}
-    </span>
+      <div className="flex items-baseline justify-between gap-4">
+        <dt className="eyebrow text-ink-soft">{label}</dt>
+        <dd className="text-right font-semibold tabular-nums">{children}</dd>
+      </div>
   );
 }
 
@@ -186,11 +196,11 @@ function StatusBadge({ status }: { status: string }) {
 function Cancelled({ result }: { result: Cancellation }) {
   return (
     <div className="pt-10 text-center">
-      <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-slate-200 text-3xl">
+      <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-cal/[0.06] text-3xl text-ink-soft">
         ✓
       </div>
-      <h1 className="text-xl font-bold">Turno cancelado</h1>
-      <p className="mx-auto mt-2 max-w-sm text-slate-600">{result.message}</p>
+      <h1 className="text-2xl">Turno cancelado</h1>
+      <p className="mx-auto mt-3 max-w-sm text-ink-soft">{result.message}</p>
 
       {result.refundNeeded && (
         <div className="mt-6">
