@@ -11,6 +11,7 @@ import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
 import ar.com.padelnec.domain.enums.BookingStatus;
+import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.domain.enums.PaymentStatus;
 import ar.com.padelnec.payment.MercadoPagoGateway;
 import ar.com.padelnec.payment.MercadoPagoGateway.ApprovedPayment;
@@ -201,18 +202,35 @@ class PaymentServiceTest {
     }
 
     @Test
-    @DisplayName("Cobrar el saldo en el mostrador deja el turno saldado")
+    @DisplayName("Cobrar el saldo total en el mostrador deja el turno saldado y lo cierra")
     void cashPaymentSettlesTheBalance() {
         Booking booking = draftBooking();
         stubPayment(booking, "approved", "10000");
         paymentService.applyWebhook(club, MP_PAYMENT_ID);
 
-        paymentService.registerCashPayment(reload(booking), new BigDecimal("10000"), null);
+        paymentService.registerManualPayment(reload(booking), new BigDecimal("10000"), PaymentMethod.CASH, null);
 
         Booking settled = reload(booking);
         assertThat(settled.balanceDue()).isEqualByComparingTo("0");
         assertThat(settled.isPaidInFull()).isTrue();
+        // Cobrar el total es la señal de que se jugó: ya no hace falta el paso
+        // manual aparte para cerrar el turno.
+        assertThat(settled.getStatus()).isEqualTo(BookingStatus.COMPLETED);
         assertThat(paymentService.paymentsOf(booking.getId())).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("Cobrar solo una parte del saldo no cierra el turno")
+    void partialCashPaymentDoesNotCloseTheBooking() {
+        Booking booking = draftBooking();
+        stubPayment(booking, "approved", "10000");
+        paymentService.applyWebhook(club, MP_PAYMENT_ID);
+
+        paymentService.registerManualPayment(reload(booking), new BigDecimal("5000"), PaymentMethod.CASH, null);
+
+        Booking partial = reload(booking);
+        assertThat(partial.balanceDue()).isEqualByComparingTo("5000");
+        assertThat(partial.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
     }
 
     // ------------------------------------------------------------ utilidades

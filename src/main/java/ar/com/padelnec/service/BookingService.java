@@ -28,6 +28,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,8 +93,9 @@ public class BookingService {
         validateWindow(club, slot, now);
 
         BigDecimal price = pricingService
-                .resolve(pricingService.rulesFor(slot.operatingDate().getDayOfWeek()),
+                .resolve(club, pricingService.rulesFor(club, slot.operatingDate().getDayOfWeek()),
                         court, slot.operatingDate().getDayOfWeek(), slot.slot().startTime())
+                .map(PricingService.ResolvedPrice::totalPrice)
                 .orElseThrow(() -> new BusinessRuleException(
                         "Ese horario todavía no tiene tarifa publicada. Consultá con el club."));
 
@@ -114,13 +116,20 @@ public class BookingService {
         booking.setTotalPrice(price);
         booking.setSource(BookingSource.WEB);
         booking.setManagementToken(Tokens.generate());
+        booking.setShareToken(Tokens.generate());
+
+        boolean skipConfirmation = payAtClub && !club.isRequiresBookingConfirmation();
 
         if (payAtClub) {
-            booking.setStatus(BookingStatus.AWAITING_CONFIRMATION);
             booking.setDepositAmount(BigDecimal.ZERO);
-            booking.setConfirmationToken(Tokens.generate());
-            booking.setConfirmationExpiresAt(
-                    now.plus(Duration.ofMinutes(club.getConfirmationTtlMinutes())));
+            if (skipConfirmation) {
+                booking.markConfirmed();
+            } else {
+                booking.setStatus(BookingStatus.AWAITING_CONFIRMATION);
+                booking.setConfirmationToken(Tokens.generate());
+                booking.setConfirmationExpiresAt(
+                        now.plus(Duration.ofMinutes(club.getConfirmationTtlMinutes())));
+            }
         } else {
             booking.setStatus(BookingStatus.DRAFT);
             booking.setDepositAmount(
@@ -130,7 +139,10 @@ public class BookingService {
 
         Booking saved = persist(booking);
 
-        if (payAtClub) {
+        if (skipConfirmation) {
+            events.publishEvent(BookingEvent.of(club.getId(), saved.getId(),
+                    BookingEvent.Kind.CONFIRMED_UNPAID));
+        } else if (payAtClub) {
             events.publishEvent(BookingEvent.of(club.getId(), saved.getId(),
                     BookingEvent.Kind.CONFIRMATION_REQUEST));
         }
@@ -148,9 +160,15 @@ public class BookingService {
                         "Ese horario no forma parte de la grilla del club"));
 
         BigDecimal price = priceOverride != null ? priceOverride : pricingService
-                .resolve(pricingService.rulesFor(slot.operatingDate().getDayOfWeek()),
+                .resolve(club, pricingService.rulesFor(club, slot.operatingDate().getDayOfWeek()),
                         court, slot.operatingDate().getDayOfWeek(), slot.slot().startTime())
+                .map(PricingService.ResolvedPrice::totalPrice)
                 .orElse(BigDecimal.ZERO);
+
+        if (!availabilityService.isCourtFree(court, slot.slot().startsAt(), slot.slot().endsAt())) {
+            throw new SlotUnavailableException(
+                    "Ese horario no está disponible (ya está ocupado o el día está suspendido).");
+        }
 
         Customer customer = customerService.findOrCreate(phoneNumber, fullName);
 
@@ -164,6 +182,7 @@ public class BookingService {
         booking.setStatus(BookingStatus.CONFIRMED);
         booking.setSource(BookingSource.ADMIN);
         booking.setManagementToken(Tokens.generate());
+        booking.setShareToken(Tokens.generate());
         booking.setAdminNotes(notes);
 
         return persist(booking);
@@ -197,10 +216,52 @@ public class BookingService {
         return managed;
     }
 
+    /**
+     * Confirma a mano desde el panel: el club lo arreglo por telefono o en el
+     * mostrador y no tiene sentido esperar a que el jugador toque un link.
+     */
+    @Transactional
+    public Booking confirmByClub(Tenant club, UUID bookingId) {
+        Booking booking = requireBooking(bookingId);
+        if (booking.getStatus() != BookingStatus.DRAFT
+                && booking.getStatus() != BookingStatus.AWAITING_CONFIRMATION) {
+            throw new BusinessRuleException("Este turno ya no se puede confirmar");
+        }
+        booking.markConfirmed();
+        bookingRepository.save(booking);
+        events.publishEvent(BookingEvent.of(club.getId(), booking.getId(),
+                BookingEvent.Kind.CONFIRMED_UNPAID));
+        return booking;
+    }
+
     /** Lo que ve el jugador al entrar a su portal de gestion. */
     @Transactional(readOnly = true)
     public ManagedBooking findByManagementToken(String token) {
         return resolveByToken(token);
+    }
+
+    /**
+     * Vista de solo lectura para compartir el turno con otros jugadores.
+     *
+     * <p>A proposito no usa {@link #resolveByToken}: ese metodo (y los
+     * endpoints que lo consumen, incluida la cancelacion) solo entiende
+     * {@code managementToken}/{@code confirmationToken}. Resolver aca por
+     * {@code shareToken} en un camino aparte evita que compartir el link
+     * termine habilitando, de rebote, cancelar el turno de otro.
+     */
+    @Transactional(readOnly = true)
+    public ManagedBooking findByShareToken(String token) {
+        UUID clubId = TenantContext.get();
+        if (TenantContext.UNSCOPED.equals(clubId)) {
+            throw new ResourceNotFoundException("Este link no corresponde a ningún turno");
+        }
+
+        Tenant club = tenantRepository.findById(clubId)
+                .orElseThrow(() -> new ResourceNotFoundException("El club ya no está disponible"));
+        Booking booking = bookingRepository.findByShareToken(token)
+                .orElseThrow(() -> new ResourceNotFoundException("Este link no corresponde a ningún turno"));
+
+        return new ManagedBooking(club, booking);
     }
 
     public record CancellationResult(Booking booking, boolean refundNeeded, String clubWhatsapp) {
@@ -298,6 +359,13 @@ public class BookingService {
      *
      * <p>Es el desenlace de la carrera entre dos jugadores: uno gana, y al otro hay
      * que decirle que refresque la grilla, no mostrarle un error de base de datos.
+     *
+     * <p>Con varios jugadores compitiendo por el mismo turno a la vez (no solo dos
+     * en fila), Postgres a veces resuelve la carrera con un deadlock en vez de una
+     * violacion de la restriccion de exclusion: el mismo desenlace, envuelto en un
+     * tipo de excepcion distinto. Confirmado bajo carga real con
+     * {@code BookingConcurrencyTest}: sin este segundo catch, el perdedor recibia
+     * un error generico de servidor en vez del cartel de "elegí otro horario".
      */
     private Booking persist(Booking booking) {
         try {
@@ -309,6 +377,10 @@ public class BookingService {
                 throw new SlotUnavailableException("Justo tomaron ese turno. Elegí otro horario.");
             }
             throw ex;
+        } catch (CannotAcquireLockException ex) {
+            log.info("Deadlock reservando la cancha {} a las {} (carrera con otro jugador)",
+                    booking.getCourt().getId(), booking.getStartTime());
+            throw new SlotUnavailableException("Justo tomaron ese turno. Elegí otro horario.");
         }
     }
 
@@ -404,5 +476,11 @@ public class BookingService {
     @Transactional(readOnly = true)
     public Optional<Booking> findById(UUID bookingId) {
         return bookingRepository.findById(bookingId);
+    }
+
+    /** Como {@link #findById}, pero con cancha y cliente ya cargados para la UI. */
+    @Transactional(readOnly = true)
+    public Optional<Booking> findByIdWithDetails(UUID bookingId) {
+        return bookingRepository.findByIdWithDetails(bookingId);
     }
 }

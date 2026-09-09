@@ -1,4 +1,4 @@
-package ar.com.padelnec.notification;
+package ar.com.padelnec.notification.whatsapp;
 
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -10,10 +10,11 @@ import org.springframework.stereotype.Component;
  *
  * <p>Sirve para trabajar todo el flujo de reserva sin numero habilitado ni costo
  * por conversacion. Los links de confirmacion y de gestion salen completos en la
- * consola, listos para pegar en el navegador.
+ * consola, listos para pegar en el navegador. Hay que pedirlo explicito
+ * ({@code app.whatsapp.provider=log}): el default es {@link NoOpWhatsAppSender}.
  */
 @Component
-@ConditionalOnProperty(name = "app.whatsapp.provider", havingValue = "log", matchIfMissing = true)
+@ConditionalOnProperty(name = "app.whatsapp.provider", havingValue = "log")
 @Slf4j
 public class LoggingWhatsAppSender implements WhatsAppSender {
 

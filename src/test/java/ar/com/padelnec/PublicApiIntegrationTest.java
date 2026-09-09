@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.domain.TenantHeroImage;
+import ar.com.padelnec.repository.TenantHeroImageRepository;
 import tools.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -38,16 +40,18 @@ class PublicApiIntegrationTest {
 
     @LocalServerPort private int port;
     @Autowired private ClubFixture fixture;
+    @Autowired private TenantHeroImageRepository tenantHeroImageRepository;
 
     private RestTestClient client;
     private LocalDate matchDay;
+    private Tenant club;
 
     @BeforeEach
     void setUp() {
         client = RestTestClient.bindToServer().baseUrl("http://localhost:" + port).build();
         fixture.reset();
 
-        Tenant club = fixture.club("club-necochea");
+        club = fixture.club("club-necochea");
         TenantContext.set(club.getId());
         fixture.court("Cancha 1", 1);
         fixture.court("Cancha 2", 2);
@@ -114,6 +118,24 @@ class PublicApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("El club puede saltear la confirmacion: la reserva de palabra queda firme directo")
+    void payAtClubIsConfirmedImmediatelyWhenClubSkipsConfirmation() {
+        club.setRequiresBookingConfirmation(false);
+        club = fixture.save(club);
+
+        JsonNode slot = firstFreeSlot();
+
+        JsonNode booking = book(slot)
+                .expectStatus().isCreated()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+
+        assertThat(booking.get("status").asText()).isEqualTo("CONFIRMED");
+        assertThat(booking.get("message").asText())
+                .isEqualTo("Turno confirmado. Te esperamos, no hace falta que hagas nada más.");
+    }
+
+    @Test
     @DisplayName("Dos jugadores sobre el mismo turno: el segundo recibe 409")
     void theSecondBookingGetsAConflict() {
         JsonNode slot = firstFreeSlot();
@@ -138,11 +160,96 @@ class PublicApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("El link para compartir muestra el turno sin datos de pago")
+    void shareLinkShowsTheBookingWithoutPaymentData() {
+        club.setRequiresBookingConfirmation(false);
+        club = fixture.save(club);
+        JsonNode slot = firstFreeSlot();
+
+        JsonNode booking = book(slot)
+                .expectStatus().isCreated()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+        assertThat(booking.get("shareUrl").asText()).isNotBlank();
+        String shareToken = shareTokenFrom(booking.get("shareUrl").asText());
+
+        JsonNode shared = client.get().uri("/api/public/share/" + shareToken)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+
+        assertThat(shared.get("status").asText()).isEqualTo("CONFIRMED");
+        assertThat(shared.get("clubName").asText()).isEqualTo("Club club-necochea");
+        assertThat(shared.get("courtName").asText()).isNotBlank();
+        assertThat(shared.get("bookedByName").asText()).isEqualTo("Simon Diaz");
+        assertThat(shared.has("totalPrice")).isFalse();
+        assertThat(shared.has("paidAmount")).isFalse();
+        assertThat(shared.has("balanceDue")).isFalse();
+    }
+
+    @Test
+    @DisplayName("Un token para compartir inventado devuelve 404")
+    void unknownShareTokenReturnsNotFound() {
+        client.get().uri("/api/public/share/token-que-no-existe")
+                .exchange()
+                .expectStatus().isNotFound();
+    }
+
+    @Test
+    @DisplayName("El token para compartir no sirve para cancelar el turno de otro")
+    void shareTokenCannotCancelTheBooking() {
+        JsonNode slot = firstFreeSlot();
+        JsonNode booking = book(slot)
+                .expectStatus().isCreated()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+        String shareToken = shareTokenFrom(booking.get("shareUrl").asText());
+
+        client.post().uri("/api/public/manage/" + shareToken + "/cancel")
+                .exchange()
+                .expectStatus().isNotFound();
+
+        // La cancha sigue tomada: el intento de cancelar con el token de
+        // compartir no tuvo ningun efecto.
+        assertThat(freeCourtsAt(slot.get("startTime").asText())).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("Un club inexistente devuelve 404")
     void unknownClubReturnsNotFound() {
         client.get().uri("/api/public/club-que-no-existe/availability?date=" + matchDay)
                 .exchange()
                 .expectStatus().isNotFound();
+    }
+
+    @Test
+    @DisplayName("Sin foto subida, el endpoint de portada da 404")
+    void heroImageIsNotFoundWithoutAnUpload() {
+        client.get().uri("/api/public/club-necochea/hero-image")
+                .exchange()
+                .expectStatus().isNotFound();
+    }
+
+    @Test
+    @DisplayName("Con foto subida, el endpoint de portada sirve los bytes con su content-type")
+    void heroImageServesTheUploadedBytes() {
+        // Los bytes viven aparte de Tenant (TenantHeroImage): esto prueba que el
+        // endpoint los sigue sirviendo bien despues de esa separacion.
+        TenantHeroImage image = new TenantHeroImage();
+        image.setTenantId(club.getId());
+        image.setData(new byte[] {1, 2, 3, 4});
+        image.setContentType("image/png");
+        tenantHeroImageRepository.save(image);
+
+        byte[] body = client.get().uri("/api/public/club-necochea/hero-image")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().contentType(MediaType.IMAGE_PNG)
+                .expectBody(byte[].class)
+                .returnResult().getResponseBody();
+
+        assertThat(body).containsExactly(1, 2, 3, 4);
     }
 
     @Test
@@ -157,6 +264,56 @@ class PublicApiIntegrationTest {
                 .returnResult().getResponseBody();
 
         assertThat(error.get("message").asText()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("La busqueda global se sirve sin slug, con el club dentro de cada turno")
+    void searchIsPublicAndCrossClub() {
+        // El punto fino: /api/public/search no lleva slug, asi que el filtro de tenant
+        // no tiene ningun club que instalar. Si "search" se leyera como el nombre de un
+        // club, esto vendria vacio.
+        JsonNode result = client.get().uri("/api/public/search?date=" + matchDay)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+
+        assertThat(result.get("date").asText()).isEqualTo(matchDay.toString());
+        assertThat(result.get("clubs")).isNotEmpty();
+        assertThat(result.get("matches")).isNotEmpty();
+
+        JsonNode first = result.get("matches").get(0);
+        assertThat(first.get("clubSlug").asText()).isEqualTo("club-necochea");
+        assertThat(first.get("startTime").asText()).matches("\\d{2}:\\d{2}");
+        assertThat(first.get("freeCourts").asInt()).isEqualTo(2);
+        assertThat(first.get("cheapestPrice").asInt()).isEqualTo(20000);
+    }
+
+    @Test
+    @DisplayName("La busqueda acota por rango horario y por club")
+    void searchAppliesFilters() {
+        JsonNode result = client.get()
+                .uri("/api/public/search?date=" + matchDay
+                        + "&from=18:00&to=21:30&clubs=club-necochea")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+
+        assertThat(result.get("matches")).isNotEmpty();
+        for (JsonNode match : result.get("matches")) {
+            assertThat(match.get("clubSlug").asText()).isEqualTo("club-necochea");
+            assertThat(match.get("startTime").asText())
+                    .isBetween("18:00", "21:30");
+        }
+    }
+
+    @Test
+    @DisplayName("Un rango horario al reves devuelve 422")
+    void invertedRangeIsRejected() {
+        client.get().uri("/api/public/search?date=" + matchDay + "&from=21:00&to=18:00")
+                .exchange()
+                .expectStatus().isEqualTo(422);
     }
 
     @Test
@@ -214,5 +371,9 @@ class PublicApiIntegrationTest {
 
     private String tokenFrom(String managementUrl) {
         return managementUrl.substring(managementUrl.indexOf("/manage/") + "/manage/".length());
+    }
+
+    private String shareTokenFrom(String shareUrl) {
+        return shareUrl.substring(shareUrl.indexOf("/turno/") + "/turno/".length());
     }
 }

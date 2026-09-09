@@ -121,6 +121,23 @@
             <artifactId>twilio</artifactId>
             <version>${twilio.version}</version>
         </dependency>
+        <!-- Envio de mail (verificacion de cuenta, recuperar contrasena) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <!--
+          Verificacion del ID token de Google Sign-In. Nimbus y no
+          google-api-client: es el mismo tipo de dependencia que ya usa Spring
+          Security para JOSE/OAuth2, y no arrastra un JsonFactory basado en
+          Jackson 2.x que podria chocar con tools.jackson (Jackson 3), que ya
+          usa todo el proyecto.
+        -->
+        <dependency>
+            <groupId>com.nimbusds</groupId>
+            <artifactId>nimbus-jose-jwt</artifactId>
+            <version>10.9.1</version>
+        </dependency>
 
         <!--
           El telefono es la identidad del jugador dentro del club, asi que

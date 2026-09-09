@@ -14,6 +14,11 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>La busqueda no pasa por el filtro de tenant a proposito: el login ocurre
  * antes de que exista un club en contexto, y el club se deduce del usuario que se
  * autentico, no al reves.
+ *
+ * <p>El limite de intentos ({@link RateLimitedAuthenticationProvider}) no va
+ * aca a proposito: {@code loadUserByUsername} tambien lo llama directo
+ * {@code DevAutoLoginFilter} en cada request sin sesion, no solo un submit
+ * real del formulario -- contarlo aca agotaria el cupo en el primer segundo.
  */
 @Service
 @RequiredArgsConstructor

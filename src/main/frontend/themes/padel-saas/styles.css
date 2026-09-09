@@ -1,0 +1,460 @@
+/* =====================================================================
+   Panel del club - tema
+   =====================================================================
+
+   Sobre la version: Vaadin 25 usa Aura por defecto, pero en cuanto una
+   aplicacion declara su propio @Theme la base vuelve a ser Lumo (se ve en
+   el generado app-shell-imports.js, que importa lumo.css). Por eso el API
+   de este archivo es --lumo-*.
+
+   Las utilidades de LumoUtility no vienen solas: en la 25 se piden con
+   @StyleSheet(Lumo.UTILITY_STYLESHEET) en AppShell. Sin eso, las clases que
+   las vistas ya escriben (Padding, Gap, FontSize, TextColor) no hacen nada.
+
+   La identidad la comparte con la app del jugador: el mismo naranja de
+   polvo de ladrillo y la misma tipografia (Archivo, de Omnibus-Type, de
+   Buenos Aires). Lo que NO comparte es el fondo negro: el panel es una
+   herramienta de mostrador, con grillas densas y jornadas largas, y ahi
+   el fondo claro y las densidades compactas le ganan al efecto.
+   ===================================================================== */
+
+/* Archivo trae eje de ancho, asi que un solo archivo cubre el texto normal
+   y la voz angosta de los rotulos. Se sirve desde el theme y no desde una
+   CDN, como el resto del proyecto. */
+@font-face {
+  font-family: "Archivo Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url("./fonts/archivo-latin-wdth-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Archivo Variable";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  font-stretch: 62% 125%;
+  src: url("./fonts/archivo-latin-ext-wdth-normal.woff2") format("woff2-variations");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+html {
+  /* ---------------------------------------------------------- tipografia */
+  --lumo-font-family: "Archivo Variable", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, sans-serif;
+
+  /* -------------------------------------------------------------- acento
+     La app del jugador usa #EA580C. Lumo pone texto blanco sobre el color
+     primario, y sobre ese naranja da 3.56:1, que no llega a AA. Un tono mas
+     oscuro sube a 5.17:1 y se mantiene en la misma familia de color. */
+  --lumo-primary-color: #c2410c;
+  --lumo-primary-color-50pct: rgba(194, 65, 12, 0.5);
+  --lumo-primary-color-10pct: rgba(194, 65, 12, 0.1);
+  --lumo-primary-text-color: #9a3412;
+  --lumo-primary-contrast-color: #ffffff;
+
+  /* --------------------------------------------------------------- radio
+     Mas cerrado que el default de Lumo: es una herramienta de datos, no una
+     landing. Muy redondeadas, las grillas se ven flojas. */
+  --lumo-border-radius-s: 0.25rem;
+  --lumo-border-radius-m: 0.375rem;
+  --lumo-border-radius-l: 0.625rem;
+
+  /* -------------------------------------------------------------- espacio
+     Un punto mas compacta que la escala de Lumo, para que entren mas filas
+     de agenda sin que el formulario se sienta apretado. */
+  --lumo-space-xs: 0.25rem;
+  --lumo-space-s: 0.5rem;
+  --lumo-space-m: 0.875rem;
+  --lumo-space-l: 1.5rem;
+  --lumo-space-xl: 2.5rem;
+
+}
+
+/* =====================================================================
+   Marco de la aplicacion
+   ===================================================================== */
+
+/* La barra superior se apoya en una linea y no en una sombra: con la
+   grilla pegada abajo, la sombra ensuciaba la primera fila. */
+vaadin-app-layout::part(navbar) {
+  border-bottom: 1px solid var(--lumo-contrast-10pct);
+  background: var(--lumo-base-color);
+  /* Alto fijo: con el nombre del club en dos renglones, la barra crecia unos
+     pixeles segun el largo del nombre y la grilla de abajo se movia con ella. */
+  min-height: 4rem;
+  padding-inline: var(--lumo-space-s);
+}
+
+/* El nombre del club manda sobre el rotulo de la pantalla, pero no tanto como
+   para gritar: mismo cuerpo que un titulo de seccion, sin margen. */
+vaadin-app-layout [slot="navbar"] h1 {
+  line-height: 1.2;
+}
+
+/* El disparador del menu de usuario es del alto de la barra y no una pastilla
+   flotando: asi el area de clic es predecible en el mostrador. */
+vaadin-app-layout [slot="navbar"] vaadin-menu-bar {
+  --vaadin-menu-bar-button-border-radius: var(--lumo-border-radius-m);
+}
+
+/* El nombre se esconde en pantallas chicas y queda solo el avatar: en una
+   tablet de mostrador, el titulo del club vale mas que el del usuario. */
+@media (max-width: 600px) {
+  vaadin-app-layout [slot="navbar"] vaadin-menu-bar span:last-child {
+    display: none;
+  }
+}
+
+vaadin-app-layout::part(drawer) {
+  background: var(--lumo-contrast-5pct);
+  border-inline-end: 1px solid var(--lumo-contrast-10pct);
+  /* 10% mas angosto que el default de Lumo (16rem): en un panel de mostrador,
+     con items cortos, el ancho de fabrica dejaba aire de sobra a la derecha. */
+  width: 14.4rem;
+}
+
+/* La marca encabeza el menu y se separa de los items con una linea, no con
+   aire: el drawer es angosto y el espacio en blanco solo no alcanza para
+   leerlo como un bloque aparte. */
+.brand-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--lumo-border-radius-m);
+  background: var(--lumo-primary-color);
+  color: var(--lumo-primary-contrast-color);
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+/* =====================================================================
+   Grillas
+   ===================================================================== */
+
+/* El encabezado se lee como rotulo y no como una fila mas: mas chico, en
+   mayusculas y con el fondo apenas levantado. Sin esto, con zebra activo la
+   primera fila y el header se confunden. */
+vaadin-grid::part(header-cell) {
+  background: var(--lumo-contrast-5pct);
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lumo-secondary-text-color);
+}
+
+/* Horas e importes con cifras de ancho fijo: en una columna de numeros, las
+   proporcionales bailan y cuesta comparar de un renglon al otro. */
+vaadin-grid::part(tabular) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Solo la inicial. La utilidad "capitalize" de Lumo pone en mayuscula cada
+   palabra y deja "Lunes 31 De Agosto A Las 21:30": el mismo problema que ya
+   estaba anotado en ManagePage de la app del jugador. */
+.first-letter-caps::first-letter {
+  text-transform: uppercase;
+}
+
+/* Fuera de las grillas tambien hay columnas de plata que se comparan de un
+   renglon al otro: mismo tratamiento, como clase suelta. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* La columna congelada necesita marcarse: sin borde, al scrollear a lo ancho
+   parece que el contenido pasa por debajo de nada. */
+vaadin-grid::part(last-frozen-cell) {
+  border-inline-end: 1px solid var(--lumo-contrast-20pct);
+}
+
+/* El item activo se marca con una barra de color y no solo con el fondo:
+   de un vistazo se ve donde esta parado el que atiende el mostrador. */
+vaadin-side-nav-item::part(item) {
+  border-radius: var(--lumo-border-radius-m);
+  font-weight: 500;
+}
+
+vaadin-side-nav-item[current]::part(item) {
+  background: var(--lumo-primary-color-10pct);
+  color: var(--lumo-primary-text-color);
+  box-shadow: inset 3px 0 0 var(--lumo-primary-color);
+}
+
+/* =====================================================================
+   Agenda: tablero de canchas x horario
+   =====================================================================
+
+   No es un vaadin-grid: una columna de Grid no admite bien una insignia
+   de color al lado del texto ni un borde que se ilumine al tocarla, y esas
+   dos cosas son el pedido. Se arma como una sola grilla CSS (no un
+   HorizontalLayout por fila) para que el ancho de columna se defina una
+   sola vez y valga tanto para el encabezado de horarios como para cada
+   fila de cancha.
+
+   La forma de tarjeta toma prestado el lenguaje de la app del jugador
+   (borde fino que se ilumina, esquinas redondeadas, estado como insignia
+   de color) pero sobre los tokens de Lumo de este tema: fondo claro,
+   radio mas cerrado (--lumo-border-radius-l, no el rounded-2xl del
+   jugador que en una herramienta de datos se lee flojo) y los colores de
+   acento ya ajustados a contraste AA mas arriba en este archivo. */
+
+.agenda-board {
+  /* Esta columna solo lleva el horario ("08:00"), no el nombre de una
+     cancha: le sobraba ancho en blanco cuando paso a ser la etiqueta de fila. */
+  --agenda-label-width: 4.5rem;
+  --agenda-col-width: 10rem;
+  --agenda-header-height: 3rem;
+  /* Antes tenia que entrar una tarjeta por cancha (pocas filas); ahora cada
+     fila es un horario y hay muchos mas, asi que una tarjeta baja evita un
+     scroll vertical interminable para ver el dia completo. */
+  --agenda-row-height: 3.5rem;
+  display: grid;
+  overflow: auto;
+  gap: var(--lumo-space-xs);
+  background: var(--lumo-contrast-5pct);
+  border: 1px solid var(--lumo-contrast-10pct);
+  border-radius: var(--lumo-border-radius-l);
+  padding: var(--lumo-space-xs);
+  width: 100%;
+}
+
+/* grid-template-columns/-rows los completa AgendaView en tiempo de
+   ejecucion: la cantidad de canchas y de horarios cambia por club y por
+   dia, no hay un numero fijo que poner aca. */
+
+/* Fondo compuesto (color solido + tinte) y no --lumo-contrast-5pct solo: esa
+   variable es semitransparente, pensada para leerse sobre un fondo debajo.
+   Estas celdas son sticky sobre tarjetas que se deslizan al scrollear, y con
+   un fondo transparente esas tarjetas se seguian viendo "a traves". */
+.agenda-board__header-cell {
+  display: flex;
+  align-items: center;
+  background-color: var(--lumo-base-color);
+  background-image: linear-gradient(var(--lumo-contrast-5pct), var(--lumo-contrast-5pct));
+  color: var(--lumo-secondary-text-color);
+  padding-inline: var(--lumo-space-s);
+  border-radius: var(--lumo-border-radius-m);
+}
+
+/* Encabezado de cancha y columna de horario quedan fijos cada uno en su
+   eje, y la esquina en los dos a la vez, con z-index escalonado para que
+   tape a los otros dos al scrollear en diagonal. */
+.agenda-board__corner,
+.agenda-board__court-header {
+  position: sticky;
+  top: 0;
+}
+
+.agenda-board__corner,
+.agenda-board__time-label {
+  position: sticky;
+  left: 0;
+}
+
+.agenda-board__corner {
+  z-index: 3;
+}
+
+/* Mismo tinte que el item activo del menu lateral (background suave +
+   texto en el color de marca), para que las canchas se distingan de un
+   vistazo del resto de encabezados grises. Fondo compuesto y no el token
+   solo, por la misma razon que el resto de esta franja: es sticky sobre
+   tarjetas que se deslizan al scrollear. */
+.agenda-board__court-header {
+  z-index: 2;
+  justify-content: center;
+  font-size: var(--lumo-font-size-m);
+  font-weight: 700;
+  background-color: var(--lumo-base-color);
+  background-image: linear-gradient(var(--lumo-primary-color-10pct), var(--lumo-primary-color-10pct));
+  color: var(--lumo-primary-text-color);
+}
+
+.agenda-board__time-label {
+  z-index: 1;
+  justify-content: center;
+  font-weight: 600;
+}
+
+/* La tarjeta es un Div propio, no el boton: el theme "tertiary-inline" de
+   Vaadin fuerza background:transparent!important en su propio :host (shadow
+   DOM adentro), y un !important mio desde afuera no le gana -- por spec, entre
+   dos !important en pugna por un shadow host, gana el de ADENTRO del shadow
+   tree. Por eso el color de fondo vive en un Div que envuelve al boton, y el
+   boton adentro queda sin fondo/borde propios, ocupando toda la tarjeta. */
+.agenda-card {
+  height: 100%;
+  width: 100%;
+  padding: 0;
+  border-radius: var(--lumo-border-radius-l);
+  border: 1px solid var(--lumo-contrast-10pct);
+  background: var(--lumo-base-color);
+  box-shadow: var(--lumo-box-shadow-xs);
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  overflow: hidden;
+}
+
+.agenda-card__button {
+  width: 100%;
+  height: 100%;
+  padding: var(--lumo-space-s) var(--lumo-space-m);
+  margin: 0;
+  color: var(--lumo-body-text-color);
+  text-align: left;
+}
+
+/* Nombres largos truncan con puntos suspensivos en vez de desbordar la
+   tarjeta: el label vive en el Shadow DOM del boton, por eso ::part(). */
+.agenda-card__button::part(label) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-card--free:not(.agenda-card--disabled):hover,
+.agenda-card--booked:hover {
+  border-color: var(--lumo-contrast-30pct);
+  box-shadow: var(--lumo-box-shadow-s);
+}
+
+.agenda-card--free {
+  background: var(--lumo-contrast-5pct);
+}
+
+.agenda-card--free .agenda-card__button {
+  color: var(--lumo-secondary-text-color);
+}
+
+.agenda-card--suspended {
+  background: var(--lumo-error-color-10pct);
+  border-left: 3px solid var(--lumo-error-color);
+}
+
+.agenda-card--suspended .agenda-card__button {
+  color: var(--lumo-error-text-color);
+}
+
+/* La deshabilita el propio boton (Button.setEnabled(false)); esta clase
+   aparte en el Div es solo para el atenuado visual, porque el atributo
+   disabled vive en el boton de adentro y no en la tarjeta que lo envuelve. */
+.agenda-card--disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Color por estado, en toda la tarjeta (tinte de fondo, franja, y el propio
+   texto del nombre) y no en una insignia aparte: una insignia le saca ancho
+   al nombre, justo el dato que hace falta leer de un vistazo. Que significa
+   cada color se explica una sola vez en la referencia de abajo del tablero
+   (.agenda-legend), no repetido en cada tarjeta. Violeta y azul son hex
+   propios porque Lumo no trae esos dos matices; verde y rojo reusan los
+   semanticos de siempre (success/error). */
+.agenda-card--pending {
+  background: rgba(124, 58, 237, 0.08);
+  border-left: 3px solid #7c3aed;
+}
+
+.agenda-card--pending .agenda-card__button {
+  color: #6d28d9;
+}
+
+.agenda-card--neutral {
+  background: rgba(37, 99, 235, 0.08);
+  border-left: 3px solid #2563eb;
+}
+
+.agenda-card--neutral .agenda-card__button {
+  color: #1d4ed8;
+}
+
+.agenda-card--success {
+  background: var(--lumo-success-color-10pct);
+  border-left: 3px solid var(--lumo-success-color);
+}
+
+.agenda-card--success .agenda-card__button {
+  color: var(--lumo-success-text-color);
+}
+
+/* Referencia de colores: una linea chica abajo del tablero, no una insignia
+   repetida en cada tarjeta. Mismos cuatro tonos, como puntos en vez de
+   franjas para no confundirse con las tarjetas de arriba. */
+.agenda-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lumo-space-m);
+}
+
+.agenda-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: var(--lumo-font-size-xs);
+  color: var(--lumo-secondary-text-color);
+}
+
+.agenda-legend__dot {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 999px;
+  flex: none;
+}
+
+.agenda-legend__dot--pending {
+  background: #7c3aed;
+}
+
+.agenda-legend__dot--neutral {
+  background: #2563eb;
+}
+
+.agenda-legend__dot--success {
+  background: var(--lumo-success-color);
+}
+
+.agenda-legend__dot--suspended {
+  background: var(--lumo-error-color);
+}
+
+/* Encabezado del dia: la fecha como titulo, no como una etiqueta mas de
+   formulario. El DatePicker/flechas siguen siendo los que cambian el dia
+   (no se duplica esa logica aca), este titulo solo refleja lo que ya eligio.
+   Lo comparten la agenda y la caja, que son las dos pantallas de un dia. */
+.day-heading {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 1.1;
+}
+
+.day-summary-line {
+  color: var(--lumo-secondary-text-color);
+  font-size: var(--lumo-font-size-m);
+}
+
+/* Turnos fijos del dia: lista corta arriba del tablero, para verlos de un
+   vistazo sin tener que rastrearlos celda por celda en la grilla de abajo. */
+.agenda-fixed-list {
+  gap: var(--lumo-space-xs);
+}
+
+.agenda-fixed-row {
+  justify-content: flex-start;
+  font-weight: 500;
+  color: var(--lumo-body-text-color);
+}

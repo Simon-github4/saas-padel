@@ -81,7 +81,7 @@ public class RecurringBookingService {
                 continue;
             }
             try {
-                occurrenceWriter.write(club, fixed, date, priceFor(fixed, date));
+                occurrenceWriter.write(club, fixed, date, priceFor(club, fixed, date));
                 created++;
             } catch (DataAccessException | TransactionException ex) {
                 // La franja ya estaba tomada. El choque se atrapa aca, afuera de la
@@ -149,9 +149,11 @@ public class RecurringBookingService {
         return recurringBookingRepository.save(fixed);
     }
 
+    /** Solo los vigentes: uno dado de baja ya no participa de nada operativo,
+     * asi que no tiene sentido dejarlo ensuciando el listado para siempre. */
     @Transactional(readOnly = true)
     public List<RecurringBooking> all() {
-        return recurringBookingRepository.findAllWithDetail();
+        return recurringBookingRepository.findAllActiveWithDetail();
     }
 
     // ------------------------------------------------------------ internos
@@ -176,13 +178,14 @@ public class RecurringBookingService {
     }
 
     /** El precio pactado con el grupo, o la tarifa vigente de la franja. */
-    private BigDecimal priceFor(RecurringBooking fixed, LocalDate date) {
+    private BigDecimal priceFor(Tenant club, RecurringBooking fixed, LocalDate date) {
         if (fixed.getPriceOverride() != null) {
             return fixed.getPriceOverride();
         }
         return pricingService.resolve(
-                        pricingService.rulesFor(date.getDayOfWeek()),
+                        club, pricingService.rulesFor(club, date.getDayOfWeek()),
                         fixed.getCourt(), date.getDayOfWeek(), fixed.getStartTime())
+                .map(PricingService.ResolvedPrice::totalPrice)
                 .orElse(BigDecimal.ZERO);
     }
 

@@ -32,6 +32,23 @@ spring:
     virtual:
       enabled: true
 
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      # Sin esto, un SMTP caido o lento se cuelga sin limite - con hilos
+      # virtuales eso acumula hilos bloqueados bajo carga real.
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
+
 vaadin:
   # El panel vive bajo /admin porque la raiz es del jugador: el link que el club
   # comparte por WhatsApp es la grilla publica, no el panel interno.
@@ -46,6 +63,9 @@ vaadin:
 server:
   port: ${PORT:8080}
   forward-headers-strategy: framework
+  # Sin esto, un redeploy corta requests y webhooks a mitad de camino: deja de
+  # aceptar conexiones nuevas pero espera a que terminen las que ya estaban en vuelo.
+  shutdown: graceful
   error:
     include-message: never
     include-stacktrace: never
@@ -66,22 +86,31 @@ app:
     # openssl rand -base64 32
     encryption-key: ${APP_ENCRYPTION_KEY:}
   whatsapp:
-    provider: ${WHATSAPP_PROVIDER:log}
+    provider: ${WHATSAPP_PROVIDER:off}
     from-number: ${WHATSAPP_FROM:}
     account-sid: ${TWILIO_ACCOUNT_SID:}
     auth-token: ${TWILIO_AUTH_TOKEN:}
-    default-country-code: "+54"
   jobs:
     enabled: true
     recurring-horizon-weeks: 8
+  google:
+    client-id: ${GOOGLE_CLIENT_ID:}
+  mail:
+    # Sin default a "log": esos emails llevan links de reset/verificacion, que
+    # son credenciales de verdad. Sin MAIL_PROVIDER definido, la app no
+    # arranca en vez de imprimirlos en el log de produccion.
+    provider: ${MAIL_PROVIDER:}
+    from: ${MAIL_FROM:no-responder@padelnec.com.ar}
 
 logging:
   level:
     ar.com.padelnec: INFO
 
 ---
-# Desarrollo local: Postgres embebido (no hace falta Docker ni instalar el motor)
-# y una clave de cifrado fija para no tener que exportar variables.
+# Desarrollo local: Postgres embebido (no hace falta Docker ni instalar el motor).
+# La clave de cifrado no vive aca: DevEncryptionKeyConfig la genera sola y la
+# guarda en target/, para no tener una clave real (aunque sea "solo de dev")
+# commiteada en el repo.
 spring:
   config:
     activate:
@@ -93,8 +122,8 @@ spring:
         format_sql: true
 
 app:
-  security:
-    encryption-key: cGFkZWwtZGV2LWtleS0zMi1ieXRlcy1leGFjdGx5ISE=
+  mail:
+    provider: log
 
 logging:
   level:

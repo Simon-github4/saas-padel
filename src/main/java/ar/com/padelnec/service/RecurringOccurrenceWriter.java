@@ -52,6 +52,7 @@ public class RecurringOccurrenceWriter {
         booking.setSource(BookingSource.RECURRING);
         booking.setTotalPrice(price);
         booking.setManagementToken(Tokens.generate());
+        booking.setShareToken(Tokens.generate());
 
         bookingRepository.saveAndFlush(booking);
     }

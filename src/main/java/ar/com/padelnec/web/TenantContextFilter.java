@@ -39,6 +39,9 @@ public class TenantContextFilter extends OncePerRequestFilter {
     private static final String PUBLIC_PREFIX = "/api/public/";
     private static final String WEBHOOK_PREFIX = "/api/webhooks/mercadopago/";
 
+    /** Segmento reservado: es un endpoint de plataforma, no el slug de un club. */
+    private static final String SEARCH = "search";
+
     private final TenantRepository tenantRepository;
     private final BookingRepository bookingRepository;
 
@@ -65,9 +68,17 @@ public class TenantContextFilter extends OncePerRequestFilter {
         String rest = path.substring(PUBLIC_PREFIX.length());
         String first = firstSegment(rest);
 
+        // La busqueda global cruza clubes: no tiene uno solo que instalar, y cada club
+        // se activa despues, de a uno. Sin esta excepcion el segmento se leeria como un
+        // slug, y el dia que alguien registre un club llamado "search" la busqueda de
+        // todos los clubes quedaria atada a ese.
+        if (SEARCH.equals(first)) {
+            return Optional.empty();
+        }
+
         // Los links que le llegan al jugador por WhatsApp no llevan el slug del club,
         // asi que el tenant se deduce del propio token.
-        if ("manage".equals(first) || "confirm".equals(first)) {
+        if ("manage".equals(first) || "confirm".equals(first) || "share".equals(first)) {
             String token = firstSegment(rest.substring(first.length() + 1));
             return token.isBlank() ? Optional.empty() : byToken(token);
         }

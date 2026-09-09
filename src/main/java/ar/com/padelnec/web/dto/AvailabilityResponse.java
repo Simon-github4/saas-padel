@@ -29,7 +29,27 @@ public record AvailabilityResponse(
             boolean allowUnpaidBooking,
             boolean acceptsOnlinePayments,
             BigDecimal depositPercentage,
-            int cancellationLimitHours) {
+            int cancellationLimitHours,
+            int bookingHorizonDays,
+            String tagline,
+            String address,
+            String city,
+            String mapsUrl,
+            BigDecimal latitude,
+            BigDecimal longitude,
+            String heroImageUrl,
+            String heroHeadline,
+            String heroCtaLabel,
+            int heroOverlay,
+            String heroVariant,
+            int playersPerCourt,
+            String themeMode,
+            String primaryColor,
+            String secondaryColor,
+            List<AmenityView> amenities) {
+    }
+
+    public record AmenityView(String icon, String title, String description) {
     }
 
     public record CourtSummary(UUID id, String name) {
@@ -40,7 +60,8 @@ public record AvailabilityResponse(
             @JsonFormat(pattern = "HH:mm") LocalTime endTime,
             Instant startsAt,
             Instant endsAt,
-            List<CourtAvailability> available) {
+            List<CourtAvailability> available,
+            boolean promo) {
 
         public boolean hasAvailability() {
             return !available.isEmpty();

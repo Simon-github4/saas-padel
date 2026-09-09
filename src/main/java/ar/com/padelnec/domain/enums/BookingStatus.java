@@ -29,4 +29,9 @@ public enum BookingStatus {
     public boolean isCancellable() {
         return this == DRAFT || this == AWAITING_CONFIRMATION || this == CONFIRMED;
     }
+
+    /** Estados en los que todavia tiene sentido cargar un cobro de mostrador. */
+    public boolean acceptsPayment() {
+        return isCancellable() || this == COMPLETED;
+    }
 }

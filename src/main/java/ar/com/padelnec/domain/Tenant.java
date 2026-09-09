@@ -1,9 +1,13 @@
 package ar.com.padelnec.domain;
 
+import ar.com.padelnec.domain.enums.HeroVariant;
+import ar.com.padelnec.domain.enums.ThemeMode;
 import ar.com.padelnec.support.EncryptedStringConverter;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalTime;
@@ -67,6 +71,16 @@ public class Tenant extends BaseEntity {
     @Column(name = "allow_unpaid_booking", nullable = false)
     private boolean allowUnpaidBooking = true;
 
+    /**
+     * Si una reserva de palabra necesita que el jugador confirme por WhatsApp antes de quedar firme.
+     *
+     * <p>Default en false mientras WhatsApp esta en stand by: pedir confirmacion
+     * por un link que nunca llega solo haria que la reserva se caiga sola a los
+     * 15 minutos. Revisar este default el dia que WhatsApp vuelva a estar activo.
+     */
+    @Column(name = "requires_booking_confirmation", nullable = false)
+    private boolean requiresBookingConfirmation = false;
+
     /** Cuantos dias hacia adelante puede reservar el jugador. */
     @Column(name = "booking_horizon_days", nullable = false)
     private int bookingHorizonDays = 21;
@@ -86,8 +100,97 @@ public class Tenant extends BaseEntity {
     @Column(nullable = false)
     private boolean active = true;
 
+    /** Frase corta bajo el nombre, ej. "Reservá tu cancha". */
+    @Column(length = 160)
+    private String tagline;
+
+    @Column(length = 200)
+    private String address;
+
+    @Column(length = 100)
+    private String city;
+
+    @Column(precision = 9, scale = 6)
+    private BigDecimal latitude;
+
+    @Column(precision = 9, scale = 6)
+    private BigDecimal longitude;
+
+    /**
+     * Foto de portada. El club la pega como URL externa, o sube un archivo: en ese
+     * caso esta URL apunta al endpoint publico que sirve los bytes, guardados
+     * aparte en {@link TenantHeroImage} (ver esa clase para el porque).
+     */
+    @Column(name = "hero_image_url", length = 500)
+    private String heroImageUrl;
+
+    /** Titulo de la portada. Null cuando el club titula con su propio nombre. */
+    @Column(name = "hero_headline", length = 80)
+    private String heroHeadline;
+
+    /** Texto del boton de la portada. Null usa el que trae la app. */
+    @Column(name = "hero_cta_label", length = 40)
+    private String heroCtaLabel;
+
+    /**
+     * Cuanto se oscurece la foto de portada, de 0 a 100.
+     *
+     * <p>No es cosmetico: sobre una foto clara el titulo queda ilegible, y esta
+     * es la unica perilla que tiene el club para corregirlo sin cambiar la foto.
+     */
+    @Column(name = "hero_overlay", nullable = false)
+    private int heroOverlay = 55;
+
+    /** Diseño de la portada de la app del jugador. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "hero_variant", nullable = false, length = 20)
+    private HeroVariant heroVariant = HeroVariant.CLASSIC;
+
+    /** Divisor del precio del turno para mostrar el dato "por persona". Siempre 4 en padel. */
+    @Column(name = "players_per_court", nullable = false)
+    private int playersPerCourt = 4;
+
+    /** Paleta clara u oscura de la app del jugador. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "theme_mode", nullable = false, length = 10)
+    private ThemeMode themeMode = ThemeMode.DARK;
+
+    /** Acento de botones y detalles, en hex (#RRGGBB). Null usa el naranja de fábrica. */
+    @Column(name = "primary_color", length = 7)
+    private String primaryColor;
+
+    /** Acento mas claro, para iconos y estados hover. Null usa el de fábrica. */
+    @Column(name = "secondary_color", length = 7)
+    private String secondaryColor;
+
+    /**
+     * Tarifa general del club, en pesos POR PERSONA, para cualquier dia/franja
+     * sin una regla especifica. Nulo = se exige regla para publicar un horario.
+     */
+    @Column(name = "general_price_per_person", precision = 12, scale = 2)
+    private BigDecimal generalPricePerPerson;
+
     public ZoneId zoneId() {
         return ZoneId.of(timeZone);
+    }
+
+    /**
+     * Link a Google Maps: con coordenadas si el club las cargó, y si no con
+     * dirección y ciudad. Da null solo cuando no hay ni lo uno ni lo otro.
+     */
+    public String mapsUrl() {
+        if (latitude != null && longitude != null) {
+            return "https://www.google.com/maps/search/?api=1&query=" + latitude + "," + longitude;
+        }
+        if (address != null && !address.isBlank()) {
+            String query = address.trim();
+            if (city != null && !city.isBlank()) {
+                query += ", " + city.trim();
+            }
+            return "https://www.google.com/maps/search/?api=1&query="
+                    + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
+        }
+        return null;
     }
 
     /** Verdadero cuando el horario de atencion cruza la medianoche. */

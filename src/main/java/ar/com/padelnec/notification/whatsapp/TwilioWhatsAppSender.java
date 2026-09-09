@@ -1,10 +1,14 @@
-package ar.com.padelnec.notification;
+package ar.com.padelnec.notification.whatsapp;
 
 import ar.com.padelnec.config.AppProperties;
+import ar.com.padelnec.support.Masking;
+import ar.com.padelnec.support.PhoneNumbers;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import com.twilio.Twilio;
 import com.twilio.exception.ApiException;
+import com.twilio.http.NetworkHttpClient;
+import com.twilio.http.TwilioRestClient;
 import com.twilio.rest.api.v2010.account.Message;
 import com.twilio.rest.api.v2010.account.MessageCreator;
 import com.twilio.type.PhoneNumber;
@@ -12,8 +16,10 @@ import jakarta.annotation.PostConstruct;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.config.RequestConfig;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -39,11 +45,22 @@ public class TwilioWhatsAppSender implements WhatsAppSender {
 
     private final AppProperties properties;
     private final ObjectMapper objectMapper;
+    private final PhoneNumbers phoneNumbers;
 
     @PostConstruct
     void init() {
         AppProperties.Whatsapp config = properties.getWhatsapp();
         Twilio.init(config.getAccountSid(), config.getAuthToken());
+        // El cliente default del SDK no tiene limite de tiempo: un Twilio lento o
+        // caido colgaria el hilo que esta mandando el WhatsApp indefinidamente.
+        RequestConfig timeouts = RequestConfig.custom()
+                .setConnectTimeout(5, TimeUnit.SECONDS)
+                .setResponseTimeout(10, TimeUnit.SECONDS)
+                .build();
+        Twilio.setRestClient(new TwilioRestClient.Builder(config.getAccountSid(), config.getAuthToken())
+                .accountSid(config.getAccountSid())
+                .httpClient(new NetworkHttpClient(timeouts))
+                .build());
 
         List<NotificationTemplate> missing = java.util.Arrays.stream(NotificationTemplate.values())
                 .filter(template -> !config.getTemplates().containsKey(template.name()))
@@ -65,7 +82,7 @@ public class TwilioWhatsAppSender implements WhatsAppSender {
         AppProperties.Whatsapp config = properties.getWhatsapp();
         String contentSid = config.getTemplates().get(template.name());
         try {
-            PhoneNumber to = new PhoneNumber(WHATSAPP_PREFIX + toE164);
+            PhoneNumber to = new PhoneNumber(WHATSAPP_PREFIX + phoneNumbers.forWhatsAppChannel(toE164));
             PhoneNumber from = new PhoneNumber(WHATSAPP_PREFIX + config.getFromNumber());
 
             MessageCreator creator = Message.creator(to, from, plainBody);
@@ -77,10 +94,11 @@ public class TwilioWhatsAppSender implements WhatsAppSender {
             }
             return SendResult.ok(creator.create().getSid());
         } catch (ApiException ex) {
-            log.warn("Twilio rechazo el mensaje {} para {}: {}", template, toE164, ex.getMessage());
+            log.warn("Twilio rechazo el mensaje {} para {}: {}",
+                    template, Masking.phone(toE164), ex.getMessage());
             return SendResult.failed("Twilio " + ex.getCode() + ": " + ex.getMessage());
         } catch (RuntimeException ex) {
-            log.warn("Fallo el envio de {} para {}", template, toE164, ex);
+            log.warn("Fallo el envio de {} para {}", template, Masking.phone(toE164), ex);
             return SendResult.failed(ex.getMessage());
         }
     }

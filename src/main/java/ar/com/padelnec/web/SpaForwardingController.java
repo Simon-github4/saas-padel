@@ -23,12 +23,14 @@ public class SpaForwardingController {
     }
 
     /**
-     * Grilla del club y flujos por token.
+     * Busqueda global, grilla del club y flujos por token.
      *
      * <p>Se enumeran las rutas en vez de usar un comodin general para no interceptar
      * {@code /api}, {@code /admin} ni los archivos estaticos de la propia app.
      */
-    @GetMapping({"/club/{slug}", "/manage/{token}", "/confirm/{token}"})
+    @GetMapping({"/buscar", "/club/{slug}", "/manage/{token}", "/confirm/{token}", "/turno/{token}",
+            "/login", "/account", "/forgot-password", "/reset-password/{token}",
+            "/privacidad", "/terminos"})
     public String appRoutes() {
         return INDEX;
     }

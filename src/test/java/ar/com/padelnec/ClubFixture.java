@@ -11,9 +11,13 @@ import ar.com.padelnec.repository.CustomerRepository;
 import ar.com.padelnec.repository.NotificationLogRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
 import ar.com.padelnec.repository.PaymentRepository;
+import ar.com.padelnec.repository.PendingPlayerSignupRepository;
+import ar.com.padelnec.repository.PlayerAccountRepository;
+import ar.com.padelnec.repository.PlayerSessionRepository;
 import ar.com.padelnec.repository.PricingRuleRepository;
 import ar.com.padelnec.repository.RecurringBookingRepository;
 import ar.com.padelnec.repository.TenantRepository;
+import ar.com.padelnec.repository.WaitlistEntryRepository;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
@@ -39,15 +43,25 @@ public class ClubFixture {
     private final OperationalAlertRepository alertRepository;
     private final NotificationLogRepository notificationLogRepository;
     private final RecurringBookingRepository recurringBookingRepository;
+    private final PlayerSessionRepository playerSessionRepository;
+    private final PlayerAccountRepository playerAccountRepository;
+    private final PendingPlayerSignupRepository pendingPlayerSignupRepository;
+    private final WaitlistEntryRepository waitlistEntryRepository;
 
     /** Deja la base limpia. Se corre como root porque abarca a todos los clubes. */
     @Transactional
     public void reset() {
         TenantContext.set(TenantContext.ROOT);
         try {
+            // No son por club, pero un telefono de prueba fijo entre tests
+            // choca contra el unique global si no se limpian aca tambien.
+            playerSessionRepository.deleteAllInBatch();
+            playerAccountRepository.deleteAllInBatch();
+            pendingPlayerSignupRepository.deleteAllInBatch();
             notificationLogRepository.deleteAllInBatch();
             alertRepository.deleteAllInBatch();
             paymentRepository.deleteAllInBatch();
+            waitlistEntryRepository.deleteAllInBatch();
             bookingRepository.deleteAllInBatch();
             recurringBookingRepository.deleteAllInBatch();
             blackoutRepository.deleteAllInBatch();
@@ -72,6 +86,11 @@ public class ClubFixture {
         club.setCancellationLimitHours(12);
         club.setDepositPercentage(new BigDecimal("50.00"));
         club.setAllowUnpaidBooking(true);
+        // El default de la entidad paso a false porque WhatsApp esta en stand
+        // by (ver Tenant.requiresBookingConfirmation), pero el flujo de
+        // confirmacion por token sigue siendo real y varios tests lo
+        // ejercitan: el club de prueba lo pide, igual que antes.
+        club.setRequiresBookingConfirmation(true);
         return tenantRepository.saveAndFlush(club);
     }
 
@@ -83,26 +102,39 @@ public class ClubFixture {
         return courtRepository.saveAndFlush(court);
     }
 
-    /** Tarifa que cubre todo el horario del club para ese dia. */
+    /** Tarifa que cubre todo el horario del club para ese dia. El precio es del TURNO. */
     @Transactional
     public PricingRule allDayPrice(DayOfWeek day, String price) {
         PricingRule rule = new PricingRule();
-        rule.setDay(day);
+        rule.addDay(day);
         rule.setStartTime(LocalTime.of(0, 0));
         rule.setEndTime(LocalTime.of(23, 59));
         rule.setPrice(new BigDecimal(price));
         return pricingRuleRepository.saveAndFlush(rule);
     }
 
-    /** Tarifa acotada a una franja concreta del dia. */
+    /** Tarifa acotada a una franja concreta del dia. El precio es del TURNO. */
     @Transactional
     public PricingRule priceWindow(DayOfWeek day, LocalTime from, LocalTime to, String price) {
         PricingRule rule = new PricingRule();
-        rule.setDay(day);
+        rule.addDay(day);
         rule.setStartTime(from);
         rule.setEndTime(to);
         rule.setPrice(new BigDecimal(price));
         return pricingRuleRepository.saveAndFlush(rule);
+    }
+
+    /** Marca una regla como promo para la prueba del badge. */
+    @Transactional
+    public PricingRule markPromo(PricingRule rule) {
+        rule.setPromo(true);
+        return pricingRuleRepository.saveAndFlush(rule);
+    }
+
+    @Transactional
+    public Tenant setGeneralPricePerPerson(Tenant club, String pricePerPerson) {
+        club.setGeneralPricePerPerson(new BigDecimal(pricePerPerson));
+        return tenantRepository.saveAndFlush(club);
     }
 
     @Transactional

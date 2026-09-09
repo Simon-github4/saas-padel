@@ -95,21 +95,60 @@ public class PaymentService {
         credit(club, booking, remote);
     }
 
-    /** Cobro en el mostrador cargado por el club. */
+    /** Cobro en el mostrador cargado por el club: efectivo o transferencia. */
     @Transactional
-    public Payment registerCashPayment(Booking booking, BigDecimal amount, UUID registeredBy) {
+    public Payment registerManualPayment(Booking booking, BigDecimal amount, PaymentMethod method,
+                                         UUID registeredBy) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessRuleException("El monto tiene que ser mayor a cero");
+        }
+        if (method != PaymentMethod.CASH && method != PaymentMethod.TRANSFER) {
+            throw new BusinessRuleException("Ese metodo no se puede cargar a mano");
         }
         Payment payment = new Payment();
         payment.setBooking(booking);
         payment.setAmount(amount);
-        payment.setMethod(PaymentMethod.CASH);
+        payment.setMethod(method);
         payment.setStatus(PaymentStatus.APPROVED);
         payment.setRegisteredBy(registeredBy);
         paymentRepository.save(payment);
 
         booking.setPaidAmount(booking.getPaidAmount().add(amount));
+        if (booking.getStatus() == BookingStatus.CONFIRMED && booking.isPaidInFull()) {
+            // Cobrar el total es la señal de que el turno se jugó: ahorra el paso
+            // manual de marcarlo aparte, que en el mostrador era un click de mas
+            // en la misma visita del cliente.
+            booking.setStatus(BookingStatus.COMPLETED);
+        }
+        bookingRepository.save(booking);
+        return payment;
+    }
+
+    /**
+     * Devolucion de mostrador: plata que vuelve al jugador en efectivo o transferencia,
+     * ej. porque se saco un producto que ya se habia cobrado.
+     */
+    @Transactional
+    public Payment registerRefund(Booking booking, BigDecimal amount, PaymentMethod method,
+                                  UUID registeredBy) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BusinessRuleException("El monto tiene que ser mayor a cero");
+        }
+        if (method != PaymentMethod.CASH && method != PaymentMethod.TRANSFER) {
+            throw new BusinessRuleException("Ese metodo no se puede cargar a mano");
+        }
+        if (amount.compareTo(booking.getPaidAmount()) > 0) {
+            throw new BusinessRuleException("No podés devolver más de lo que se cobró");
+        }
+        Payment payment = new Payment();
+        payment.setBooking(booking);
+        payment.setAmount(amount.negate());
+        payment.setMethod(method);
+        payment.setStatus(PaymentStatus.APPROVED);
+        payment.setRegisteredBy(registeredBy);
+        paymentRepository.save(payment);
+
+        booking.setPaidAmount(booking.getPaidAmount().subtract(amount));
         bookingRepository.save(booking);
         return payment;
     }

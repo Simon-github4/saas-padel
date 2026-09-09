@@ -155,6 +155,10 @@ public class MercadoPagoGateway {
     private MPRequestOptions optionsFor(Tenant club) {
         return MPRequestOptions.builder()
                 .accessToken(club.getMpAccessToken())
+                // Sin esto el SDK no tiene limite: un MercadoPago lento cuelga el
+                // hilo que esta cobrando o consultando un pago indefinidamente.
+                .connectionTimeout(5000)
+                .socketTimeout(10000)
                 .build();
     }
 }

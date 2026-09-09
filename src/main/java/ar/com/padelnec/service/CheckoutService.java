@@ -39,6 +39,10 @@ public class CheckoutService {
         public boolean requiresWhatsappConfirmation() {
             return booking.getStatus() == BookingStatus.AWAITING_CONFIRMATION;
         }
+
+        public boolean isConfirmed() {
+            return booking.getStatus() == BookingStatus.CONFIRMED;
+        }
     }
 
     public CheckoutResult checkout(Tenant club, NewBooking request) {

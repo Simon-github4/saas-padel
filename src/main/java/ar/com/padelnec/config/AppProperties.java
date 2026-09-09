@@ -1,6 +1,7 @@
 package ar.com.padelnec.config;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import java.util.HashMap;
 import java.util.Map;
 import lombok.Getter;
@@ -26,6 +27,8 @@ public class AppProperties {
     private final Security security = new Security();
     private final Whatsapp whatsapp = new Whatsapp();
     private final Jobs jobs = new Jobs();
+    private final Google google = new Google();
+    private final Mail mail = new Mail();
 
     @Getter
     @Setter
@@ -42,8 +45,12 @@ public class AppProperties {
     @Getter
     @Setter
     public static class Whatsapp {
-        /** {@code twilio} en produccion, {@code log} para desarrollo local. */
-        private String provider = "log";
+        /**
+         * {@code off} (default): no manda nada, WhatsApp esta en stand by.
+         * {@code log}: lo imprime en la consola, para desarrollo.
+         * {@code twilio}: lo manda de verdad.
+         */
+        private String provider = "off";
 
         /** Numero emisor habilitado en el proveedor, en E.164. */
         private String fromNumber;
@@ -67,5 +74,36 @@ public class AppProperties {
 
         /** Semanas hacia adelante que se materializan de cada turno fijo. */
         private int recurringHorizonWeeks = 8;
+    }
+
+    @Getter
+    @Setter
+    public static class Google {
+        /**
+         * Client ID de OAuth de Google Sign-In. Publico, no secreto -- tambien
+         * viaja al frontend. Sin el, el login con Google simplemente no se ofrece.
+         */
+        private String clientId;
+    }
+
+    @Getter
+    @Setter
+    public static class Mail {
+        /**
+         * {@code smtp} en produccion, {@code log} para desarrollo local. Sin
+         * default: si queda vacio, la app no arranca en vez de imprimir en el
+         * log links que alcanzan para tomar una cuenta (ver {@code LoggingEmailSender}).
+         *
+         * <p>Validado con {@code @Pattern} y no solo dejado a que falte el bean de
+         * {@code EmailSender}: sin esto, el arranque fallaba con un
+         * {@code NoSuchBeanDefinitionException} dificil de interpretar para quien
+         * despliega por primera vez.
+         */
+        @NotBlank(message = "app.mail.provider es obligatoria: 'log' o 'smtp'")
+        @Pattern(regexp = "log|smtp", message = "app.mail.provider debe ser 'log' o 'smtp'")
+        private String provider = "";
+
+        /** Direccion que figura como remitente. */
+        private String from = "no-responder@padelnec.com.ar";
     }
 }

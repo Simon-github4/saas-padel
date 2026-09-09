@@ -10,11 +10,15 @@ import ar.com.padelnec.support.PhoneNumbers;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.grid.ColumnTextAlign;
 import com.vaadin.flow.component.grid.Grid;
+import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.html.Anchor;
-import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
+import com.vaadin.flow.component.orderedlayout.FlexComponent.JustifyContentMode;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
@@ -46,7 +50,7 @@ public class AlertsView extends VerticalLayout {
     private final transient AuthenticationContext authenticationContext;
 
     private final Grid<OperationalAlert> grid = new Grid<>();
-    private final Paragraph empty = new Paragraph("No hay nada pendiente.");
+    private final Span count = new Span();
 
     private Tenant club;
 
@@ -58,20 +62,46 @@ public class AlertsView extends VerticalLayout {
         this.authenticationContext = authenticationContext;
 
         setSizeFull();
-        empty.addClassNames(LumoUtility.TextColor.SECONDARY);
-        add(grid, empty);
+        // El detalle es la unica columna sin ancho fijo y la que mas texto trae
+        // (numeros, telefono, motivo). Sin esto la grilla lo corta con "..." y hay
+        // que adivinar el resto.
+        grid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_WRAP_CELL_CONTENT);
+        grid.setSelectionMode(Grid.SelectionMode.NONE);
+        // El vacio lo dice la grilla. Antes era un Paragraph hermano que se
+        // prendia y apagaba junto con la grilla entera: dos componentes
+        // sincronizados a mano para mostrar una sola frase.
+        grid.setEmptyStateText("No hay nada pendiente.");
+
+        add(toolbar(), grid);
         setFlexGrow(1, grid);
+        addClassNames(LumoUtility.Gap.MEDIUM);
 
         this.club = tenantService.requireCurrent();
         buildColumns();
         refresh();
     }
 
+    /**
+     * Cuantas quedan sin resolver.
+     *
+     * <p>Es el mismo dato que avisa el menu lateral, repetido aca donde se
+     * trabaja. En rojo cuando hay algo: esta vista existe para vaciarse.
+     */
+    private HorizontalLayout toolbar() {
+        HorizontalLayout toolbar = new HorizontalLayout(count);
+        toolbar.setWidthFull();
+        toolbar.setPadding(false);
+        toolbar.setAlignItems(Alignment.CENTER);
+        toolbar.setJustifyContentMode(JustifyContentMode.END);
+        return toolbar;
+    }
+
     private void buildColumns() {
         grid.addColumn(alert -> WHEN.format(alert.getCreatedAt().atZone(club.zoneId())))
-                .setHeader("Cuando")
+                .setHeader("Cuándo")
                 .setAutoWidth(true)
-                .setFlexGrow(0);
+                .setFlexGrow(0)
+                .setPartNameGenerator(alert -> "tabular");
 
         grid.addComponentColumn(this::typeBadge)
                 .setHeader("Tipo")
@@ -82,7 +112,10 @@ public class AlertsView extends VerticalLayout {
 
         grid.addComponentColumn(this::contactLink).setHeader("Jugador").setAutoWidth(true);
 
-        grid.addComponentColumn(this::resolveButton).setAutoWidth(true).setFlexGrow(0);
+        grid.addComponentColumn(this::resolveButton)
+                .setAutoWidth(true)
+                .setFlexGrow(0)
+                .setTextAlign(ColumnTextAlign.END);
         grid.setSizeFull();
     }
 
@@ -98,7 +131,7 @@ public class AlertsView extends VerticalLayout {
 
     private String readable(AlertType type) {
         return switch (type) {
-            case REFUND_REQUIRED -> "Devolver sena";
+            case REFUND_REQUIRED -> "Devolver seña";
             case ORPHAN_PAYMENT -> "Pago sin turno";
             case NOTIFICATION_FAILED -> "WhatsApp no entregado";
             case RECURRING_CONFLICT -> "Turno fijo en conflicto";
@@ -124,7 +157,7 @@ public class AlertsView extends VerticalLayout {
             Notification.show("Alerta marcada como resuelta");
             refresh();
         });
-        resolve.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        resolve.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
         return resolve;
     }
 
@@ -138,7 +171,13 @@ public class AlertsView extends VerticalLayout {
         club = tenantService.requireCurrent();
         var pending = alertService.pending();
         grid.setItems(pending);
-        grid.setVisible(!pending.isEmpty());
-        empty.setVisible(pending.isEmpty());
+
+        count.setText(switch (pending.size()) {
+            case 0 -> "Todo al día";
+            case 1 -> "1 alerta sin resolver";
+            default -> pending.size() + " alertas sin resolver";
+        });
+        count.getElement().getThemeList().clear();
+        count.getElement().getThemeList().add(pending.isEmpty() ? "badge success" : "badge error");
     }
 }

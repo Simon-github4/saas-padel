@@ -14,15 +14,7 @@ public interface RecurringBookingRepository extends JpaRepository<RecurringBooki
             JOIN FETCH r.customer
             LEFT JOIN FETCH r.skips
             WHERE r.active = true
-            """)
-    List<RecurringBooking> findAllActiveWithDetail();
-
-    @Query("""
-            SELECT DISTINCT r FROM RecurringBooking r
-            JOIN FETCH r.court
-            JOIN FETCH r.customer
-            LEFT JOIN FETCH r.skips
             ORDER BY r.dayOfWeek ASC, r.startTime ASC
             """)
-    List<RecurringBooking> findAllWithDetail();
+    List<RecurringBooking> findAllActiveWithDetail();
 }

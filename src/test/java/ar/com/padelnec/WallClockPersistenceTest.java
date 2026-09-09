@@ -75,10 +75,12 @@ class WallClockPersistenceTest {
     void pricingWindowsAreStoredAsWritten() {
         fixture.priceWindow(DayOfWeek.SATURDAY, LocalTime.of(18, 0), LocalTime.of(23, 59), "24000");
 
-        assertThat(rawTime("SELECT start_time FROM pricing_rule WHERE day_of_week = 6", null))
-                .isEqualTo(LocalTime.of(18, 0));
-        assertThat(rawTime("SELECT end_time FROM pricing_rule WHERE day_of_week = 6", null))
-                .isEqualTo(LocalTime.of(23, 59));
+        String saturday = "SELECT r.start_time FROM pricing_rule r "
+                + "JOIN pricing_rule_day d ON d.pricing_rule_id = r.id WHERE d.day_of_week = 6";
+        assertThat(rawTime(saturday, null)).isEqualTo(LocalTime.of(18, 0));
+        String saturdayEnd = "SELECT r.end_time FROM pricing_rule r "
+                + "JOIN pricing_rule_day d ON d.pricing_rule_id = r.id WHERE d.day_of_week = 6";
+        assertThat(rawTime(saturdayEnd, null)).isEqualTo(LocalTime.of(23, 59));
     }
 
     @Test
@@ -89,7 +91,7 @@ class WallClockPersistenceTest {
         fixture.priceWindow(DayOfWeek.FRIDAY, LocalTime.of(18, 0), LocalTime.of(23, 59), "24000");
 
         assertThat(jdbc.queryForObject(
-                "SELECT count(*) FROM pricing_rule WHERE day_of_week = 5", Integer.class))
+                "SELECT count(*) FROM pricing_rule_day WHERE day_of_week = 5", Integer.class))
                 .isEqualTo(1);
     }
 

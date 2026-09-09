@@ -1,4 +1,4 @@
-package ar.com.padelnec.notification;
+package ar.com.padelnec.notification.whatsapp;
 
 /**
  * Mensajes que el sistema le manda al jugador.
@@ -27,7 +27,10 @@ public enum NotificationTemplate {
     BOOKING_CANCELLED_BY_CLUB(5),
 
     /** Recordatorio previo al turno. Variables: nombre, cancha, fecha, hora, saldo. */
-    BOOKING_REMINDER(5);
+    BOOKING_REMINDER(5),
+
+    /** Se libero un horario que alguien esperaba. Variables: nombre, club, fecha, hora, link. */
+    WAITLIST_SLOT_FREED(5);
 
     private final int variableCount;
 

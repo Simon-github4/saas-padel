@@ -2,17 +2,27 @@ package ar.com.padelnec.ui;
 
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.AlertService;
+import ar.com.padelnec.service.TenantService;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
-import com.vaadin.flow.component.button.Button;
-import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.avatar.Avatar;
+import com.vaadin.flow.component.contextmenu.MenuItem;
+import com.vaadin.flow.component.contextmenu.SubMenu;
 import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Span;
-import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.menubar.MenuBar;
+import com.vaadin.flow.component.menubar.MenuBarVariant;
+import com.vaadin.flow.component.icon.Icon;
+import com.vaadin.flow.component.icon.IconFactory;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.flow.router.AfterNavigationEvent;
+import com.vaadin.flow.router.AfterNavigationObserver;
+import com.vaadin.flow.router.PageTitle;
+import com.vaadin.flow.theme.lumo.LumoIcon;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
@@ -27,63 +37,241 @@ import java.util.Optional;
  * adentro lo decide cada vista.
  */
 @PermitAll
-public class MainLayout extends AppLayout {
+public class MainLayout extends AppLayout implements AfterNavigationObserver {
 
     private final transient AuthenticationContext authenticationContext;
     private final AlertService alertService;
+    private final String clubName;
 
-    public MainLayout(AuthenticationContext authenticationContext, AlertService alertService) {
+    /** Se rellena en cada navegacion con el nombre de la pantalla activa. */
+    private final H1 viewTitle = new H1();
+
+    public MainLayout(AuthenticationContext authenticationContext, AlertService alertService,
+                      TenantService tenantService) {
         this.authenticationContext = authenticationContext;
         this.alertService = alertService;
+        this.clubName = tenantService.requireCurrent().getName();
 
         setPrimarySection(Section.DRAWER);
         addToNavbar(true, new DrawerToggle(), header());
         addToDrawer(navigation());
     }
 
+    /**
+     * Barra superior: a la izquierda donde estas, a la derecha con quien entraste.
+     *
+     * <p>El club no se repite aca porque ya encabeza el menu lateral; la barra
+     * se queda con lo que si cambia al navegar.
+     */
     private HorizontalLayout header() {
-        H1 title = new H1("Panel del club");
-        title.addClassNames(LumoUtility.FontSize.LARGE, LumoUtility.Margin.NONE);
+        viewTitle.addClassNames(LumoUtility.FontSize.LARGE, LumoUtility.Margin.NONE,
+                LumoUtility.FontWeight.SEMIBOLD, LumoUtility.Whitespace.NOWRAP);
 
-        HorizontalLayout header = new HorizontalLayout(title, spacer(), user(), logout());
+        HorizontalLayout header = new HorizontalLayout(viewTitle, userMenu());
         header.setWidthFull();
         header.setAlignItems(HorizontalLayout.Alignment.CENTER);
-        header.addClassNames(LumoUtility.Padding.Horizontal.MEDIUM);
+        header.setJustifyContentMode(HorizontalLayout.JustifyContentMode.BETWEEN);
+        header.addClassNames(LumoUtility.Padding.Horizontal.MEDIUM, LumoUtility.Gap.MEDIUM);
         return header;
     }
 
-    private Span spacer() {
-        Span spacer = new Span();
-        spacer.getStyle().set("flex-grow", "1");
-        return spacer;
+    /**
+     * Marca del panel, arriba de todo en el menu lateral.
+     *
+     * <p>El club vive aca y no en la barra superior: es lo que no cambia nunca
+     * mientras se navega, y la barra queda libre para decir en que pantalla
+     * estas parado.
+     */
+    private HorizontalLayout brand() {
+        Span mark = new Span("▦");
+        mark.setClassName("brand-mark");
+        mark.getElement().setAttribute("aria-hidden", "true");
+
+        H1 club = new H1(clubName);
+        club.addClassNames(LumoUtility.FontSize.MEDIUM, LumoUtility.Margin.NONE,
+                LumoUtility.FontWeight.SEMIBOLD);
+
+        Span product = new Span("Panel del club");
+        product.addClassNames(LumoUtility.FontSize.XSMALL, LumoUtility.TextColor.SECONDARY);
+
+        VerticalLayout words = new VerticalLayout(club, product);
+        words.setPadding(false);
+        words.setSpacing(false);
+        words.setWidth(null);
+
+        HorizontalLayout brand = new HorizontalLayout(mark, words);
+        brand.setAlignItems(HorizontalLayout.Alignment.CENTER);
+        brand.setPadding(false);
+        brand.setWidthFull();
+        brand.addClassNames(LumoUtility.Gap.SMALL, LumoUtility.Padding.Horizontal.SMALL,
+                LumoUtility.Padding.Vertical.MEDIUM, LumoUtility.Border.BOTTOM,
+                LumoUtility.BorderColor.CONTRAST_10);
+        return brand;
     }
 
-    private Span user() {
-        return new Span(currentUser().map(ClubUserPrincipal::fullName).orElse(""));
+    /**
+     * La barra superior dice en que pantalla estas.
+     *
+     * <p>El titulo sale del @PageTitle de la vista, que ya viene como
+     * "Agenda | Panel del club": del " | " para atras es el sufijo del titulo
+     * del navegador y aca sobra.
+     */
+    @Override
+    public void afterNavigation(AfterNavigationEvent event) {
+        viewTitle.setText(currentViewTitle());
     }
 
-    private Button logout() {
-        Button logout = new Button("Salir", event -> authenticationContext.logout());
-        logout.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
-        return logout;
+    private String currentViewTitle() {
+        Component content = getContent();
+        if (content == null) {
+            return "";
+        }
+        PageTitle annotation = content.getClass().getAnnotation(PageTitle.class);
+        if (annotation == null) {
+            return "";
+        }
+        return annotation.value().split("\\|")[0].trim();
+    }
+
+    /**
+     * Identidad y sesion en un solo control.
+     *
+     * <p>Antes eran dos piezas sueltas al borde de la barra: el nombre en un
+     * Span y un boton "Salir" al lado. Agrupadas en un menu, la barra queda con
+     * dos bloques y el cierre de sesion deja de estar a un clic de distancia de
+     * cualquier otra cosa que el mostrador toque con apuro.
+     */
+    private MenuBar userMenu() {
+        MenuBar bar = new MenuBar();
+        bar.addThemeVariants(MenuBarVariant.LUMO_TERTIARY_INLINE);
+
+        String name = currentUser().map(ClubUserPrincipal::fullName).orElse("");
+
+        Avatar avatar = new Avatar(name);
+        avatar.setThemeName("xsmall");
+        Span label = new Span(name);
+        label.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.FontWeight.MEDIUM,
+                LumoUtility.Whitespace.NOWRAP);
+
+        HorizontalLayout trigger = new HorizontalLayout(avatar, label);
+        trigger.setAlignItems(HorizontalLayout.Alignment.CENTER);
+        trigger.setPadding(false);
+        trigger.addClassNames(LumoUtility.Gap.SMALL);
+
+        MenuItem item = bar.addItem(trigger);
+        SubMenu menu = item.getSubMenu();
+
+        // El rol explica por que la Configuracion esta o no en el menu lateral.
+        Span role = new Span(currentUser().map(MainLayout::roleLabel).orElse(""));
+        role.addClassNames(LumoUtility.FontSize.XSMALL, LumoUtility.TextColor.SECONDARY);
+        menu.addItem(role).setEnabled(false);
+
+        menu.addItem("Salir", event -> authenticationContext.logout());
+        return bar;
+    }
+
+    private static String roleLabel(ClubUserPrincipal user) {
+        return switch (user.role()) {
+            case OWNER -> "Dueño del club";
+            case STAFF -> "Mostrador";
+            case SUPER_ADMIN -> "Soporte de la plataforma";
+        };
     }
 
     private VerticalLayout navigation() {
-        SideNav nav = new SideNav();
-        nav.addItem(new SideNavItem("Agenda", AgendaView.class, VaadinIcon.CALENDAR.create()));
-        nav.addItem(new SideNavItem("Turnos fijos", RecurringView.class, VaadinIcon.REFRESH.create()));
-        nav.addItem(new SideNavItem("Jugadores", CustomersView.class, VaadinIcon.USERS.create()));
-        nav.addItem(new SideNavItem("Alertas", AlertsView.class, VaadinIcon.BELL.create()));
+        // El trabajo diario primero y la configuracion aparte, abajo: no es una
+        // lista de cosas equivalentes, son las pantallas de mostrador mas un
+        // cajon de ajustes que el dueno abre de vez en cuando.
+        SideNav diario = new SideNav();
+        diario.setLabel("Mostrador");
+        // El drawer alinea sus hijos por contenido (flex-start), no por ancho: sin
+        // esto cada SideNav se achica al item mas angosto y deja aire a la derecha
+        // que se lee como que el item termina ahi.
+        diario.setWidthFull();
+        diario.addItem(new SideNavItem("Agenda", AgendaView.class, iconChip(LumoIcon.CALENDAR)));
+        // Pegada a la agenda porque son el mismo dia visto de dos maneras, y del
+        // lado del mostrador y no de Estadisticas: el que cuenta los billetes a
+        // la noche es el que atiende.
+        diario.addItem(new SideNavItem("Caja", CajaView.class, iconChip(LumoIcon.ORDERED_LIST)));
+        diario.addItem(new SideNavItem("Turnos fijos", RecurringView.class, iconChip(LumoIcon.RELOAD)));
+        diario.addItem(new SideNavItem("Jugadores", CustomersView.class, iconChip(LumoIcon.USER)));
+        diario.addItem(alertsItem());
+        // Suspender un dia o una cancha es una decision operativa del dia a dia,
+        // no financiera: el mostrador tambien la necesita.
+        diario.addItem(new SideNavItem("Suspensiones", BlackoutsView.class, iconChip(LumoIcon.CLOCK)));
+        // Configuracion tambien es del mostrador: adentro, la propia vista le
+        // esconde la pestana de Cobros online, que es la unica plata de verdad.
+        diario.addItem(new SideNavItem("Configuración", SettingsView.class, iconChip(LumoIcon.COG)));
 
-        // Configuracion solo para el dueno: el mostrador no toca precios ni horarios.
-        if (currentUser().map(ClubUserPrincipal::canManageSettings).orElse(false)) {
-            nav.addItem(new SideNavItem("Configuracion", SettingsView.class, VaadinIcon.COG.create()));
-        }
-
-        VerticalLayout drawer = new VerticalLayout(nav, pendingAlertsBadge());
+        VerticalLayout drawer = new VerticalLayout(brand(), diario);
         drawer.setPadding(false);
         drawer.setSpacing(false);
+        drawer.addClassNames(LumoUtility.Padding.SMALL, LumoUtility.Gap.MEDIUM);
+
+        // Estadisticas es la unica pantalla que sigue siendo solo del dueno.
+        if (currentUser().map(ClubUserPrincipal::canManageSettings).orElse(false)) {
+            SideNav club = new SideNav();
+            club.setLabel("Club");
+            club.setWidthFull();
+            club.addItem(new SideNavItem("Estadísticas", DashboardView.class, iconChip(LumoIcon.BAR_CHART)));
+            drawer.add(club);
+        }
+
+        drawer.add(pendingAlertsBadge());
         return drawer;
+    }
+
+    /**
+     * Item "Alertas" con un punto rojo cuando hay algo sin resolver.
+     *
+     * <p>El aviso de mas abajo (pendingAlertsBadge) hay que verlo desplazando la
+     * vista; este punto esta pegado al item que ya se toca para entrar, asi que se
+     * nota sin buscarlo.
+     */
+    private SideNavItem alertsItem() {
+        SideNavItem item = new SideNavItem("Alertas", AlertsView.class, iconChip(LumoIcon.BELL));
+        if (alertService.pendingCount() > 0) {
+            item.setSuffixComponent(pendingDot());
+        }
+        return item;
+    }
+
+    // El azul de fabrica de Lumo, no el --lumo-primary-color de la app (el
+    // ladrillo de marca): el pedido fue ese celeste puntual para los iconos del
+    // menu, no el acento del club.
+    private static final String ICON_BG = "#dbeafe";
+    private static final String ICON_FG = "#1676f3";
+
+    /**
+     * Icono del set nuevo de Lumo ({@link LumoIcon}, SVG, mas fino que los
+     * glifos clasicos de {@code VaadinIcon}) con su propia chapa de color en
+     * vez del trazo mudo por defecto.
+     */
+    private Component iconChip(IconFactory iconFactory) {
+        Icon icon = iconFactory.create();
+        icon.setSize("1.375rem");
+        icon.getStyle().set("color", ICON_FG);
+
+        Span chip = new Span(icon);
+        chip.getElement().setAttribute("aria-hidden", "true");
+        chip.addClassNames(LumoUtility.Display.FLEX, LumoUtility.BorderRadius.MEDIUM);
+        chip.getStyle()
+                .set("align-items", "center")
+                .set("justify-content", "center")
+                .set("width", "2.25rem")
+                .set("height", "2.25rem")
+                .set("flex", "none")
+                .set("background", ICON_BG);
+        return chip;
+    }
+
+    private Span pendingDot() {
+        Span dot = new Span();
+        dot.getElement().setAttribute("aria-hidden", "true");
+        dot.addClassNames(LumoUtility.Background.ERROR, LumoUtility.BorderRadius.FULL,
+                LumoUtility.Display.INLINE_BLOCK);
+        dot.getStyle().set("width", "0.5rem").set("height", "0.5rem");
+        return dot;
     }
 
     /**
@@ -101,7 +289,8 @@ public class MainLayout extends AppLayout {
                 ? "1 alerta sin resolver"
                 : pending + " alertas sin resolver");
         badge.getElement().getThemeList().add("badge error");
-        badge.addClassNames(LumoUtility.Margin.MEDIUM);
+        // Se despega del bloque de navegacion: es un aviso, no un item mas.
+        badge.addClassNames(LumoUtility.Margin.Top.MEDIUM, LumoUtility.Margin.Horizontal.SMALL);
         return badge;
     }
 

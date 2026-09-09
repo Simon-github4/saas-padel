@@ -11,6 +11,10 @@ app:
     encryption-key: cGFkZWwtZGV2LWtleS0zMi1ieXRlcy1leGFjdGx5ISE=
   whatsapp:
     provider: log
+  google:
+    client-id: test-client-id
+  mail:
+    provider: log
   jobs:
     # Los @Scheduled quedan apagados: los tests invocan el trabajo directamente.
     enabled: false

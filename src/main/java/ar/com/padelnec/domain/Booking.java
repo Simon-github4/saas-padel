@@ -67,6 +67,14 @@ public class Booking extends TenantScopedEntity {
     @Column(name = "management_token", unique = true, length = 64)
     private String managementToken;
 
+    /**
+     * Token de solo lectura para compartir el turno con otros jugadores. A
+     * proposito distinto de {@code managementToken}: compartirlo nunca puede
+     * terminar dandole a un tercero la posibilidad de cancelar la reserva.
+     */
+    @Column(name = "share_token", unique = true, length = 64)
+    private String shareToken;
+
     /** Token de un solo uso para el flujo sin pago anticipado. */
     @Column(name = "confirmation_token", unique = true, length = 64)
     private String confirmationToken;
@@ -96,6 +104,14 @@ public class Booking extends TenantScopedEntity {
 
     public BigDecimal balanceDue() {
         return totalPrice.subtract(paidAmount).max(BigDecimal.ZERO);
+    }
+
+    /**
+     * Cuando lo pagado supera al total (ej. se sacó un producto ya cobrado), lo que
+     * queda a favor del cliente. Cero cuando no hay excedente.
+     */
+    public BigDecimal creditBalance() {
+        return paidAmount.subtract(totalPrice).max(BigDecimal.ZERO);
     }
 
     public boolean isPaidInFull() {

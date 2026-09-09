@@ -13,10 +13,15 @@ import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
+import com.vaadin.flow.component.grid.ColumnTextAlign;
 import com.vaadin.flow.component.grid.Grid;
+import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
+import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
+import com.vaadin.flow.component.orderedlayout.FlexComponent.JustifyContentMode;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.select.Select;
@@ -56,6 +61,7 @@ public class RecurringView extends VerticalLayout {
     private final TenantService tenantService;
 
     private final Grid<RecurringBooking> grid = new Grid<>();
+    private final Span count = new Span();
     private Tenant club;
 
     public RecurringView(RecurringBookingService recurringBookingService,
@@ -72,13 +78,28 @@ public class RecurringView extends VerticalLayout {
         Button add = new Button("Nuevo turno fijo", event -> openForm());
         add.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
+        // La ayuda va arriba y en chico: explica el flujo una vez, no compite
+        // con la grilla ni la empuja hacia abajo como cuando era un parrafo de
+        // cuerpo normal entre el boton y los datos.
         Paragraph help = new Paragraph(
                 "Los turnos se generan por adelantado. Si el grupo avisa que una semana no juega, "
                         + "usá \"Liberar fecha\" y esa cancha vuelve a la venta.");
-        help.addClassNames(LumoUtility.TextColor.SECONDARY);
+        help.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.FontSize.SMALL,
+                LumoUtility.Margin.NONE, LumoUtility.MaxWidth.SCREEN_SMALL);
 
-        add(new HorizontalLayout(add), help, grid);
+        HorizontalLayout toolbar = new HorizontalLayout(add, count);
+        toolbar.setWidthFull();
+        toolbar.setPadding(false);
+        toolbar.setAlignItems(Alignment.CENTER);
+        toolbar.setJustifyContentMode(JustifyContentMode.BETWEEN);
+
+        grid.addThemeVariants(GridVariant.LUMO_ROW_STRIPES);
+        grid.setSelectionMode(Grid.SelectionMode.NONE);
+        grid.setEmptyStateText("Todavía no hay turnos fijos. Se cargan con el botón de arriba.");
+
+        add(toolbar, help, grid);
         setFlexGrow(1, grid);
+        addClassNames(LumoUtility.Gap.MEDIUM);
 
         buildColumns();
         refresh();
@@ -87,25 +108,30 @@ public class RecurringView extends VerticalLayout {
     private void buildColumns() {
         grid.addColumn(fixed -> fixed.getCustomer().getFullName())
                 .setHeader("Grupo").setAutoWidth(true);
-        grid.addColumn(fixed -> dayName(fixed.day())).setHeader("Dia").setAutoWidth(true);
+        grid.addColumn(fixed -> dayName(fixed.day())).setHeader("Día").setAutoWidth(true);
         grid.addColumn(fixed -> "%s (%d min)".formatted(fixed.getStartTime(), fixed.getDurationMinutes()))
-                .setHeader("Horario").setAutoWidth(true);
+                .setHeader("Horario").setAutoWidth(true)
+                .setPartNameGenerator(fixed -> "tabular");
         grid.addColumn(fixed -> fixed.getCourt().getName()).setHeader("Cancha").setAutoWidth(true);
         grid.addColumn(fixed -> fixed.getPriceOverride() == null
                         ? "Tarifa de la franja"
                         : "$" + fixed.getPriceOverride().stripTrailingZeros().toPlainString())
-                .setHeader("Precio").setAutoWidth(true);
+                .setHeader("Precio").setAutoWidth(true)
+                .setTextAlign(ColumnTextAlign.END)
+                .setPartNameGenerator(fixed -> "tabular");
         grid.addColumn(fixed -> fixed.getValidUntil() == null
                         ? "Sin fecha de corte" : fixed.getValidUntil().toString())
                 .setHeader("Hasta").setAutoWidth(true);
 
-        grid.addComponentColumn(this::actions).setAutoWidth(true).setFlexGrow(0);
+        grid.addComponentColumn(this::actions)
+                .setAutoWidth(true).setFlexGrow(0)
+                .setTextAlign(ColumnTextAlign.END);
         grid.setSizeFull();
     }
 
     private HorizontalLayout actions(RecurringBooking fixed) {
         Button skip = new Button("Liberar fecha", event -> openSkip(fixed));
-        skip.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        skip.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
 
         Button deactivate = new Button("Dar de baja", event -> {
             int cancelled = recurringBookingService.deactivate(fixed.getId());
@@ -113,10 +139,17 @@ public class RecurringView extends VerticalLayout {
                     .formatted(cancelled));
             refresh();
         });
-        deactivate.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY);
+        deactivate.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY,
+                ButtonVariant.LUMO_SMALL);
         deactivate.setVisible(fixed.isActive());
 
-        return new HorizontalLayout(skip, deactivate);
+        // Sin el spacing por defecto: dos botones separados por 1rem dentro de
+        // una celda estiran la fila y ensanchan la columna sin necesidad.
+        HorizontalLayout row = new HorizontalLayout(skip, deactivate);
+        row.setPadding(false);
+        row.setSpacing(false);
+        row.addClassNames(LumoUtility.Gap.XSMALL);
+        return row;
     }
 
     /** El grupo avisa que una semana no juega y la cancha vuelve a la venta. */
@@ -137,8 +170,9 @@ public class RecurringView extends VerticalLayout {
         });
         confirm.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
+        dialog.setWidth("26rem");
         dialog.add(new FormLayout(date, reason));
-        dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), confirm);
+        dialog.getFooter().add(cancel(dialog), confirm);
         dialog.open();
     }
 
@@ -147,7 +181,7 @@ public class RecurringView extends VerticalLayout {
         dialog.setHeaderTitle("Nuevo turno fijo");
 
         TextField name = new TextField("Nombre del grupo");
-        TextField phone = new TextField("Telefono de contacto");
+        TextField phone = new TextField("Teléfono de contacto");
 
         Select<Court> court = new Select<>();
         court.setLabel("Cancha");
@@ -155,7 +189,7 @@ public class RecurringView extends VerticalLayout {
         court.setItemLabelGenerator(Court::getName);
 
         Select<DayOfWeek> day = new Select<>();
-        day.setLabel("Dia");
+        day.setLabel("Día");
         day.setItems(DayOfWeek.values());
         day.setItemLabelGenerator(this::dayName);
         day.setValue(DayOfWeek.TUESDAY);
@@ -165,7 +199,7 @@ public class RecurringView extends VerticalLayout {
         start.setStep(java.time.Duration.ofMinutes(30));
         start.setValue(LocalTime.of(20, 0));
 
-        IntegerField duration = new IntegerField("Duracion (minutos)");
+        IntegerField duration = new IntegerField("Duración (minutos)");
         duration.setValue(club.getDefaultSlotDuration());
         duration.setStep(30);
 
@@ -175,10 +209,10 @@ public class RecurringView extends VerticalLayout {
 
         DatePicker until = new DatePicker("Hasta (opcional)");
         until.setI18n(SpanishDates.datePicker());
-        until.setHelperText("Vacio: el turno fijo sigue hasta que lo den de baja");
+        until.setHelperText("Vacío: el turno fijo sigue hasta que lo den de baja");
 
         BigDecimalField price = new BigDecimalField("Precio pactado (opcional)");
-        price.setHelperText("Vacio cobra la tarifa vigente de la franja");
+        price.setHelperText("Vacío: cobra la tarifa vigente de la franja");
 
         Button save = new Button("Crear y generar turnos", event -> {
             try {
@@ -205,15 +239,45 @@ public class RecurringView extends VerticalLayout {
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
-        FormLayout form = new FormLayout(name, phone, court, day, start, duration, from, until, price);
-        dialog.add(form);
-        dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), save);
+        dialog.setWidth("34rem");
+        dialog.add(dialogSection("Grupo", name, phone),
+                dialogSection("Cuándo", court, day, start, duration),
+                dialogSection("Vigencia y precio", from, until, price));
+        dialog.getFooter().add(cancel(dialog), save);
         dialog.open();
+    }
+
+    /** Bloque de campos con titulo, para que el dialogo no sea una lista larga. */
+    private static VerticalLayout dialogSection(String title, com.vaadin.flow.component.Component... fields) {
+        Span heading = new Span(title);
+        heading.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.FontWeight.SEMIBOLD,
+                LumoUtility.TextColor.SECONDARY);
+
+        FormLayout form = new FormLayout(fields);
+        form.setResponsiveSteps(
+                new FormLayout.ResponsiveStep("0", 1),
+                new FormLayout.ResponsiveStep("24em", 2));
+
+        VerticalLayout box = new VerticalLayout(heading, form);
+        box.setPadding(false);
+        box.setSpacing(false);
+        box.addClassNames(LumoUtility.Gap.XSMALL, LumoUtility.Margin.Bottom.MEDIUM);
+        return box;
+    }
+
+    /** Cancelar es terciario: al lado del primario tiene que pesar menos. */
+    private static Button cancel(Dialog dialog) {
+        Button button = new Button("Cancelar", event -> dialog.close());
+        button.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        return button;
     }
 
     private void refresh() {
         club = tenantService.requireCurrent();
-        grid.setItems(recurringBookingService.all());
+        var fixedBookings = recurringBookingService.all();
+        grid.setItems(fixedBookings);
+        count.setText(fixedBookings.size() == 1 ? "1 turno fijo" : fixedBookings.size() + " turnos fijos");
+        count.getElement().getThemeList().add("badge contrast");
     }
 
     private String dayName(DayOfWeek day) {

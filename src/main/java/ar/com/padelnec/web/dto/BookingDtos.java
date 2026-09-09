@@ -43,6 +43,8 @@ public final class BookingDtos {
             UUID bookingId,
             String status,
             String managementUrl,
+            String managementToken,
+            String shareUrl,
             String checkoutUrl,
             boolean awaitingWhatsappConfirmation,
             BigDecimal totalPrice,
@@ -55,6 +57,7 @@ public final class BookingDtos {
             UUID bookingId,
             String status,
             String clubName,
+            String clubSlug,
             String clubWhatsapp,
             String courtName,
             Instant startTime,
@@ -64,9 +67,10 @@ public final class BookingDtos {
             BigDecimal balanceDue,
             boolean cancellableOnline,
             int cancellationLimitHours,
-            String cancellationHint) {
+            String cancellationHint,
+            String shareUrl) {
 
-        public static BookingDetailResponse of(Tenant club, Booking booking, Instant now) {
+        public static BookingDetailResponse of(Tenant club, Booking booking, Instant now, String shareUrl) {
             boolean cancellable = booking.getStatus().isCancellable()
                     && booking.isWithinCancellationWindow(club.getCancellationLimitHours(), now);
 
@@ -79,6 +83,7 @@ public final class BookingDtos {
                     booking.getId(),
                     booking.getStatus().name(),
                     club.getName(),
+                    club.getSlug(),
                     club.getWhatsappNumber(),
                     booking.getCourt().getName(),
                     booking.getStartTime(),
@@ -88,7 +93,8 @@ public final class BookingDtos {
                     booking.balanceDue(),
                     cancellable,
                     club.getCancellationLimitHours(),
-                    hint);
+                    hint,
+                    shareUrl);
         }
     }
 
@@ -98,5 +104,30 @@ public final class BookingDtos {
             boolean refundNeeded,
             String clubWhatsapp,
             String message) {
+    }
+
+    /**
+     * Lo que ve un tercero que recibe el link para compartir el turno: sin
+     * ningun dato de pago, esos son del dueño de la reserva.
+     */
+    public record BookingShareResponse(
+            String status,
+            String clubName,
+            String clubSlug,
+            String courtName,
+            Instant startTime,
+            Instant endTime,
+            String bookedByName) {
+
+        public static BookingShareResponse of(Tenant club, Booking booking) {
+            return new BookingShareResponse(
+                    booking.getStatus().name(),
+                    club.getName(),
+                    club.getSlug(),
+                    booking.getCourt().getName(),
+                    booking.getStartTime(),
+                    booking.getEndTime(),
+                    booking.getCustomer().getFullName());
+        }
     }
 }

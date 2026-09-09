@@ -2,8 +2,11 @@ package ar.com.padelnec.payment;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Clock;
+import java.time.Duration;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -19,10 +22,18 @@ import org.springframework.stereotype.Component;
  * secreto que el club configuro en su panel.
  */
 @Component
+@RequiredArgsConstructor
 @Slf4j
 public class MercadoPagoSignature {
 
     private static final String ALGORITHM = "HmacSHA256";
+
+    /** Una notificacion capturada en algun punto de la cadena (un log, un proxy)
+     * sigue teniendo una firma valida para siempre si no se chequea la edad del
+     * {@code ts}: esta ventana acota cuanto tiempo sirve para reenviarla. */
+    private static final Duration MAX_AGE = Duration.ofMinutes(5);
+
+    private final Clock clock;
 
     /**
      * @param signatureHeader contenido de {@code x-signature}
@@ -42,7 +53,7 @@ public class MercadoPagoSignature {
 
         String timestamp = extract(signatureHeader, "ts");
         String received = extract(signatureHeader, "v1");
-        if (timestamp == null || received == null) {
+        if (timestamp == null || received == null || !isRecent(timestamp)) {
             return false;
         }
 
@@ -56,6 +67,20 @@ public class MercadoPagoSignature {
         return MessageDigest.isEqual(
                 expected.getBytes(StandardCharsets.UTF_8),
                 received.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Rechaza tambien un ts en el futuro y no solo uno viejo: una ventana simetrica
+     * cubre el mismo reloj corrido de un lado que del otro, sin ampliar el margen
+     * real que le queda a quien reintenta una notificacion capturada. */
+    private boolean isRecent(String timestamp) {
+        long epochSeconds;
+        try {
+            epochSeconds = Long.parseLong(timestamp);
+        } catch (NumberFormatException ex) {
+            return false;
+        }
+        long ageSeconds = Math.abs(clock.instant().getEpochSecond() - epochSeconds);
+        return ageSeconds <= MAX_AGE.toSeconds();
     }
 
     private String extract(String header, String key) {

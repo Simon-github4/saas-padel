@@ -4,14 +4,20 @@ import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.NotificationLog;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.domain.WaitlistEntry;
 import ar.com.padelnec.domain.enums.NotificationStatus;
+import ar.com.padelnec.notification.whatsapp.NotificationTemplate;
+import ar.com.padelnec.notification.whatsapp.WhatsAppSender;
 import ar.com.padelnec.repository.NotificationLogRepository;
+import ar.com.padelnec.support.Masking;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -64,22 +70,30 @@ public class NotificationService {
 
     /** Turno confirmado de palabra: se paga en el club. */
     public void bookingConfirmedUnpaid(Tenant club, Booking booking) {
-        String link = managementLink(booking);
         List<String> variables = List.of(
                 firstName(booking),
                 booking.getCourt().getName(),
                 date(club, booking),
                 time(club, booking),
                 money(booking.getTotalPrice()),
-                link);
+                managementLink(booking));
 
-        dispatch(club, booking, NotificationTemplate.BOOKING_CONFIRMED_UNPAID, variables, """
+        dispatch(club, booking, NotificationTemplate.BOOKING_CONFIRMED_UNPAID, variables,
+                confirmedUnpaidMessage(club, booking));
+    }
+
+    /**
+     * Mismo texto que manda el WhatsApp automatico de {@link #bookingConfirmedUnpaid}, expuesto
+     * aparte para armar a mano un link de wa.me desde el panel mientras WhatsApp esta en stand by.
+     */
+    public String confirmedUnpaidMessage(Tenant club, Booking booking) {
+        return """
                 Listo %s, tu turno quedó confirmado.
                 %s - %s a las %s hs.
                 Se abona %s en el club.
                 Podés ver o cancelar tu turno acá: %s"""
                 .formatted(firstName(booking), booking.getCourt().getName(), date(club, booking),
-                        time(club, booking), money(booking.getTotalPrice()), link));
+                        time(club, booking), money(booking.getTotalPrice()), managementLink(booking));
     }
 
     /** Sena acreditada por MercadoPago. */
@@ -142,42 +156,83 @@ public class NotificationService {
                 time(club, booking),
                 money(booking.balanceDue()));
 
-        dispatch(club, booking, NotificationTemplate.BOOKING_REMINDER, variables, """
+        dispatch(club, booking, NotificationTemplate.BOOKING_REMINDER, variables, reminderMessage(club, booking));
+    }
+
+    /**
+     * Mismo texto que manda el WhatsApp automatico de {@link #reminder}, expuesto aparte para
+     * armar a mano un link de wa.me desde el panel mientras WhatsApp esta en stand by.
+     */
+    public String reminderMessage(Tenant club, Booking booking) {
+        return """
                 Hola %s, te esperamos mañana en %s, %s a las %s hs.
                 Saldo a pagar en el club: %s"""
                 .formatted(firstName(booking), booking.getCourt().getName(), date(club, booking),
-                        time(club, booking), money(booking.balanceDue())));
+                        time(club, booking), money(booking.balanceDue()));
+    }
+
+    /**
+     * Se libero un horario que alguien esperaba en la lista de espera.
+     *
+     * <p>Devuelve el resultado (a diferencia del resto de los mensajes) porque quien
+     * llama necesita saber si de verdad se mando antes de marcar la entrada como
+     * atendida: a diferencia de una reserva, un fallo aca si tiene que poder
+     * reintentarse en la proxima pasada del job.
+     */
+    public WhatsAppSender.SendResult waitlistSlotFreed(Tenant club, WaitlistEntry entry) {
+        String phone = entry.getCustomer().getPhoneNumber();
+        String name = firstName(entry.getCustomer().getFullName());
+        String link = waitlistLink(club, entry);
+        List<String> variables = List.of(
+                name, club.getName(), date(club, entry.getStartsAt()), time(club, entry.getStartsAt()), link);
+
+        return dispatch(club, phone, null, NotificationTemplate.WAITLIST_SLOT_FREED, variables, """
+                Hola %s, se liberó un turno en %s el %s a las %s hs.
+                Reservalo antes de que se lo lleve otro: %s"""
+                .formatted(name, club.getName(), date(club, entry.getStartsAt()),
+                        time(club, entry.getStartsAt()), link));
     }
 
     // --------------------------------------------------------------- envio
 
-    /**
-     * Manda el mensaje y registra el intento en su propia transaccion, para que el
-     * rastro quede incluso si lo que dispara el aviso termina fallando.
-     */
+    /** Reserva concreta: el telefono y el id salen del turno. */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void dispatch(Tenant club, Booking booking, NotificationTemplate template,
                          List<String> variables, String plainBody) {
-        String phone = booking.getCustomer().getPhoneNumber();
+        dispatch(club, booking.getCustomer().getPhoneNumber(), booking.getId(), template, variables, plainBody);
+    }
 
+    /**
+     * Manda el mensaje y registra el intento en su propia transaccion, para que el
+     * rastro quede incluso si lo que dispara el aviso termina fallando.
+     *
+     * <p>{@code bookingId} puede ser nulo: el aviso de lista de espera no nace de un
+     * turno, y la columna ya esta pensada para sobrevivir sin uno (ver
+     * {@link NotificationLog#getBookingId()}).
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public WhatsAppSender.SendResult dispatch(Tenant club, String phone, UUID bookingId,
+                         NotificationTemplate template, List<String> variables, String plainBody) {
         WhatsAppSender.SendResult result;
         try {
             result = sender.send(phone, template, variables, plainBody);
         } catch (RuntimeException ex) {
             // Un proveedor caido no puede tumbar una reserva que ya esta tomada.
-            log.warn("Fallo inesperado enviando {} a {}", template, phone, ex);
+            log.warn("Fallo inesperado enviando {} a {}", template, Masking.phone(phone), ex);
             result = WhatsAppSender.SendResult.failed(ex.getMessage());
         }
 
         NotificationLog entry = new NotificationLog();
-        entry.setBookingId(booking.getId());
+        entry.setBookingId(bookingId);
         entry.setPhoneNumber(phone);
         entry.setTemplate(template.name());
         entry.setBody(plainBody);
-        entry.setStatus(result.delivered() ? NotificationStatus.SENT : NotificationStatus.FAILED);
+        entry.setStatus(result.skipped() ? NotificationStatus.SKIPPED
+                : result.delivered() ? NotificationStatus.SENT : NotificationStatus.FAILED);
         entry.setProviderMessageId(result.providerMessageId());
         entry.setError(result.error());
         notificationLogRepository.save(entry);
+        return result;
     }
 
     // ---------------------------------------------------------- utilidades
@@ -190,8 +245,24 @@ public class NotificationService {
         return properties.getBaseUrl() + "/confirm/" + booking.getConfirmationToken();
     }
 
+    /** Link de solo lectura para que el jugador se lo mande a los demas. */
+    public String shareLink(Booking booking) {
+        return properties.getBaseUrl() + "/turno/" + booking.getShareToken();
+    }
+
+    /** Mismo deep-link que ya entiende la portada del club: ?fecha=&hora= precarga el horario. */
+    private String waitlistLink(Tenant club, WaitlistEntry entry) {
+        ZonedDateTime local = entry.getStartsAt().atZone(club.zoneId());
+        return properties.getBaseUrl() + "/club/" + club.getSlug()
+                + "?fecha=" + local.toLocalDate() + "&hora=" + local.toLocalTime();
+    }
+
     private String firstName(Booking booking) {
-        String full = booking.getCustomer().getFullName().trim();
+        return firstName(booking.getCustomer().getFullName());
+    }
+
+    private String firstName(String fullName) {
+        String full = fullName.trim();
         int space = full.indexOf(' ');
         return space > 0 ? full.substring(0, space) : full;
     }
@@ -202,6 +273,14 @@ public class NotificationService {
 
     private String time(Tenant club, Booking booking) {
         return localTime(club, booking).format(TIME);
+    }
+
+    private String date(Tenant club, Instant instant) {
+        return instant.atZone(club.zoneId()).format(DATE);
+    }
+
+    private String time(Tenant club, Instant instant) {
+        return instant.atZone(club.zoneId()).format(TIME);
     }
 
     private ZonedDateTime localTime(Tenant club, Booking booking) {

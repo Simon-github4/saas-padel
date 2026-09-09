@@ -41,6 +41,11 @@ public class ApiExceptionHandler {
         return body(HttpStatus.NOT_FOUND, ex.getMessage(), "NOT_FOUND");
     }
 
+    @ExceptionHandler(UnauthorizedSessionException.class)
+    public ResponseEntity<Map<String, Object>> onUnauthorizedSession(UnauthorizedSessionException ex) {
+        return body(HttpStatus.UNAUTHORIZED, ex.getMessage(), "SESSION_EXPIRED");
+    }
+
     @ExceptionHandler(PaymentGatewayException.class)
     public ResponseEntity<Map<String, Object>> onGateway(PaymentGatewayException ex) {
         return body(HttpStatus.BAD_GATEWAY, ex.getMessage(), "PAYMENT_GATEWAY");

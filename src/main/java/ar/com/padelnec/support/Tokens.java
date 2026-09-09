@@ -25,4 +25,9 @@ public final class Tokens {
         RANDOM.nextBytes(bytes);
         return ENCODER.encodeToString(bytes);
     }
+
+    /** Codigo de 6 digitos para tipear a mano, con ceros a la izquierda si hace falta. */
+    public static String sixDigitCode() {
+        return "%06d".formatted(RANDOM.nextInt(1_000_000));
+    }
 }

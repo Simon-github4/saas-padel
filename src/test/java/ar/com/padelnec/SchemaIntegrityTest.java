@@ -35,6 +35,7 @@ class SchemaIntegrityTest {
 
     @BeforeEach
     void setUp() {
+        jdbc.update("DELETE FROM club_amenity");
         jdbc.update("DELETE FROM booking");
         jdbc.update("DELETE FROM customer");
         jdbc.update("DELETE FROM court");
@@ -127,6 +128,31 @@ class SchemaIntegrityTest {
                 .hasMessageContaining("mp_payment_id");
     }
 
+    @Test
+    @DisplayName("Un club nuevo divide el precio por 4 jugadores por cancha")
+    void playersPerCourtDefaultsToFour() {
+        // El club de setUp se crea sin indicar players_per_court.
+        Integer players = jdbc.queryForObject(
+                "SELECT players_per_court FROM tenant WHERE id = ?", Integer.class, clubId);
+        assertThat(players).isEqualTo(4);
+    }
+
+    @Test
+    @DisplayName("Borrar un club arrastra sus servicios de la portada")
+    void deletingClubCascadesAmenities() {
+        jdbc.update(
+                "INSERT INTO club_amenity (club_id, icon, title, display_order) VALUES (?, ?, ?, ?)",
+                clubId, "court", "4 canchas", 1);
+
+        assertThat(countAmenities()).isEqualTo(1);
+
+        jdbc.update("DELETE FROM tenant WHERE id = ?", clubId);
+
+        assertThat(countAmenities()).isZero();
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM tenant WHERE id = ?", Integer.class, clubId)).isZero();
+    }
+
     // ------------------------------------------------------------ utilidades
 
     private UUID insertBooking(String status, String start, String end) {
@@ -150,5 +176,9 @@ class SchemaIntegrityTest {
 
     private Integer countBookings() {
         return jdbc.queryForObject("SELECT count(*) FROM booking", Integer.class);
+    }
+
+    private Integer countAmenities() {
+        return jdbc.queryForObject("SELECT count(*) FROM club_amenity", Integer.class);
     }
 }

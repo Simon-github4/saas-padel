@@ -3,6 +3,9 @@ package ar.com.padelnec;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ar.com.padelnec.payment.MercadoPagoSignature;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -18,10 +21,12 @@ class MercadoPagoSignatureTest {
     private static final String SECRET = "secreto-del-club";
     private static final String REQUEST_ID = "req-abc-123";
     private static final String TIMESTAMP = "1756400000";
+    private static final Instant TIMESTAMP_INSTANT = Instant.ofEpochSecond(1756400000L);
     private static final String VALID_HMAC =
             "7125a65c05b5c2e6d889a66fde6901e3c7505551aea96afe24c402d212258ede";
 
-    private final MercadoPagoSignature signature = new MercadoPagoSignature();
+    private final MercadoPagoSignature signature =
+            new MercadoPagoSignature(Clock.fixed(TIMESTAMP_INSTANT, ZoneOffset.UTC));
 
     @Test
     @DisplayName("Una firma correcta se acepta")
@@ -74,6 +79,36 @@ class MercadoPagoSignatureTest {
         assertThat(signature.isValid("", REQUEST_ID, "123456789", SECRET)).isFalse();
         assertThat(signature.isValid("basura", REQUEST_ID, "123456789", SECRET)).isFalse();
         assertThat(signature.isValid("ts=1756400000", REQUEST_ID, "123456789", SECRET)).isFalse();
+    }
+
+    @Test
+    @DisplayName("Una notificacion vieja se rechaza aunque la firma sea correcta")
+    void staleNotificationIsRejected() {
+        // Mismo ts y misma firma que el caso valido: lo unico que cambia es que el
+        // reloj del servidor ya esta muy lejos de ese momento. Es el ataque de
+        // replay -alguien reenvia una notificacion real capturada mas tarde.
+        MercadoPagoSignature old = new MercadoPagoSignature(
+                Clock.fixed(TIMESTAMP_INSTANT.plusSeconds(600), ZoneOffset.UTC));
+
+        assertThat(old.isValid(header(VALID_HMAC), REQUEST_ID, "123456789", SECRET)).isFalse();
+    }
+
+    @Test
+    @DisplayName("Un ts en el futuro tambien se rechaza")
+    void futureTimestampIsRejected() {
+        MercadoPagoSignature future = new MercadoPagoSignature(
+                Clock.fixed(TIMESTAMP_INSTANT.minusSeconds(600), ZoneOffset.UTC));
+
+        assertThat(future.isValid(header(VALID_HMAC), REQUEST_ID, "123456789", SECRET)).isFalse();
+    }
+
+    @Test
+    @DisplayName("Un desfasaje chico de reloj todavia entra dentro de la ventana")
+    void smallClockDriftIsStillAccepted() {
+        MercadoPagoSignature slightlyLater = new MercadoPagoSignature(
+                Clock.fixed(TIMESTAMP_INSTANT.plusSeconds(60), ZoneOffset.UTC));
+
+        assertThat(slightlyLater.isValid(header(VALID_HMAC), REQUEST_ID, "123456789", SECRET)).isTrue();
     }
 
     private String header(String hmac) {

@@ -272,6 +272,30 @@ class AvailabilityServiceTest {
         assertThat(response.courts()).hasSize(2);
     }
 
+    @Test
+    @DisplayName("La regla marcada como promo pinta el badge y cobra su precio menor")
+    void explicitPromoFlagIsAppliedOnTheSlot() {
+        // La franja de 15:30 lleva el flag de promo: cobra el precio menor de la fecha.
+        PricingRule regla = savePricingRule(null, DayOfWeek.TUESDAY,
+                LocalTime.of(15, 0), LocalTime.of(17, 0), "15000");
+        regla.setPromo(true);
+        pricingRuleRepository.saveAndFlush(regla);
+
+        SlotView regular = slotAt(LocalTime.of(18, 30));
+        SlotView promo = slotAt(LocalTime.of(15, 30));
+
+        assertThat(regular.promo()).isFalse();
+        assertThat(promo.promo()).isTrue();
+        assertThat(promo.cheapestPrice()).isEqualByComparingTo("15000");
+    }
+
+    @Test
+    @DisplayName("Sin ninguna regla marcada como promo, ningun turno lleva el badge")
+    void noPromosWhenNoRuleIsMarked() {
+        assertThat(availabilityService.availabilityFor(club, TODAY).slots())
+                .allSatisfy(slot -> assertThat(slot.promo()).isFalse());
+    }
+
     // ------------------------------------------------------------ utilidades
 
     private Court saveCourt(String name, int order) {
@@ -281,14 +305,14 @@ class AvailabilityServiceTest {
         return courtRepository.saveAndFlush(court);
     }
 
-    private void savePricingRule(Court court, DayOfWeek day, LocalTime from, LocalTime to, String price) {
+    private PricingRule savePricingRule(Court court, DayOfWeek day, LocalTime from, LocalTime to, String price) {
         PricingRule rule = new PricingRule();
         rule.setCourt(court);
-        rule.setDay(day);
+        rule.addDay(day);
         rule.setStartTime(from);
         rule.setEndTime(to);
         rule.setPrice(new BigDecimal(price));
-        pricingRuleRepository.saveAndFlush(rule);
+        return pricingRuleRepository.saveAndFlush(rule);
     }
 
     private void bookAt(Court court, LocalTime start, BookingStatus status) {

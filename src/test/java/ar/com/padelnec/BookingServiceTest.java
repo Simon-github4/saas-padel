@@ -107,12 +107,39 @@ class BookingServiceTest {
     }
 
     @Test
+    @DisplayName("El club puede saltear la confirmacion: la reserva de palabra queda firme directo")
+    void payAtClubSkipsConfirmationWhenClubOptsOut() {
+        club.setRequiresBookingConfirmation(false);
+        club = fixture.save(club);
+
+        Booking booking = reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
+
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+        assertThat(booking.getConfirmationToken()).isNull();
+        assertThat(booking.getConfirmationExpiresAt()).isNull();
+        assertThat(booking.getDepositAmount()).isEqualByComparingTo("0");
+    }
+
+    @Test
     @DisplayName("El link de gestion se emite desde el vamos, sin depender del WhatsApp")
     void managementTokenExistsFromTheStart() {
         Booking booking = reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
 
         // Si el mensaje nunca llega, el jugador igual tiene como acceder a su turno.
         assertThat(booking.getManagementToken()).isNotBlank().hasSizeGreaterThan(30);
+    }
+
+    @Test
+    @DisplayName("El link para compartir tambien se emite desde el vamos")
+    void shareTokenExistsFromTheStart() {
+        Booking booking = reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
+
+        assertThat(booking.getShareToken()).isNotBlank().hasSizeGreaterThan(30);
+        // Es un token distinto del de gestion: compartirlo no puede confundirse
+        // con el que permite cancelar.
+        assertThat(booking.getShareToken()).isNotEqualTo(booking.getManagementToken());
+        assertThat(bookingService.findByShareToken(booking.getShareToken()).booking().getId())
+                .isEqualTo(booking.getId());
     }
 
     @Test
@@ -342,6 +369,24 @@ class BookingServiceTest {
     @DisplayName("Un token que no existe no revela nada")
     void unknownTokensAreRejected() {
         assertThatThrownBy(() -> bookingService.findByManagementToken("token-inventado"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("Un token de compartir inventado tampoco revela nada")
+    void unknownShareTokensAreRejected() {
+        assertThatThrownBy(() -> bookingService.findByShareToken("token-inventado"))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("El token de compartir no sirve para entrar al portal de gestion ni cancelar")
+    void shareTokenCannotBeUsedToManageOrCancel() {
+        Booking booking = reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
+
+        assertThatThrownBy(() -> bookingService.findByManagementToken(booking.getShareToken()))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThatThrownBy(() -> bookingService.cancelByManagementToken(booking.getShareToken()))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
