@@ -13,19 +13,25 @@ la primera corrida tarda unos minutos y después queda cacheado). No hace falta 
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-Arranca con un club de ejemplo cargado:
+Arranca con tres clubes de ejemplo cargados:
 
+- Buscar cancha en todos: `http://localhost:8080/buscar`
 - App del jugador: `http://localhost:8080/club/club-necochea`
 - Panel del club: `http://localhost:8080/admin` — `dueno@clubnecochea.test` / `padel1234`
+
+Los otros dos son `costa-verde` y `el-muelle`, con horarios, duración de turno y
+precios distintos. Cada uno tiene su dueño (`dueno@costaverde.test`,
+`dueno@elmuelle.test`), todos con la misma clave.
 
 El `mvn package -Pproduction` compila el bundle del jugador dentro del jar, así que
 el artefacto final sirve las dos aplicaciones sin un servidor de estáticos aparte.
 Para probar en desarrollo, ver más abajo.
 
-Los WhatsApp no se envían: el adaptador de desarrollo los escribe en la consola con
-los links completos, listos para pegar en el navegador.
+WhatsApp está en stand by y apagado por defecto (`WHATSAPP_PROVIDER=off`): no manda
+nada, ni siquiera al log. Para verlo simulado en consola, como antes, corré con
+`WHATSAPP_PROVIDER=log`.
 
-La base se crea vacía en cada arranque y el club de ejemplo se vuelve a cargar. Si
+La base se crea vacía en cada arranque y los clubes de ejemplo se vuelven a cargar. Si
 preferís tu PostgreSQL local, corré sin el perfil `dev` y definí `DB_URL`, `DB_USER`
 y `DB_PASSWORD`.
 
@@ -51,10 +57,10 @@ cd player-app && npm install && npm run build && cd .. && mvn spring-boot:run -D
 
 ### Opción B: con recarga en caliente del frontend
 
-Dos terminales. Vite sirve la app en el 5173 y delega `/api` en Spring.
+Dos terminales. Vite sirve la app en el 5174 y delega `/api` en Spring.
 
 ```bash
-mvn spring-boot:run -Dspring-boot.run.profiles=dev "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5173"
+mvn spring-boot:run -Dspring-boot.run.profiles=dev "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5174"
 ```
 
 ```bash
@@ -68,9 +74,9 @@ por WhatsApp apuntan al 8080 y te sacan de la versión con recarga en caliente.
 
 | Dónde | Qué |
 |---|---|
-| `/club/club-necochea` | Grilla del jugador. Reservá un turno con "Pagar en el club" |
-| Consola del backend | Ahí sale el WhatsApp con el link de confirmación. **No se envía nada**: el adaptador de desarrollo lo imprime |
-| `/confirm/{token}` | Abrir ese link confirma el turno |
+| `/` | Landing comercial para el dueño de club: mockups en HTML/CSS, sin datos reales |
+| `/buscar` | Búsqueda en todos los clubes. Filtrá por día y rango horario, y tocá un turno |
+| `/club/club-necochea` | Grilla del jugador. Reservá un turno con "Pagar en el club" — queda confirmado al toque, sin paso de WhatsApp |
 | `/manage/{token}` | Portal del jugador: detalle y cancelación |
 | `/admin` | Panel del club — `dueno@clubnecochea.test` / `padel1234` |
 
@@ -80,11 +86,12 @@ Cosas que vale la pena probar porque es donde están las reglas:
   la grilla refrescarse sola.
 - **Cancelar un turno de hoy a la tarde.** Con el límite de 12 horas, la app no te
   deja y te ofrece escribirle al club. Un turno de pasado mañana sí se cancela.
-- **No tocar el link de confirmación.** A los 15 minutos el turno se cae solo y la
-  cancha vuelve a la grilla. El job corre cada minuto.
 - **En el panel**, tocá un hueco de la agenda para cargar un turno que "entró por
   teléfono", y después cobralo en mostrador.
 - **Turnos fijos**: creá uno y fijate que bloquee ese horario en la grilla pública.
+- **Buscar "hoy a la noche"** en `/buscar` con la franja Noche: tienen que aparecer
+  turnos de más de un club, mezclados por horario. Tocá uno y fijate que el club
+  abre con ese turno ya elegido, en el paso de datos.
 
 El pago con seña no se puede probar así: el club de ejemplo no tiene MercadoPago
 cargado, y por eso la app solo ofrece "Pagar en el club". Para ejercitarlo hacen
@@ -107,6 +114,16 @@ identificador de tenant al crear la sesión, así que establecerlo más tarde no
 el filtro y las consultas salen vacías. Lo hace `TenantContextFilter`, que además
 limpia el `ThreadLocal` al terminar cada request: Tomcat reutiliza los hilos, y sin
 ese borrado un club terminaría viendo la agenda de otro.
+
+**La búsqueda global recorre los clubes de a uno.** `/buscar` no puede resolverse con
+una sola consulta: el filtro por club lo agrega Hibernate al abrir la sesión, así que
+`CourtSearchService` itera los clubes activos y entra a cada uno con
+`TenantContext.callAs`, delegando en el motor de disponibilidad de siempre. Por eso esa
+clase no lleva `@Transactional`: con una transacción ya abierta, cambiar el club no
+cambia el filtro y no vuelve nada. Cuesta unas cinco consultas por club, y se paga a
+cambio de no tener dos implementaciones de las reglas de disponibilidad. El segmento
+`search` está reservado en `TenantContextFilter` para que no se lea como el slug de un
+club.
 
 **Las horas de reloj de pared no llevan zona horaria.** Los instantes van en
 `timestamptz`; los horarios de apertura y las franjas de tarifa van en `TIME` y se
@@ -140,19 +157,25 @@ de confianza partidos.
 
 ## Estado
 
-Las tres piezas funcionando de punta a punta. 86 tests.
+Las tres piezas funcionando de punta a punta. 148 tests.
 
 - Motor de disponibilidad, precios por franja y por cancha
-- Reserva con seña (MercadoPago) y de palabra (confirmación por WhatsApp)
+- Reserva con seña (MercadoPago) y de palabra, confirmada al instante por defecto
+  (o por WhatsApp si el club lo pide y WhatsApp está activo — hoy en stand by)
 - Cancelación con ventana horaria y alerta de devolución manual
 - Turnos fijos con horizonte móvil y excepciones por semana
-- Vencimientos automáticos y cierre de turnos jugados
+- Vencimientos automáticos y cierre de turnos jugados (también al cobrar el saldo
+  completo en el mostrador)
 - Webhook de MercadoPago con validación de firma e idempotencia
 - Panel del club en Vaadin 25: agenda de canchas por horario con carga manual de
   turnos, cobro en mostrador, ausentes y bajas; jugadores con marca de confianza;
-  turnos fijos; alertas; configuración de horarios, tarifas y cobros
+  turnos fijos; alertas; configuración de horarios, tarifas y cobros; usuario de
+  mostrador con acceso limitado (sin cobros online ni estadísticas)
 - App del jugador en React: grilla por horario con precios, checkout de dos campos,
-  confirmación desde el link de WhatsApp y portal de gestión con cancelación
+  cuenta con email/contraseña o Google, portal de gestión con cancelación, y
+  Términos de uso / Política de privacidad
+- Búsqueda de canchas entre todos los clubes por día y rango horario, con el turno
+  elegido preseleccionado al entrar al club
 
 Lo que falta para salir a producción no es código: número de WhatsApp habilitado,
 plantillas aprobadas por Meta y las credenciales de MercadoPago de cada club.
@@ -164,7 +187,9 @@ plantillas aprobadas por Meta y las credenciales de MercadoPago de cada club.
 | `DB_URL`, `DB_USER`, `DB_PASSWORD` | PostgreSQL |
 | `APP_BASE_URL` | URL pública; arma los links de WhatsApp y el retorno de MercadoPago |
 | `APP_ENCRYPTION_KEY` | AES en Base64 (`openssl rand -base64 32`). Cifra los tokens de MercadoPago. **Si se pierde, quedan ilegibles.** |
-| `WHATSAPP_PROVIDER` | `twilio` en producción, `log` en desarrollo |
+| `MAIL_PROVIDER` | **Obligatoria** (sin default): `smtp` para mandar de verdad, o `log` para verlo en consola. Sin definirla la app no arranca — a propósito: los emails de esta app llevan links de reset de contraseña y verificación, y esos no pueden imprimirse en el log de un despliegue real. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` | Credenciales del proveedor SMTP, si `MAIL_PROVIDER=smtp` |
+| `WHATSAPP_PROVIDER` | `off` (default, no manda nada — WhatsApp está en stand by), `log` (desarrollo, lo imprime) o `twilio` (lo manda de verdad) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `WHATSAPP_FROM` | Credenciales del proveedor |
 | `app.whatsapp.templates.*` | Content SID de cada plantilla aprobada por Meta |
 
@@ -176,3 +201,32 @@ en producción, no un detalle opcional.
 Cada club necesita además, desde su panel, su access token de producción de
 MercadoPago y la clave secreta de webhooks. La URL a configurar en MercadoPago es
 `{APP_BASE_URL}/api/webhooks/mercadopago/{slug}`.
+
+### Desplegar con Docker
+
+El `Dockerfile` es multi-stage: compila con Maven (perfil `production`, incluye
+el bundle de Vaadin y el build de `player-app`) y corre con solo un JRE. Sirve
+para cualquier PaaS que construya directo desde un `Dockerfile` (Railway,
+Render, Fly.io) — no tiene nada específico de ninguno, las variables de
+entorno se cargan desde el dashboard del proveedor elegido.
+
+Para probar la imagen en local antes de desplegarla (`docker-compose.yml`
+levanta un Postgres descartable al lado):
+
+```bash
+APP_ENCRYPTION_KEY=$(openssl rand -base64 32) docker compose up --build
+```
+
+### Backups
+
+El PostgreSQL administrado del proveedor elegido normalmente incluye backups
+automáticos — confirmar que están activos para el plan que se contrate, la
+retención varía. Como escape manual:
+
+```bash
+# Backup
+pg_dump "$DB_URL" > backup-$(date +%F).sql
+
+# Restore
+psql "$DB_URL" < backup-2026-09-08.sql
+```
