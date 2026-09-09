@@ -1,0 +1,24 @@
+# Solo para probar la imagen en local antes de desplegarla: el PaaS elegido
+# pone su propio PostgreSQL administrado, esto no es para producción.
+#
+# APP_ENCRYPTION_KEY hay que generarla antes de levantar esto:
+#   openssl rand -base64 32
+# y exportarla como variable de entorno, o reemplazarla acá abajo.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: padel
+      POSTGRES_USER: padel
+      POSTGRES_PASSWORD: padel
+    ports: ["5432:5432"]
+  app:
+    build: .
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/padel
+      DB_USER: padel
+      DB_PASSWORD: padel
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?generá una con openssl rand -base64 32}
+      MAIL_PROVIDER: log
+    ports: ["8080:8080"]
+    depends_on: [db]

@@ -10,24 +10,35 @@ target/
 
 # Vaadin: todo lo que regenera prepare-frontend en cada build.
 # En Vaadin 25 el frontend vive bajo src/main/frontend, no en la raiz.
+#
+# Las reglas de archivo van ancladas con "/": sin la barra inicial, git las
+# aplica a cualquier subcarpeta, y "package.json" tapaba tambien el de
+# player-app/. La app del jugador quedaba en el repositorio sin sus
+# dependencias ni su configuracion de build, y no se podia clonar y compilar.
 node_modules/
 src/main/frontend/generated/
 src/main/frontend/index.html
 src/main/bundles/
-vite.generated.ts
-vite.config.ts
-package-lock.json
-package.json
-tsconfig.json
-types.d.ts
+/vite.generated.ts
+/vite.config.ts
+/.vaadin-node-tasks.lock
+/package-lock.json
+/package.json
+/tsconfig.json
+/types.d.ts
 
 # Postgres embebido de desarrollo
 pgdata/
 
 .env
 *.log
+*.local.ps1
 
-# App del jugador (React): dependencias y build
-player-app/node_modules/
-player-app/dist/
-player-app/tsconfig.tsbuildinfo
+# Lo que ignora la app del jugador vive en player-app/.gitignore, junto al
+# proyecto que le corresponde.
+
+# Ajustes de Claude Code propios de cada maquina. launch.json si se comparte:
+# es la configuracion del servidor de desarrollo, igual para todo el equipo.
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/

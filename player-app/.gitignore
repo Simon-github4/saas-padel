@@ -1,0 +1,12 @@
+# Dependencias y salidas de build de la app del jugador.
+#
+# El bundle no se construye aca: vite.config.ts lo escribe en
+# ../target/classes/static para que el jar de Spring lo sirva, y esa carpeta
+# ya la ignora el .gitignore de la raiz.
+node_modules/
+dist/
+tsconfig.tsbuildinfo
+
+# Node portable que descarga el frontend-maven-plugin (mvn -Pproduction) para
+# no depender de un Node instalado a mano. Se vuelve a bajar solo.
+node/

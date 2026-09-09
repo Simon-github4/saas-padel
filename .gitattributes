@@ -1,0 +1,24 @@
+# Normalizacion de fin de linea. El equipo trabaja en Windows con
+# core.autocrlf=true, que es una configuracion por maquina: esto deja la regla
+# en el repositorio, para que un clon en Linux o en otra maquina no genere un
+# diff entero por los CRLF.
+* text=auto
+
+# Los scripts de cada plataforma necesitan su propio final de linea aunque el
+# que clona use otro sistema.
+*.sh text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binarios: git no debe tocarlos ni intentar mostrarlos como texto.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.jar binary
+*.pdf binary
