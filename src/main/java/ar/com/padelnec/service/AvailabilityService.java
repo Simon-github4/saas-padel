@@ -193,6 +193,7 @@ public class AvailabilityService {
                 club.getAddress(),
                 club.getCity(),
                 club.mapsUrl(),
+                club.mapsEmbedQuery(),
                 club.getLatitude(),
                 club.getLongitude(),
                 club.getHeroImageUrl(),

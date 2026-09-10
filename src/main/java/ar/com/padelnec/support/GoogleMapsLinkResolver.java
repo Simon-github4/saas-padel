@@ -3,9 +3,12 @@ package ar.com.padelnec.support;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URI;
+import java.net.URLDecoder;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Optional;
@@ -22,6 +25,11 @@ import org.springframework.stereotype.Component;
  * ver {@code SettingsView}- es la clase de friccion que hace que la portada se
  * quede sin mapa para siempre.
  *
+ * <p>De paso, cuando el link trae como identificar el lugar -su pin puntual, o
+ * su nombre- arma tambien el link a esa ficha real de Google Maps, con fotos y
+ * reseñas: un pin pelado en unas coordenadas no dice de que negocio se trata
+ * (ver {@link Coordinates#mapsUrl()} y {@code Tenant.mapsUrl()}).
+ *
  * <p>No hay una API gratuita de Google para esto -la oficial (Geocoding API)
  * pide tarjeta y un costo mensual, injustificado para un dato que se carga una
  * sola vez por club-. En cambio, todo link de Google Maps trae las coordenadas
@@ -35,23 +43,43 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class GoogleMapsLinkResolver {
 
-    /** Cuanto vale cada tipo de link. */
-    public record Coordinates(BigDecimal latitude, BigDecimal longitude) {
+    /**
+     * Lo que se pudo leer de un link.
+     *
+     * @param mapsUrl el link a la ficha real del lugar -nombre, fotos,
+     *                reseñas- para "Abrir en Google Maps", o nulo cuando el
+     *                link solo traia el centro del mapa, sin nombre ni pin
+     *                puntual. Ahi {@code Tenant.mapsUrl()} cae a las
+     *                coordenadas solas.
+     */
+    public record Coordinates(BigDecimal latitude, BigDecimal longitude, String mapsUrl) {
     }
 
     // "!3d<lat>!4d<lng>": el pin de un lugar puntual, en las URL de tipo
     // ".../maps/place/...". Es el mas preciso cuando esta: apunta al comercio
-    // exacto, no al centro de lo que se ve en pantalla.
+    // exacto, no al centro de lo que se ve en pantalla. La URL entera que lo
+    // trae ya es de por si el link a la ficha del lugar -no hace falta armar
+    // nada, alcanza con reusarla (ver reusableUrl).
     private static final Pattern PIN_LAT_LNG = Pattern.compile("!3d(-?\\d{1,3}\\.\\d+)!4d(-?\\d{1,3}\\.\\d+)");
 
     // "!2d<lng>!3d<lat>": el bloque pb= del iframe que Google arma con
-    // "Insertar un mapa". Ojo, el orden es al reves que el de arriba.
+    // "Insertar un mapa". Ojo, el orden es al reves que el de arriba. Un
+    // iframe de /maps/embed no sirve como link para abrir aparte -se ve el
+    // mismo mapa pelado, sin la ficha del lugar-, asi que aca hace falta el
+    // nombre (ver placeName) para armar un link de busqueda que si abra la
+    // ficha.
     private static final Pattern EMBED_LNG_LAT = Pattern.compile("!2d(-?\\d{1,3}\\.\\d+)!3d(-?\\d{1,3}\\.\\d+)");
 
     // "@<lat>,<lng>": el centro de lo que se ve en pantalla, en cualquier URL
     // de Google Maps. Menos preciso que el pin -es la camara, no el comercio-
     // pero esta en todos lados, asi que es el ultimo recurso antes de rendirse.
     private static final Pattern VIEWPORT_LAT_LNG = Pattern.compile("@(-?\\d{1,3}\\.\\d+),(-?\\d{1,3}\\.\\d+)");
+
+    // El nombre del lugar, en los dos sitios donde Google lo deja legible:
+    // "!2s<nombre>" en el pb= del iframe, y "/place/<nombre>/" en cualquier
+    // URL de Google Maps que apunte a un lugar. Los dos van percent-encoded.
+    private static final Pattern EMBED_PLACE_NAME = Pattern.compile("!2s([^!]+)");
+    private static final Pattern PLACE_PATH_NAME = Pattern.compile("/maps/place/([^/@]+)");
 
     private static final Pattern FIRST_URL = Pattern.compile("https?://[^\\s\"'<>]+");
 
@@ -185,7 +213,9 @@ public class GoogleMapsLinkResolver {
     private Optional<Coordinates> extract(String text) {
         Matcher pin = PIN_LAT_LNG.matcher(text);
         if (pin.find()) {
-            Optional<Coordinates> found = coordinates(pin.group(1), pin.group(2));
+            // La URL que trajo el pin ya es la ficha del lugar: se reusa tal
+            // cual, no hace falta -ni conviene- armar una propia.
+            Optional<Coordinates> found = coordinates(pin.group(1), pin.group(2), reusableUrl(text));
             if (found.isPresent()) {
                 return found;
             }
@@ -194,19 +224,19 @@ public class GoogleMapsLinkResolver {
         if (embed.find()) {
             // Grupo 1 es la longitud y el 2 la latitud en este formato -al
             // reves que en los otros dos-, por eso van cruzados aca.
-            Optional<Coordinates> found = coordinates(embed.group(2), embed.group(1));
+            Optional<Coordinates> found = coordinates(embed.group(2), embed.group(1), searchUrlFor(placeName(text)));
             if (found.isPresent()) {
                 return found;
             }
         }
         Matcher viewport = VIEWPORT_LAT_LNG.matcher(text);
         if (viewport.find()) {
-            return coordinates(viewport.group(1), viewport.group(2));
+            return coordinates(viewport.group(1), viewport.group(2), searchUrlFor(placeName(text)));
         }
         return Optional.empty();
     }
 
-    private Optional<Coordinates> coordinates(String latRaw, String lngRaw) {
+    private Optional<Coordinates> coordinates(String latRaw, String lngRaw, String mapsUrl) {
         try {
             BigDecimal lat = new BigDecimal(latRaw).setScale(6, RoundingMode.HALF_UP);
             BigDecimal lng = new BigDecimal(lngRaw).setScale(6, RoundingMode.HALF_UP);
@@ -215,9 +245,54 @@ public class GoogleMapsLinkResolver {
                 // matcheo el pedazo equivocado de la URL, no unas coordenadas.
                 return Optional.empty();
             }
-            return Optional.of(new Coordinates(lat, lng));
+            return Optional.of(new Coordinates(lat, lng, mapsUrl));
         } catch (NumberFormatException | ArithmeticException ex) {
             return Optional.empty();
         }
+    }
+
+    /** La URL de Google Maps dentro del texto, tal cual, para reusarla como link. */
+    private String reusableUrl(String text) {
+        Matcher urlMatcher = FIRST_URL.matcher(text);
+        return urlMatcher.find() ? urlMatcher.group() : null;
+    }
+
+    /**
+     * El nombre del lugar, si esta en el texto. Primero el del bloque pb= del
+     * iframe -mas confiable, es un campo dedicado-, y si no el de la URL de
+     * un link de tipo ".../maps/place/<nombre>/...".
+     */
+    private Optional<String> placeName(String text) {
+        Matcher embedName = EMBED_PLACE_NAME.matcher(text);
+        if (embedName.find()) {
+            Optional<String> found = decodedName(embedName.group(1));
+            if (found.isPresent()) {
+                return found;
+            }
+        }
+        Matcher pathName = PLACE_PATH_NAME.matcher(text);
+        if (pathName.find()) {
+            return decodedName(pathName.group(1));
+        }
+        return Optional.empty();
+    }
+
+    private Optional<String> decodedName(String raw) {
+        try {
+            // URLDecoder tambien vale aca: tanto el pb= (que usa %20) como la
+            // ruta /place/ (que usa "+") separan las palabras del nombre con
+            // uno de los dos, y el decoder entiende los dos igual.
+            String decoded = URLDecoder.decode(raw, StandardCharsets.UTF_8).trim();
+            return decoded.isBlank() ? Optional.empty() : Optional.of(decoded);
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+    }
+
+    /** El link de busqueda que abre la ficha de ese nombre, o nulo sin nombre. */
+    private String searchUrlFor(Optional<String> name) {
+        return name.map(value -> "https://www.google.com/maps/search/?api=1&query="
+                        + URLEncoder.encode(value, StandardCharsets.UTF_8))
+                .orElse(null);
     }
 }

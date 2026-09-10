@@ -350,6 +350,7 @@ export function ClubPage() {
         address={club.address}
         city={club.city}
         mapsUrl={club.mapsUrl}
+        mapsEmbedQuery={club.mapsEmbedQuery}
         latitude={club.latitude}
         longitude={club.longitude}
       />

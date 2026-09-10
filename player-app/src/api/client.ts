@@ -44,6 +44,13 @@ export interface Club {
   address: string | null;
   city: string | null;
   mapsUrl: string | null;
+  /**
+   * Lo que hay que buscar para que el mapa embebido -y lo que abre Google
+   * Maps si se lo toca- seleccionen el mismo lugar que mapsUrl, en vez de un
+   * pin pelado: el nombre del negocio si se pudo identificar, o las
+   * coordenadas si no. Nulo solo cuando tampoco hay coordenadas.
+   */
+  mapsEmbedQuery: string | null;
   /** Coordenadas del club. Sin ellas no se puede previsualizar el mapa. */
   latitude: number | null;
   longitude: number | null;

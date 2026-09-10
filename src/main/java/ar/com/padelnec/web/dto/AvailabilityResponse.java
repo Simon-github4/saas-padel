@@ -35,6 +35,7 @@ public record AvailabilityResponse(
             String address,
             String city,
             String mapsUrl,
+            String mapsEmbedQuery,
             BigDecimal latitude,
             BigDecimal longitude,
             String heroImageUrl,

@@ -117,6 +117,16 @@ public class Tenant extends BaseEntity {
     private BigDecimal longitude;
 
     /**
+     * Link a la ficha real del lugar en Google Maps -con nombre, fotos y
+     * reseñas-, no un pin pelado en unas coordenadas. Lo completa
+     * {@code GoogleMapsLinkResolver} cuando puede identificar el lugar en el
+     * link que el club pego; nulo si nunca se cargo asi, o si el link no
+     * traia como identificarlo (solo el centro del mapa). Ver {@link #mapsUrl()}.
+     */
+    @Column(name = "google_maps_url", length = 500)
+    private String googleMapsUrl;
+
+    /**
      * Foto de portada. El club la pega como URL externa, o sube un archivo: en ese
      * caso esta URL apunta al endpoint publico que sirve los bytes, guardados
      * aparte en {@link TenantHeroImage} (ver esa clase para el porque).
@@ -175,10 +185,20 @@ public class Tenant extends BaseEntity {
     }
 
     /**
-     * Link a Google Maps: con coordenadas si el club las cargó, y si no con
-     * dirección y ciudad. Da null solo cuando no hay ni lo uno ni lo otro.
+     * Link a Google Maps para el boton "Abrir en Google Maps" de la portada.
+     *
+     * <p>El orden importa: {@code googleMapsUrl} es la ficha real del lugar
+     * -con nombre, fotos y reseñas-, y coordenadas sueltas solo abren un pin
+     * pelado en el medio del mapa, sin decir de que negocio se trata. Cae a
+     * coordenadas, y de ahi a direccion y ciudad, solo para los clubes que
+     * cargaron su ubicacion antes de que existiera {@code googleMapsUrl},
+     * o cuyo link no traia como identificar el lugar. Da null solo cuando no
+     * hay ninguno de los tres.
      */
     public String mapsUrl() {
+        if (googleMapsUrl != null && !googleMapsUrl.isBlank()) {
+            return googleMapsUrl;
+        }
         if (latitude != null && longitude != null) {
             return "https://www.google.com/maps/search/?api=1&query=" + latitude + "," + longitude;
         }
@@ -191,6 +211,50 @@ public class Tenant extends BaseEntity {
                     + java.net.URLEncoder.encode(query, java.nio.charset.StandardCharsets.UTF_8);
         }
         return null;
+    }
+
+    // "?query=<texto>" o "&query=<texto>" del link de busqueda que arma mapsUrl().
+    private static final java.util.regex.Pattern SEARCH_QUERY_PARAM =
+            java.util.regex.Pattern.compile("[?&]query=([^&]+)");
+
+    // "/maps/place/<nombre>/..." de un link de lugar puntual reusado tal cual en mapsUrl().
+    private static final java.util.regex.Pattern PLACE_PATH_NAME =
+            java.util.regex.Pattern.compile("/maps/place/([^/@?]+)");
+
+    /**
+     * Lo que hay que buscar para que el mapa embebido de la portada -y lo que
+     * abre Google Maps si el jugador toca ese mapa- seleccionen el mismo
+     * lugar que el boton "Abrir en Google Maps", en vez de un pin pelado.
+     *
+     * <p>El mapa embebido no puede usar {@link #mapsUrl()} tal cual: ese link
+     * esta en el formato moderno de Google (una URL de busqueda o de lugar),
+     * pensado para navegar a una pagina, no para incrustar un iframe. El
+     * iframe de {@code HowToGetThereSection.tsx} usa en cambio el formato
+     * viejo de embeber ({@code maps.google.com/maps?q=...&output=embed}), que
+     * a cambio acepta cualquier texto de busqueda libre -un nombre, o
+     * coordenadas-. Por eso este metodo saca el mismo nombre que ya eligio
+     * {@code mapsUrl()} en vez de tener su propia logica: los dos tienen que
+     * coincidir siempre en que lugar muestran.
+     */
+    public String mapsEmbedQuery() {
+        if (googleMapsUrl != null) {
+            java.util.regex.Matcher searchQuery = SEARCH_QUERY_PARAM.matcher(googleMapsUrl);
+            if (searchQuery.find()) {
+                return decode(searchQuery.group(1));
+            }
+            java.util.regex.Matcher placePath = PLACE_PATH_NAME.matcher(googleMapsUrl);
+            if (placePath.find()) {
+                return decode(placePath.group(1));
+            }
+        }
+        if (latitude != null && longitude != null) {
+            return latitude + "," + longitude;
+        }
+        return null;
+    }
+
+    private static String decode(String raw) {
+        return java.net.URLDecoder.decode(raw, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     /** Verdadero cuando el horario de atencion cruza la medianoche. */

@@ -294,14 +294,16 @@ public class SettingsView extends VerticalLayout {
         TextField city = new TextField("Ciudad");
         city.setValue(club.getCity() == null ? "" : club.getCity());
 
-        // No son campos de la pantalla: el dueño ya no escribe estos dos
-        // numeros, los completa mapsLinkField() a partir del link que pega.
-        // Se guardan igual que antes -Tenant.latitude/longitude no cambio-,
-        // solo que ahora nada los muestra ni los deja tocar a mano.
+        // No son campos de la pantalla: el dueño ya no escribe estos numeros
+        // ni este link, los completa mapsLinkField() a partir del link que
+        // pega. Se guardan igual que antes -Tenant.latitude/longitude no
+        // cambio-, solo que ahora nada los muestra ni los deja tocar a mano.
         BigDecimalField latitude = new BigDecimalField();
         latitude.setValue(club.getLatitude());
         BigDecimalField longitude = new BigDecimalField();
         longitude.setValue(club.getLongitude());
+        TextField googleMapsUrl = new TextField();
+        googleMapsUrl.setValue(club.getGoogleMapsUrl() == null ? "" : club.getGoogleMapsUrl());
 
         Button save = new Button("Guardar Cambios", event -> {
             String primary = blankToNull(primaryColor.getValue());
@@ -325,6 +327,7 @@ public class SettingsView extends VerticalLayout {
             club.setCity(blankToNull(city.getValue()));
             club.setLatitude(latitude.getValue());
             club.setLongitude(longitude.getValue());
+            club.setGoogleMapsUrl(blankToNull(googleMapsUrl.getValue()));
             club = tenantRepository.save(club);
             Notification.show("Perfil guardado");
         });
@@ -336,7 +339,7 @@ public class SettingsView extends VerticalLayout {
                 section("Identidad", tagline),
                 section("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline, heroOverlay, heroCta),
                 section("Apariencia", 3, theme, primaryColorField, secondaryColorField),
-                section("Ubicación", address, city, mapsLinkField(latitude, longitude)),
+                section("Ubicación", address, city, mapsLinkField(latitude, longitude, googleMapsUrl)),
                 actions(save),
                 servicesSection());
     }
@@ -351,12 +354,13 @@ public class SettingsView extends VerticalLayout {
      * simple vista. Lo que si tiene a mano es el boton "Compartir" de la app,
      * que le da exactamente esto -un link-, y ese link ya trae las
      * coordenadas adentro (ver {@link GoogleMapsLinkResolver}). Con eso
-     * alcanza: no hace falta mostrar los dos numeros ni dejarlos tocar a mano,
-     * asi que {@code latitude}/{@code longitude} pasan a ser solo el lugar
-     * donde este metodo deja el resultado -{@link #profileForm} los lee recien
-     * al guardar-, no controles de la pantalla.
+     * alcanza: no hace falta mostrar los numeros ni el link resultante ni
+     * dejarlos tocar a mano, asi que {@code latitude}/{@code longitude}/
+     * {@code googleMapsUrl} pasan a ser solo el lugar donde este metodo deja
+     * el resultado -{@link #profileForm} los lee recien al guardar-, no
+     * controles de la pantalla.
      */
-    private Component mapsLinkField(BigDecimalField latitude, BigDecimalField longitude) {
+    private Component mapsLinkField(BigDecimalField latitude, BigDecimalField longitude, TextField googleMapsUrl) {
         TextField mapsLink = new TextField("Link de Google Maps");
         mapsLink.setPlaceholder("Buscá el club en Google Maps, tocá Compartir y pegá el link");
         mapsLink.setClearButtonVisible(true);
@@ -385,6 +389,10 @@ public class SettingsView extends VerticalLayout {
             }
             latitude.setValue(found.get().latitude());
             longitude.setValue(found.get().longitude());
+            // Se pisa aunque el link nuevo no traiga uno: si no vino con
+            // nombre ni pin puntual, el link a la ficha del pegado anterior
+            // ya no corresponde a estas coordenadas nuevas.
+            googleMapsUrl.setValue(found.get().mapsUrl() == null ? "" : found.get().mapsUrl());
             refreshLocationStatus(status, latitude, longitude);
             mapsLink.clear();
             Notification.show("Ubicación encontrada");

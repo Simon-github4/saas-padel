@@ -15,12 +15,14 @@ export function HowToGetThereSection({
   address,
   city,
   mapsUrl,
+  mapsEmbedQuery,
   latitude,
   longitude,
 }: {
   address: string | null;
   city: string | null;
   mapsUrl: string | null;
+  mapsEmbedQuery: string | null;
   latitude: number | null;
   longitude: number | null;
 }) {
@@ -59,7 +61,7 @@ export function HowToGetThereSection({
               className="block h-64 w-full border-0"
               loading="lazy"
               referrerPolicy="no-referrer"
-              src={embedUrl(latitude, longitude)}
+              src={embedUrl(mapsEmbedQuery ?? `${latitude},${longitude}`)}
             />
           ) : (
             <button
@@ -100,15 +102,22 @@ export function HowToGetThereSection({
  * Recuadro del mapa alrededor del club, con el mapa de Google de verdad -calles,
  * comercios, Street View adentro- y no el generico de OpenStreetMap.
  *
+ * <p>{@code query} es {@code mapsEmbedQuery}: el nombre del negocio cuando se
+ * pudo identificar, para que este mapa (y lo que abre Google si se lo toca)
+ * seleccione la misma ficha que el boton "Abrir en Google Maps" de mas abajo,
+ * en vez de un pin pelado en el medio de la nada. Cae a las coordenadas solas
+ * cuando no hay nombre -ver {@code Tenant.mapsEmbedQuery()}.
+ *
  * <p>No hay API key de por medio: {@code output=embed} es el mismo formato que
  * uso Google Maps durante años para el boton "Insertar un mapa" antes de la
- * Embed API paga, y sigue andando para cualquiera que arme la URL a mano. No
- * es un contrato firmado por Google, asi que si el dia de mañana lo cierran
- * esto deja de mostrar el mapa -pero el boton "Abrir en Google Maps" de abajo
- * sigue andando siempre, no depende de este iframe.
+ * Embed API paga, y sigue andando para cualquiera que arme la URL a mano -con
+ * un nombre o con coordenadas, las dos formas son igual de validas ahi-. No es
+ * un contrato firmado por Google, asi que si el dia de mañana lo cierran esto
+ * deja de mostrar el mapa -pero el boton "Abrir en Google Maps" de abajo sigue
+ * andando siempre, no depende de este iframe.
  */
-function embedUrl(lat: number, lon: number): string {
-  return `https://maps.google.com/maps?q=${lat},${lon}&z=16&output=embed`;
+function embedUrl(query: string): string {
+  return `https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`;
 }
 
 function PinGlyph({ className = 'size-4' }: { className?: string }) {

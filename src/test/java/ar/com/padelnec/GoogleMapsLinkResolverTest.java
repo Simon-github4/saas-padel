@@ -43,6 +43,12 @@ class GoogleMapsLinkResolverTest {
         assertThat(found).isPresent();
         assertThat(found.get().latitude()).isEqualByComparingTo("-38.547337");
         assertThat(found.get().longitude()).isEqualByComparingTo("-58.763974");
+        // Un iframe de /maps/embed no sirve para abrir aparte -se ve el mismo
+        // mapa pelado, sin la ficha del lugar-, asi que aca el link tiene que
+        // ser uno de busqueda por el nombre que trae el propio pb=, no la URL
+        // del embed.
+        assertThat(found.get().mapsUrl())
+                .isEqualTo("https://www.google.com/maps/search/?api=1&query=Nucleo+p%C3%A1del");
     }
 
     @Test
@@ -58,10 +64,13 @@ class GoogleMapsLinkResolverTest {
         assertThat(found).isPresent();
         assertThat(found.get().latitude()).isEqualByComparingTo("-38.547337");
         assertThat(found.get().longitude()).isEqualByComparingTo("-58.763974");
+        // Esta URL ya es la ficha real del lugar: se reusa tal cual, no se
+        // arma una de busqueda.
+        assertThat(found.get().mapsUrl()).isEqualTo(url);
     }
 
     @Test
-    @DisplayName("Sin pin, usa el centro del mapa como ultimo recurso")
+    @DisplayName("Sin pin ni nombre, usa el centro del mapa como coordenadas y no arma link a una ficha")
     void fallsBackToTheMapCenterWhenThereIsNoPin() {
         Optional<GoogleMapsLinkResolver.Coordinates> found = new GoogleMapsLinkResolver()
                 .resolve("https://www.google.com/maps/@-38.547337,-58.763974,15z");
@@ -69,16 +78,19 @@ class GoogleMapsLinkResolverTest {
         assertThat(found).isPresent();
         assertThat(found.get().latitude()).isEqualByComparingTo("-38.547337");
         assertThat(found.get().longitude()).isEqualByComparingTo("-58.763974");
+        // Sin nombre ni pin puntual no hay ficha que abrir: Tenant.mapsUrl()
+        // es quien cae a las coordenadas solas en este caso, no el resolver.
+        assertThat(found.get().mapsUrl()).isNull();
     }
 
     @Test
-    @DisplayName("Un link corto sigue la redireccion y lee las coordenadas del destino")
+    @DisplayName("Un link corto sigue la redireccion, lee las coordenadas del destino y reusa esa URL como ficha")
     void followsAShortLinkToItsDestination() throws IOException {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
+        String destination = "/maps/place/Nucleo/@-38.5,-58.7,17z/data=!3d-38.5473366!4d-58.7639738";
         server.createContext("/short", exchange -> {
             exchange.getResponseHeaders().add("Location",
-                    "http://localhost:" + server.getAddress().getPort()
-                            + "/maps/place/Nucleo/@-38.5,-58.7,17z/data=!3d-38.5473366!4d-58.7639738");
+                    "http://localhost:" + server.getAddress().getPort() + destination);
             exchange.sendResponseHeaders(302, -1);
             exchange.close();
         });
@@ -92,6 +104,8 @@ class GoogleMapsLinkResolverTest {
         assertThat(found).isPresent();
         assertThat(found.get().latitude()).isEqualByComparingTo("-38.547337");
         assertThat(found.get().longitude()).isEqualByComparingTo("-58.763974");
+        assertThat(found.get().mapsUrl()).isEqualTo("http://localhost:" + server.getAddress().getPort()
+                + destination);
     }
 
     @Test
@@ -132,6 +146,22 @@ class GoogleMapsLinkResolverTest {
         assertThat(new GoogleMapsLinkResolver().resolve(null)).isEmpty();
         assertThat(new GoogleMapsLinkResolver().resolve("")).isEmpty();
         assertThat(new GoogleMapsLinkResolver().resolve("necochea, buenos aires")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Un embed sin nombre de lugar trae las coordenadas igual, sin link a una ficha")
+    void embedWithoutAPlaceNameStillYieldsCoordinates() {
+        // El mismo pb=, sin el "!2sNucleo%20p%C3%A1del": pasa con un mapa
+        // generico embebido a mano, sin buscar ningun comercio puntual.
+        String snippet = "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3120.41"
+                + "!2d-58.7639738!3d-38.5473366!2m3!1f0!2f0!3f0";
+
+        Optional<GoogleMapsLinkResolver.Coordinates> found = new GoogleMapsLinkResolver().resolve(snippet);
+
+        assertThat(found).isPresent();
+        assertThat(found.get().latitude()).isEqualByComparingTo("-38.547337");
+        assertThat(found.get().longitude()).isEqualByComparingTo("-58.763974");
+        assertThat(found.get().mapsUrl()).isNull();
     }
 
     @Test
