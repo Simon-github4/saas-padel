@@ -351,10 +351,63 @@ public class SettingsView extends VerticalLayout {
         return box;
     }
 
+    /**
+     * Los unicos iconos que existen de verdad para un servicio de portada.
+     *
+     * <p>Antes esto era un {@code TextField} libre con un placeholder de
+     * ejemplo ("court, parking, racket…"): el dueño del club no tiene por que
+     * saber esos nombres en ingles, y si escribia cualquier otra cosa -o los
+     * escribia mal- la portada mostraba un tilde generico sin avisar nada. El
+     * token en si sigue viajando igual en {@code ClubAmenity.icon}; lo unico
+     * que cambia es que ahora se elige de una lista en vez de tipearse.
+     *
+     * <p>Mismo conjunto que {@code GLYPHS} en
+     * {@code player-app/src/pages/sections/ServicesSection.tsx}: si se agrega
+     * un icono aca hay que agregarlo alla tambien, o la portada lo va a mostrar
+     * con el tilde de repuesto.
+     */
+    private enum AmenityIcon {
+        COURT("court", "▦", "Canchas"),
+        PARKING("parking", "🅿", "Estacionamiento"),
+        RACKET("racket", "✚", "Alquiler de paletas"),
+        SHOWER("shower", "~", "Vestuarios"),
+        TIMER("timer", "◷", "Horario extendido"),
+        CAFE("cafe", "☕", "Buffet"),
+        STAR("star", "★", "Otro");
+
+        private final String token;
+        private final String glyph;
+        private final String label;
+
+        AmenityIcon(String token, String glyph, String label) {
+            this.token = token;
+            this.glyph = glyph;
+            this.label = label;
+        }
+
+        private String display() {
+            return glyph + "  " + label;
+        }
+
+        /**
+         * El de una amenity ya guardada. Si no matchea ninguno -de antes de
+         * este cambio, cargado con un token distinto- cae en STAR: mismo
+         * fallback que ya usa la portada para un icono que no reconoce.
+         */
+        private static AmenityIcon of(String token) {
+            for (AmenityIcon icon : values()) {
+                if (icon.token.equals(token)) {
+                    return icon;
+                }
+            }
+            return STAR;
+        }
+    }
+
     private VerticalLayout amenitiesForm() {
         dressGrid(amenityGrid);
-        amenityGrid.addColumn(ClubAmenity::getIcon).setHeader("Icono")
-                .setAutoWidth(true).setFlexGrow(0).setTextAlign(ColumnTextAlign.CENTER);
+        amenityGrid.addColumn(amenity -> AmenityIcon.of(amenity.getIcon()).display()).setHeader("Icono")
+                .setAutoWidth(true).setFlexGrow(0);
         amenityGrid.addColumn(ClubAmenity::getTitle).setHeader("Servicio").setFlexGrow(2);
         amenityGrid.addColumn(ClubAmenity::getDescription).setHeader("Descripción").setFlexGrow(3);
         amenityGrid.addComponentColumn(amenity -> {
@@ -366,8 +419,12 @@ public class SettingsView extends VerticalLayout {
             return delete;
         }).setAutoWidth(true).setFlexGrow(0);
 
-        TextField icon = new TextField();
-        icon.setPlaceholder("Icono (court, parking, racket…)");
+        Select<AmenityIcon> icon = new Select<>();
+        icon.setLabel("Icono");
+        icon.setItems(AmenityIcon.values());
+        icon.setItemLabelGenerator(AmenityIcon::display);
+        icon.setValue(AmenityIcon.STAR);
+        icon.setWidth("11rem");
         TextField title = new TextField();
         title.setPlaceholder("Ej. 3 canchas techadas");
         TextField description = new TextField();
@@ -379,12 +436,12 @@ public class SettingsView extends VerticalLayout {
                 return;
             }
             ClubAmenity amenity = new ClubAmenity();
-            amenity.setIcon(icon.getValue() == null || icon.getValue().isBlank() ? "star" : icon.getValue().trim());
+            amenity.setIcon(icon.getValue().token);
             amenity.setTitle(title.getValue().trim());
             amenity.setDescription(blankToNull(description.getValue()));
             amenity.setDisplayOrder(nextDisplayOrder());
             amenityRepository.save(amenity);
-            icon.clear();
+            icon.setValue(AmenityIcon.STAR);
             title.clear();
             description.clear();
             refreshAmenities();

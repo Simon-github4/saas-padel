@@ -1,12 +1,17 @@
 package ar.com.padelnec.ui;
 
+import ar.com.padelnec.config.AppProperties;
+import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.AlertService;
 import ar.com.padelnec.service.TenantService;
 import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
 import com.vaadin.flow.component.avatar.Avatar;
+import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.contextmenu.MenuItem;
 import com.vaadin.flow.component.contextmenu.SubMenu;
 import com.vaadin.flow.component.html.H1;
@@ -15,6 +20,9 @@ import com.vaadin.flow.component.menubar.MenuBar;
 import com.vaadin.flow.component.menubar.MenuBarVariant;
 import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.IconFactory;
+import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.sidenav.SideNav;
@@ -43,14 +51,24 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
     private final AlertService alertService;
     private final String clubName;
 
+    /**
+     * La pagina publica del club, la que se comparte fuera del panel. Mismo
+     * patron de URL que ya arma {@code NotificationService} para los links que
+     * viajan por WhatsApp -- si el dia de mañana cambia, hay que tocar los dos
+     * lugares.
+     */
+    private final String publicUrl;
+
     /** Se rellena en cada navegacion con el nombre de la pantalla activa. */
     private final H1 viewTitle = new H1();
 
     public MainLayout(AuthenticationContext authenticationContext, AlertService alertService,
-                      TenantService tenantService) {
+                      TenantService tenantService, AppProperties properties) {
         this.authenticationContext = authenticationContext;
         this.alertService = alertService;
-        this.clubName = tenantService.requireCurrent().getName();
+        Tenant club = tenantService.requireCurrent();
+        this.clubName = club.getName();
+        this.publicUrl = properties.getBaseUrl() + "/club/" + club.getSlug();
 
         setPrimarySection(Section.DRAWER);
         addToNavbar(true, new DrawerToggle(), header());
@@ -58,7 +76,8 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
     }
 
     /**
-     * Barra superior: a la izquierda donde estas, a la derecha con quien entraste.
+     * Barra superior: a la izquierda donde estas, a la derecha el link de la
+     * pagina y con quien entraste.
      *
      * <p>El club no se repite aca porque ya encabeza el menu lateral; la barra
      * se queda con lo que si cambia al navegar.
@@ -67,12 +86,81 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         viewTitle.addClassNames(LumoUtility.FontSize.LARGE, LumoUtility.Margin.NONE,
                 LumoUtility.FontWeight.SEMIBOLD, LumoUtility.Whitespace.NOWRAP);
 
-        HorizontalLayout header = new HorizontalLayout(viewTitle, userMenu());
+        // Agrupados aparte del titulo: el titulo cambia de pantalla en pantalla y
+        // se queda pegado a la izquierda, este bloque es siempre lo mismo y se
+        // queda pegado a la derecha, sin que "space-between" los separe a ellos
+        // dos entre si.
+        HorizontalLayout actions = new HorizontalLayout(shareLinkButton(), userMenu());
+        actions.setPadding(false);
+        actions.setAlignItems(HorizontalLayout.Alignment.CENTER);
+        actions.addClassNames(LumoUtility.Gap.SMALL);
+
+        HorizontalLayout header = new HorizontalLayout(viewTitle, actions);
         header.setWidthFull();
         header.setAlignItems(HorizontalLayout.Alignment.CENTER);
         header.setJustifyContentMode(HorizontalLayout.JustifyContentMode.BETWEEN);
         header.addClassNames(LumoUtility.Padding.Horizontal.MEDIUM, LumoUtility.Gap.MEDIUM);
         return header;
+    }
+
+    /**
+     * El link de la pagina del club, para compartir por fuera del panel.
+     *
+     * <p>Vive en la barra superior y no en el menu lateral: la barra no se
+     * esconde nunca, ni siquiera en el celular con el drawer cerrado, y es el
+     * dato que mas se pide de golpe ("pasame el link de la cancha") sin que
+     * haga falta ir a buscarlo a Configuracion.
+     */
+    private Component shareLinkButton() {
+        Span url = new Span(displayUrl());
+        url.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.FontWeight.MEDIUM,
+                LumoUtility.Whitespace.NOWRAP);
+        url.addClassName("share-link__url");
+        url.getElement().setAttribute("title", publicUrl);
+
+        Button copy = new Button(VaadinIcon.COPY_O.create(), event -> copyPublicLink());
+        copy.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_ICON);
+        copy.setAriaLabel("Copiar link de la página del club");
+        copy.getElement().setAttribute("title", "Copiar link");
+
+        HorizontalLayout pill = new HorizontalLayout(url, copy);
+        pill.setAlignItems(HorizontalLayout.Alignment.CENTER);
+        pill.setPadding(false);
+        pill.addClassNames(LumoUtility.Gap.XSMALL, LumoUtility.Padding.Left.SMALL,
+                LumoUtility.Border.ALL, LumoUtility.BorderColor.CONTRAST_20,
+                LumoUtility.BorderRadius.FULL, LumoUtility.Background.CONTRAST_5);
+        pill.addClassName("share-link");
+        return pill;
+    }
+
+    /**
+     * El link sin protocolo ni barra final, que es ruido para leer de un
+     * vistazo: lo que hace falta ver es el dominio y el club, no "https://".
+     */
+    private String displayUrl() {
+        return publicUrl.replaceFirst("^https?://", "");
+    }
+
+    /**
+     * Copia al portapapeles y avisa si no se pudo: el navegador puede negarse
+     * (un sitio sin HTTPS que no sea localhost, o el usuario sin haber tocado la
+     * pagina todavia), y sin este chequeo el club creeria que ya lo tiene
+     * copiado cuando en realidad no paso nada.
+     */
+    private void copyPublicLink() {
+        UI.getCurrent().getPage()
+                .executeJs("return navigator.clipboard.writeText($0).then(() => true).catch(() => false)",
+                        publicUrl)
+                .then(Boolean.class, copied -> {
+                    if (Boolean.TRUE.equals(copied)) {
+                        Notification.show("Link copiado", 2500, Notification.Position.BOTTOM_START);
+                    } else {
+                        Notification failure = Notification.show(
+                                "No se pudo copiar. El link es: " + publicUrl, 6000,
+                                Notification.Position.BOTTOM_START);
+                        failure.addThemeVariants(NotificationVariant.LUMO_ERROR);
+                    }
+                });
     }
 
     /**
