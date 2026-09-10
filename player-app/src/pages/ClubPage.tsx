@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, ApiError, type Availability, type Slot } from '../api/client';
 import { addDays, clockTime, longDate, perPerson, todayIso, whatsappLink } from '../format';
-import { setPageMeta } from '../seo';
+import { setPageMeta, setStructuredData } from '../seo';
 import {
   Alert,
   Badge,
@@ -104,6 +104,46 @@ export function ClubPage() {
       `${pitch}Reservá tu cancha de pádel online${where} con ${club.name}, sin llamar ni escribir por WhatsApp.`,
     );
   }, [data?.club]);
+
+  // Datos estructurados: sin esto Google tiene que adivinar, leyendo el
+  // texto de la página, que esto es un club de pádel en tal dirección. Con
+  // esto se lo decimos directo, y habilita un resultado con más que el link
+  // pelado (mapa, dirección, teléfono).
+  useEffect(() => {
+    const club = data?.club;
+    if (!club) {
+      return;
+    }
+    const jsonLd: Record<string, unknown> = {
+      '@context': 'https://schema.org',
+      '@type': 'SportsActivityLocation',
+      name: club.name,
+      url: `${window.location.origin}/club/${slug}`,
+      telephone: club.whatsappNumber,
+    };
+    if (club.tagline) {
+      jsonLd.description = club.tagline;
+    }
+    if (club.heroImageUrl) {
+      jsonLd.image = new URL(club.heroImageUrl, window.location.origin).toString();
+    }
+    if (club.address || club.city) {
+      jsonLd.address = {
+        '@type': 'PostalAddress',
+        ...(club.address ? { streetAddress: club.address } : {}),
+        ...(club.city ? { addressLocality: club.city } : {}),
+        addressCountry: 'AR',
+      };
+    }
+    if (club.latitude != null && club.longitude != null) {
+      jsonLd.geo = {
+        '@type': 'GeoCoordinates',
+        latitude: club.latitude,
+        longitude: club.longitude,
+      };
+    }
+    return setStructuredData(jsonLd);
+  }, [data?.club, slug]);
 
   // Elegir un día avanza a la grilla de horarios (paso 2). Cambiar de día
   // además descarta el turno que se hubiera elegido: ya no aplica.

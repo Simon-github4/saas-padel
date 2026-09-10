@@ -29,3 +29,17 @@ export function setPageMeta(title: string, description?: string): () => void {
     }
   };
 }
+
+/**
+ * Datos estructurados (JSON-LD): le dicen a Google explícitamente que esta
+ * página es un club de pádel concreto, con esta dirección y este teléfono,
+ * en vez de que tenga que adivinarlo leyendo el texto -- es lo que habilita
+ * un resultado con mapa o ficha, no solo el link pelado.
+ */
+export function setStructuredData(data: Record<string, unknown>): () => void {
+  const script = document.createElement('script');
+  script.type = 'application/ld+json';
+  script.textContent = JSON.stringify(data);
+  document.head.appendChild(script);
+  return () => script.remove();
+}
