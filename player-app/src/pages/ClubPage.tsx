@@ -109,6 +109,15 @@ export function ClubPage() {
   // texto de la página, que esto es un club de pádel en tal dirección. Con
   // esto se lo decimos directo, y habilita un resultado con más que el link
   // pelado (mapa, dirección, teléfono).
+  //
+  // SportsClub y no SportsActivityLocation: probado con la herramienta de
+  // resultados enriquecidos de Google, que no reconoce nada por fuera de
+  // LocalBusiness y sus subtipos -- SportsActivityLocation es de la rama
+  // Place/CivicStructure de schema.org, no de LocalBusiness, así que
+  // quedaba invisible para Google aunque el JSON-LD fuera válido.
+  // SportsClub sí es subtipo de LocalBusiness, y su propia descripción en
+  // schema.org nombra clubes de tenis/raqueta -- el caso más parecido a
+  // un club de pádel que hay.
   useEffect(() => {
     const club = data?.club;
     if (!club) {
@@ -116,7 +125,7 @@ export function ClubPage() {
     }
     const jsonLd: Record<string, unknown> = {
       '@context': 'https://schema.org',
-      '@type': 'SportsActivityLocation',
+      '@type': 'SportsClub',
       name: club.name,
       url: `${window.location.origin}/club/${slug}`,
       telephone: club.whatsappNumber,
