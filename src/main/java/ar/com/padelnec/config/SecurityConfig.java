@@ -121,6 +121,10 @@ public class SecurityConfig {
         return http
                 .securityMatcher("/", "/index.html", "/favicon.ico", "/assets/**",
                         "/robots.txt", "/sitemap.xml",
+                        // Archivo de verificacion de Google Search Console: hay que poder
+                        // pedirlo sin sesion, y el nombre trae un id al azar que cambia
+                        // si el dia de mañana hay que reverificar.
+                        "/google*.html",
                         "/buscar", "/club/**", "/manage/**", "/confirm/**", "/turno/**",
                         "/login", "/account", "/forgot-password", "/reset-password/**",
                         "/privacidad", "/terminos")
