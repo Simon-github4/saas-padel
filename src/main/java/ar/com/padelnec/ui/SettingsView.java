@@ -294,12 +294,14 @@ public class SettingsView extends VerticalLayout {
         TextField city = new TextField("Ciudad");
         city.setValue(club.getCity() == null ? "" : club.getCity());
 
-        BigDecimalField latitude = new BigDecimalField("Latitud");
+        // No son campos de la pantalla: el dueño ya no escribe estos dos
+        // numeros, los completa mapsLinkField() a partir del link que pega.
+        // Se guardan igual que antes -Tenant.latitude/longitude no cambio-,
+        // solo que ahora nada los muestra ni los deja tocar a mano.
+        BigDecimalField latitude = new BigDecimalField();
         latitude.setValue(club.getLatitude());
-        BigDecimalField longitude = new BigDecimalField("Longitud");
+        BigDecimalField longitude = new BigDecimalField();
         longitude.setValue(club.getLongitude());
-        longitude.setHelperText(
-                "Se completan solas al pegar un link de Google Maps arriba, o cargalas vos si ya las tenés.");
 
         Button save = new Button("Guardar Cambios", event -> {
             String primary = blankToNull(primaryColor.getValue());
@@ -334,7 +336,7 @@ public class SettingsView extends VerticalLayout {
                 section("Identidad", tagline),
                 section("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline, heroOverlay, heroCta),
                 section("Apariencia", 3, theme, primaryColorField, secondaryColorField),
-                section("Ubicación", address, city, mapsLinkField(latitude, longitude), latitude, longitude),
+                section("Ubicación", address, city, mapsLinkField(latitude, longitude)),
                 actions(save),
                 servicesSection());
     }
@@ -343,20 +345,29 @@ public class SettingsView extends VerticalLayout {
      * Pegar un link de Google Maps en vez de escribir la latitud y la
      * longitud a mano.
      *
-     * <p>Antes esos dos campos eran el unico camino: el dueño tenia que saber
-     * las coordenadas de su propia cancha en decimales, un dato que nadie
-     * memoriza y que Google Maps no muestra en ningun lado a simple vista. Lo
-     * que si tiene a mano es el boton "Compartir" de la app, que le da
-     * exactamente esto -un link-, y ese link ya trae las coordenadas adentro
-     * (ver {@link GoogleMapsLinkResolver}). Los dos campos de mas abajo no
-     * desaparecen: quedan como lo que muestra el resultado, y como la manera
-     * de corregir a mano si el link no se pudo leer.
+     * <p>Antes latitud y longitud eran dos campos de la pantalla: el dueño
+     * tenia que saber las coordenadas de su propia cancha en decimales, un
+     * dato que nadie memoriza y que Google Maps no muestra en ningun lado a
+     * simple vista. Lo que si tiene a mano es el boton "Compartir" de la app,
+     * que le da exactamente esto -un link-, y ese link ya trae las
+     * coordenadas adentro (ver {@link GoogleMapsLinkResolver}). Con eso
+     * alcanza: no hace falta mostrar los dos numeros ni dejarlos tocar a mano,
+     * asi que {@code latitude}/{@code longitude} pasan a ser solo el lugar
+     * donde este metodo deja el resultado -{@link #profileForm} los lee recien
+     * al guardar-, no controles de la pantalla.
      */
     private Component mapsLinkField(BigDecimalField latitude, BigDecimalField longitude) {
         TextField mapsLink = new TextField("Link de Google Maps");
         mapsLink.setPlaceholder("Buscá el club en Google Maps, tocá Compartir y pegá el link");
         mapsLink.setClearButtonVisible(true);
         mapsLink.setWidthFull();
+
+        // Unica señal de que ya hay algo cargado: sin los campos de numeros a
+        // la vista, el dueño no tiene otra forma de saber si esto ya funciono
+        // alguna vez o si la portada todavia no tiene mapa.
+        Span status = new Span();
+        status.addClassNames(LumoUtility.FontSize.XSMALL, LumoUtility.TextColor.SECONDARY);
+        refreshLocationStatus(status, latitude, longitude);
 
         Button use = new Button("Usar este link", event -> {
             String pasted = mapsLink.getValue();
@@ -368,13 +379,13 @@ public class SettingsView extends VerticalLayout {
             Optional<GoogleMapsLinkResolver.Coordinates> found = mapsLinkResolver.resolve(pasted);
             if (found.isEmpty()) {
                 Notification.show("No pude leer la ubicación de ese link. Fijate que sea el que te da "
-                                + "\"Compartir\" en Google Maps, o cargá las coordenadas a mano abajo.",
-                        6000, Notification.Position.MIDDLE)
+                                + "\"Compartir\" en Google Maps.", 6000, Notification.Position.MIDDLE)
                         .addThemeVariants(NotificationVariant.LUMO_ERROR);
                 return;
             }
             latitude.setValue(found.get().latitude());
             longitude.setValue(found.get().longitude());
+            refreshLocationStatus(status, latitude, longitude);
             mapsLink.clear();
             Notification.show("Ubicación encontrada");
         });
@@ -385,7 +396,18 @@ public class SettingsView extends VerticalLayout {
         row.setWidthFull();
         row.expand(mapsLink);
         row.addClassNames(LumoUtility.Gap.SMALL);
-        return row;
+
+        VerticalLayout field = new VerticalLayout(row, status);
+        field.setPadding(false);
+        field.setSpacing(false);
+        field.addClassNames(LumoUtility.Gap.XSMALL);
+        return field;
+    }
+
+    private void refreshLocationStatus(Span status, BigDecimalField latitude, BigDecimalField longitude) {
+        status.setText(latitude.getValue() != null && longitude.getValue() != null
+                ? "📍 Ya hay una ubicación guardada. Pegá otro link para reemplazarla."
+                : "Todavía no cargaste la ubicación del club: la portada no va a mostrar el mapa.");
     }
 
     private VerticalLayout servicesSection() {

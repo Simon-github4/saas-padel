@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
  * Cómo llegar: dirección, previsualización del mapa y botón a Google Maps.
  *
  * <p>El mapa no arranca cargado: recien aparece 1,5s despues de entrar a la
- * pagina, para no meter el iframe de OpenStreetMap en el primer pintado. El
- * que quiere ir antes de esos 1,5s puede tocar el bloque para adelantarlo.
+ * pagina, para no meter el iframe de Google Maps en el primer pintado. El que
+ * quiere ir antes de esos 1,5s puede tocar el bloque para adelantarlo.
  *
  * <p>La previsualización necesita coordenadas. Sin ellas el bloque queda como
- * estaba, con la dirección y el botón: el club las carga desde el panel.
+ * estaba, con la dirección y el botón: el club las carga desde el panel,
+ * pegando el link que le da "Compartir" en la app de Google Maps.
  */
 export function HowToGetThereSection({
   address,
@@ -72,7 +73,7 @@ export function HowToGetThereSection({
                 </span>
                 <span className="eyebrow mt-4 block text-cal">Cargando el mapa…</span>
                 <span className="mt-2 block text-xs text-ink-mute">
-                  Desde OpenStreetMap, o tocá para verlo ya
+                  Desde Google Maps, o tocá para verlo ya
                 </span>
               </span>
             </button>
@@ -96,19 +97,18 @@ export function HowToGetThereSection({
 }
 
 /**
- * Recuadro del mapa alrededor del club.
+ * Recuadro del mapa alrededor del club, con el mapa de Google de verdad -calles,
+ * comercios, Street View adentro- y no el generico de OpenStreetMap.
  *
- * <p>OpenStreetMap embebe por bbox, no por zoom: el margen fija cuánta cuadra se
- * ve. 0.004 grados son unos 400 metros, suficiente para reconocer las esquinas
- * de alrededor sin perder de vista el pin.
+ * <p>No hay API key de por medio: {@code output=embed} es el mismo formato que
+ * uso Google Maps durante años para el boton "Insertar un mapa" antes de la
+ * Embed API paga, y sigue andando para cualquiera que arme la URL a mano. No
+ * es un contrato firmado por Google, asi que si el dia de mañana lo cierran
+ * esto deja de mostrar el mapa -pero el boton "Abrir en Google Maps" de abajo
+ * sigue andando siempre, no depende de este iframe.
  */
 function embedUrl(lat: number, lon: number): string {
-  const margin = 0.004;
-  const bbox = [lon - margin, lat - margin, lon + margin, lat + margin].join(',');
-  return (
-    'https://www.openstreetmap.org/export/embed.html' +
-    `?bbox=${bbox}&layer=mapnik&marker=${lat},${lon}`
-  );
+  return `https://maps.google.com/maps?q=${lat},${lon}&z=16&output=embed`;
 }
 
 function PinGlyph({ className = 'size-4' }: { className?: string }) {

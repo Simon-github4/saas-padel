@@ -34,8 +34,10 @@ public class SecurityConfig {
      * origen https porque el dueno del club puede pegar una URL externa como
      * foto de portada (ver {@code Tenant.heroImageUrl}). Google Identity
      * Services necesita su propio origen en script/connect/frame, y el mapa
-     * de "como llegar" embebe un iframe de OpenStreetMap
-     * ({@code HowToGetThereSection.tsx}).
+     * de "como llegar" embebe un iframe de Google Maps
+     * ({@code HowToGetThereSection.tsx}) que arranca en {@code maps.google.com}
+     * y redirige a {@code www.google.com/maps/embed/...} -los dos hacen falta,
+     * el navegador chequea el CSP tambien contra el destino de la redireccion.
      */
     private static final String PLAYER_APP_CSP = "default-src 'self'; "
             + "script-src 'self' https://accounts.google.com; "
@@ -43,7 +45,7 @@ public class SecurityConfig {
             + "img-src 'self' data: https:; "
             + "font-src 'self' data:; "
             + "connect-src 'self' https://accounts.google.com; "
-            + "frame-src https://accounts.google.com https://www.openstreetmap.org; "
+            + "frame-src https://accounts.google.com https://maps.google.com https://www.google.com; "
             + "object-src 'none'; "
             + "base-uri 'self'; "
             + "form-action 'self'; "
