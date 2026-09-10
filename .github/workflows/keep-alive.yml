@@ -1,0 +1,21 @@
+name: Mantener despierto el servicio
+
+# La capa gratuita de Render duerme el servicio a los 15 minutos sin
+# trafico, y el primer request que lo despierta puede tardar decenas de
+# segundos -- tiempo de sobra para que el rastreador de Google (u otro
+# visitante real) se encuentre con un error en vez de la pagina. Este ping
+# cada 10 minutos evita que llegue a dormirse.
+#
+# Si el dominio cambia (por ejemplo, al pasar a uno propio), hay que
+# actualizar la URL de abajo.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pegarle al health check
+        run: curl -sf --max-time 60 https://saas-padel.onrender.com/actuator/health/liveness
