@@ -120,6 +120,7 @@ public class SecurityConfig {
     public SecurityFilterChain playerAppChain(HttpSecurity http) throws Exception {
         return http
                 .securityMatcher("/", "/index.html", "/favicon.ico", "/assets/**",
+                        "/robots.txt", "/sitemap.xml",
                         "/buscar", "/club/**", "/manage/**", "/confirm/**", "/turno/**",
                         "/login", "/account", "/forgot-password", "/reset-password/**",
                         "/privacidad", "/terminos")

@@ -6,6 +6,7 @@ import { AccountButton } from '../components/AccountButton';
 import { MonthCalendar } from '../components/MonthCalendar';
 import { Alert, Badge, Button, Card, Chip, Loading, Screen, SectionTitle, TopBar } from '../components/Ui';
 import { addDays, longDate, perPerson, todayIso } from '../format';
+import { setPageMeta } from '../seo';
 
 /** Primera y última hora que ofrece el selector, en pasos de media hora. */
 const FIRST_HOUR = 0;
@@ -50,6 +51,15 @@ export function SearchPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pickingDay, setPickingDay] = useState(false);
+
+  useEffect(
+    () =>
+      setPageMeta(
+        'Buscar cancha de pádel — todos los clubes',
+        'Buscá canchas de pádel libres hoy en todos los clubes a la vez, por día y horario, sin elegir club primero.',
+      ),
+    [],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, ApiError, type Availability, type Slot } from '../api/client';
 import { addDays, clockTime, longDate, perPerson, todayIso, whatsappLink } from '../format';
+import { setPageMeta } from '../seo';
 import {
   Alert,
   Badge,
@@ -86,6 +87,22 @@ export function ClubPage() {
       root.style.removeProperty('--color-ladrillo');
       root.style.removeProperty('--color-ladrillo-claro');
     };
+  }, [data?.club]);
+
+  // Sin esto, Google ve el mismo título y descripción genéricos de
+  // index.html en la página de cada club, y un resultado de búsqueda no
+  // puede distinguir "Simon Padel" de cualquier otro.
+  useEffect(() => {
+    const club = data?.club;
+    if (!club) {
+      return;
+    }
+    const where = club.city ? ` en ${club.city}` : '';
+    const pitch = club.tagline ? `${club.tagline}. ` : '';
+    return setPageMeta(
+      `${club.name} — Reservá tu cancha de pádel`,
+      `${pitch}Reservá tu cancha de pádel online${where} con ${club.name}, sin llamar ni escribir por WhatsApp.`,
+    );
   }, [data?.club]);
 
   // Elegir un día avanza a la grilla de horarios (paso 2). Cambiar de día
