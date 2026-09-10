@@ -217,6 +217,56 @@ levanta un Postgres descartable al lado):
 APP_ENCRYPTION_KEY=$(openssl rand -base64 32) docker compose up --build
 ```
 
+### SEO y Google Search Console
+
+La app ya hace, sola, lo que necesita para que Google pueda encontrar y
+distinguir cada club:
+
+- Título y meta-descripción cambian por página (`ClubPage`, `SearchPage`,
+  vía `player-app/src/seo.ts`) con los datos reales del club — sin esto,
+  Google vería el mismo título genérico en todas las páginas.
+- `/sitemap.xml` lista la portada, `/buscar` y cada club activo.
+- `/robots.txt` apunta al sitemap y bloquea lo que no es contenido público
+  (portales por token, cuenta, login).
+
+Lo que hay que hacer a mano, una vez por dominio:
+
+1. **El nombre del club tiene que ser el real**, no un slug de prueba
+   (`UPDATE tenant SET name = '...' WHERE slug = '...'`) — el título y la
+   descripción salen directo de ese campo.
+2. **Google Search Console** ([search.google.com/search-console](https://search.google.com/search-console)):
+   propiedad tipo **"Prefijo de URL"**, no "Dominio" — la verificación por
+   registro TXT en el DNS es para dominios propios, y `*.onrender.com` (o
+   el que dé el PaaS) no lo es. El método que sí funciona es **"Archivo
+   HTML"**: Google da un archivo `google<id>.html` para subir a la raíz
+   del sitio.
+   - Se agrega en `player-app/public/` (Vite lo copia tal cual al build).
+   - Hay que sumarlo también al `securityMatcher` de `playerAppChain` en
+     `SecurityConfig.java` (`/google*.html`, ya con el patrón cargado) —
+     sin eso cae detrás del login del panel, como pasa con cualquier ruta
+     nueva que no esté en esa lista.
+   - Compilar (`npm run build`), desplegar, y confirmar con `curl` que el
+     archivo responde sin sesión antes de tocar "Verificar" en Search
+     Console — evita gastar el intento contra un deploy que todavía no
+     terminó.
+3. **Enviar el sitemap**: dentro de la propiedad ya verificada, Indexación
+   → Sitemaps → escribir `sitemap.xml` → Enviar. Sin esto Google igual
+   puede encontrar el sitio solo, pero tarda mucho más.
+4. Indexar no es instantáneo: aunque estén todos los pasos hechos, puede
+   tardar días en aparecer como rastreado. `site:tu-dominio` en Google
+   dice si ya indexó algo.
+
+Cuando el club tenga dominio propio (en vez del subdominio del PaaS), ahí
+sí conviene pasar a una propiedad tipo **"Dominio"** con el registro TXT en
+el DNS: cubre todo el dominio de una, sin tener que reverificar cada
+subruta. Hay que actualizar `APP_BASE_URL` a la nueva URL, y en
+MercadoPago la URL del webhook de cada club (`{APP_BASE_URL}/api/webhooks/mercadopago/{slug}`).
+
+Fuera del código: **Google Business Profile** (gratis, lo carga cada
+dueño de club) suele pesar más que el posicionamiento orgánico para que
+alguien encuentre el club buscando su nombre — nombre, dirección y
+teléfono tienen que coincidir con lo cargado en el panel.
+
 ### Backups
 
 El PostgreSQL administrado del proveedor elegido normalmente incluye backups
