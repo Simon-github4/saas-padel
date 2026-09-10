@@ -19,8 +19,10 @@ import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.ClubUserService;
 import ar.com.padelnec.service.ProductService;
 import ar.com.padelnec.service.TenantService;
+import ar.com.padelnec.support.GoogleMapsLinkResolver;
 import ar.com.padelnec.support.ImageSignature;
 import ar.com.padelnec.web.BusinessRuleException;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
@@ -121,6 +123,7 @@ public class SettingsView extends VerticalLayout {
     private final ProductRepository productRepository;
     private final ProductService productService;
     private final ClubUserService clubUserService;
+    private final GoogleMapsLinkResolver mapsLinkResolver;
     private final transient AuthenticationContext authenticationContext;
 
     private final Grid<ClubAmenity> amenityGrid = new Grid<>();
@@ -137,6 +140,7 @@ public class SettingsView extends VerticalLayout {
                         CourtRepository courtRepository, PricingRuleRepository pricingRuleRepository,
                         ClubAmenityRepository amenityRepository, ProductRepository productRepository,
                         ProductService productService, ClubUserService clubUserService,
+                        GoogleMapsLinkResolver mapsLinkResolver,
                         AuthenticationContext authenticationContext) {
         this.tenantService = tenantService;
         this.tenantRepository = tenantRepository;
@@ -147,6 +151,7 @@ public class SettingsView extends VerticalLayout {
         this.productRepository = productRepository;
         this.productService = productService;
         this.clubUserService = clubUserService;
+        this.mapsLinkResolver = mapsLinkResolver;
         this.authenticationContext = authenticationContext;
 
         setSizeFull();
@@ -291,10 +296,10 @@ public class SettingsView extends VerticalLayout {
 
         BigDecimalField latitude = new BigDecimalField("Latitud");
         latitude.setValue(club.getLatitude());
-        latitude.setHelperText(
-                "Con coordenadas la portada muestra el mapa; sin ellas, solo el botón a Google Maps");
         BigDecimalField longitude = new BigDecimalField("Longitud");
         longitude.setValue(club.getLongitude());
+        longitude.setHelperText(
+                "Se completan solas al pegar un link de Google Maps arriba, o cargalas vos si ya las tenés.");
 
         Button save = new Button("Guardar Cambios", event -> {
             String primary = blankToNull(primaryColor.getValue());
@@ -329,9 +334,58 @@ public class SettingsView extends VerticalLayout {
                 section("Identidad", tagline),
                 section("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline, heroOverlay, heroCta),
                 section("Apariencia", 3, theme, primaryColorField, secondaryColorField),
-                section("Ubicación", address, city, latitude, longitude),
+                section("Ubicación", address, city, mapsLinkField(latitude, longitude), latitude, longitude),
                 actions(save),
                 servicesSection());
+    }
+
+    /**
+     * Pegar un link de Google Maps en vez de escribir la latitud y la
+     * longitud a mano.
+     *
+     * <p>Antes esos dos campos eran el unico camino: el dueño tenia que saber
+     * las coordenadas de su propia cancha en decimales, un dato que nadie
+     * memoriza y que Google Maps no muestra en ningun lado a simple vista. Lo
+     * que si tiene a mano es el boton "Compartir" de la app, que le da
+     * exactamente esto -un link-, y ese link ya trae las coordenadas adentro
+     * (ver {@link GoogleMapsLinkResolver}). Los dos campos de mas abajo no
+     * desaparecen: quedan como lo que muestra el resultado, y como la manera
+     * de corregir a mano si el link no se pudo leer.
+     */
+    private Component mapsLinkField(BigDecimalField latitude, BigDecimalField longitude) {
+        TextField mapsLink = new TextField("Link de Google Maps");
+        mapsLink.setPlaceholder("Buscá el club en Google Maps, tocá Compartir y pegá el link");
+        mapsLink.setClearButtonVisible(true);
+        mapsLink.setWidthFull();
+
+        Button use = new Button("Usar este link", event -> {
+            String pasted = mapsLink.getValue();
+            if (pasted == null || pasted.isBlank()) {
+                Notification.show("Pegá primero un link de Google Maps")
+                        .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                return;
+            }
+            Optional<GoogleMapsLinkResolver.Coordinates> found = mapsLinkResolver.resolve(pasted);
+            if (found.isEmpty()) {
+                Notification.show("No pude leer la ubicación de ese link. Fijate que sea el que te da "
+                                + "\"Compartir\" en Google Maps, o cargá las coordenadas a mano abajo.",
+                        6000, Notification.Position.MIDDLE)
+                        .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                return;
+            }
+            latitude.setValue(found.get().latitude());
+            longitude.setValue(found.get().longitude());
+            mapsLink.clear();
+            Notification.show("Ubicación encontrada");
+        });
+        use.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+
+        HorizontalLayout row = new HorizontalLayout(mapsLink, use);
+        row.setAlignItems(Alignment.END);
+        row.setWidthFull();
+        row.expand(mapsLink);
+        row.addClassNames(LumoUtility.Gap.SMALL);
+        return row;
     }
 
     private VerticalLayout servicesSection() {
