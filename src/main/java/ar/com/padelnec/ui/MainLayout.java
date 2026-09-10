@@ -110,35 +110,25 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
      * esconde nunca, ni siquiera en el celular con el drawer cerrado, y es el
      * dato que mas se pide de golpe ("pasame el link de la cancha") sin que
      * haga falta ir a buscarlo a Configuracion.
+     *
+     * <p>Solo el boton, sin el link de texto al lado: mostrar los dos juntos
+     * quedaba redundante ("aca esta el link... copiar link"). El link real
+     * sigue disponible en el tooltip, para quien lo quiera leer o confirmar
+     * que es el de su club.
      */
     private Component shareLinkButton() {
-        Span url = new Span(displayUrl());
-        url.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.FontWeight.MEDIUM,
-                LumoUtility.Whitespace.NOWRAP);
-        url.addClassName("share-link__url");
-        url.getElement().setAttribute("title", publicUrl);
-
-        Button copy = new Button(VaadinIcon.COPY_O.create(), event -> copyPublicLink());
-        copy.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_ICON);
+        Button copy = new Button("Copiar link", VaadinIcon.COPY_O.create(), event -> copyPublicLink());
+        copy.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         copy.setAriaLabel("Copiar link de la página del club");
-        copy.getElement().setAttribute("title", "Copiar link");
-
-        HorizontalLayout pill = new HorizontalLayout(url, copy);
-        pill.setAlignItems(HorizontalLayout.Alignment.CENTER);
-        pill.setPadding(false);
-        pill.addClassNames(LumoUtility.Gap.XSMALL, LumoUtility.Padding.Left.SMALL,
-                LumoUtility.Border.ALL, LumoUtility.BorderColor.CONTRAST_20,
-                LumoUtility.BorderRadius.FULL, LumoUtility.Background.CONTRAST_5);
-        pill.addClassName("share-link");
-        return pill;
-    }
-
-    /**
-     * El link sin protocolo ni barra final, que es ruido para leer de un
-     * vistazo: lo que hace falta ver es el dominio y el club, no "https://".
-     */
-    private String displayUrl() {
-        return publicUrl.replaceFirst("^https?://", "");
+        copy.getElement().setAttribute("title", "Copiar link de la página de reservas: " + publicUrl);
+        // Mismo color que el fondo tinte: sin esto el boton queda gris por
+        // defecto, un detalle mas entre el resto de la barra.
+        copy.getStyle().set("color", "var(--lumo-primary-text-color)");
+        copy.addClassNames(LumoUtility.Gap.XSMALL, LumoUtility.Padding.Horizontal.SMALL,
+                LumoUtility.Border.ALL, LumoUtility.BorderRadius.FULL);
+        copy.addClassName("share-link");
+        copy.setHeight("2.25rem");
+        return copy;
     }
 
     /**
@@ -287,23 +277,24 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         // Suspender un dia o una cancha es una decision operativa del dia a dia,
         // no financiera: el mostrador tambien la necesita.
         diario.addItem(new SideNavItem("Suspensiones", BlackoutsView.class, iconChip(LumoIcon.CLOCK)));
-        // Configuracion tambien es del mostrador: adentro, la propia vista le
-        // esconde la pestana de Cobros online, que es la unica plata de verdad.
-        diario.addItem(new SideNavItem("Configuración", SettingsView.class, iconChip(LumoIcon.COG)));
 
         VerticalLayout drawer = new VerticalLayout(brand(), diario);
         drawer.setPadding(false);
         drawer.setSpacing(false);
         drawer.addClassNames(LumoUtility.Padding.SMALL, LumoUtility.Gap.MEDIUM);
 
-        // Estadisticas es la unica pantalla que sigue siendo solo del dueno.
+        // Configuracion no es del dia a dia, es del club: vive aca y no en
+        // "Mostrador" aunque el mostrador tambien entre -- adentro, la propia
+        // vista le esconde la pestana de Cobros online, que es la unica plata
+        // de verdad. Estadisticas si sigue siendo solo del dueno.
+        SideNav club = new SideNav();
+        club.setLabel("Club");
+        club.setWidthFull();
+        club.addItem(new SideNavItem("Configuración", SettingsView.class, iconChip(LumoIcon.COG)));
         if (currentUser().map(ClubUserPrincipal::canManageSettings).orElse(false)) {
-            SideNav club = new SideNav();
-            club.setLabel("Club");
-            club.setWidthFull();
             club.addItem(new SideNavItem("Estadísticas", DashboardView.class, iconChip(LumoIcon.BAR_CHART)));
-            drawer.add(club);
         }
+        drawer.add(club);
 
         drawer.add(pendingAlertsBadge());
         return drawer;

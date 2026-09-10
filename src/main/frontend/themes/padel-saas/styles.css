@@ -113,21 +113,34 @@ vaadin-app-layout [slot="navbar"] vaadin-menu-bar {
   }
 }
 
-/* El link de la pagina: en el celular, con el titulo de la pantalla y el
-   avatar disputando el mismo renglon, queda solo el boton de copiar -- el
-   dominio esta igual en el title del boton, para quien lo necesite leer. */
+/* El boton para copiar el link de la pagina: mismo tratamiento (fondo tinte
+   + texto en el color de marca) que el resto de lo que ya se marca como
+   "esto importa" en el panel -- el item activo del menu lateral, el
+   encabezado de cancha en la agenda. Es el dato que mas se pide de golpe
+   ("pasame el link de la cancha"); leerse como un detalle gris mas no le
+   hacia justicia. El link real no se ve como texto -- vive en el title,
+   para quien lo necesite leer -- para no repetir la misma idea dos veces
+   ("aca esta el link... copiar link").
+   En el celular, con el titulo de la pantalla y el avatar disputando el
+   mismo renglon, se esconde la palabra y queda solo el icono. */
 .share-link {
   height: 2.25rem;
+  border-color: transparent;
+  background: var(--lumo-primary-color-10pct);
+  transition: background-color 120ms ease;
+}
+
+.share-link:hover {
+  background: color-mix(in srgb, var(--lumo-primary-color) 18%, transparent);
 }
 
 @media (max-width: 700px) {
-  .share-link__url {
+  .share-link::part(label) {
     display: none;
   }
 
   .share-link {
-    padding-left: 0;
-    border: none;
+    padding-inline: 0;
     background: transparent;
   }
 }
