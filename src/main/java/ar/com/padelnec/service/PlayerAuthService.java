@@ -348,13 +348,16 @@ public class PlayerAuthService {
     /**
      * Turnos del jugador en todos los clubes de la plataforma, mas recientes primero.
      *
-     * <p>Reservar nunca requirio esta cuenta -- se puede seguir reservando como
-     * invitado, con solo telefono y nombre. Lo unico que la cuenta expone es este
-     * historial cruzando clubes por telefono, y ahi si importa saber que quien lo
-     * mira es dueno de ese contacto -- por eso pide el email confirmado antes de
-     * mostrar nada. Toda cuenta por contrasena ya nace confirmada
-     * ({@link #confirmSignup}); esto solo puede frenar a una cuenta de Google
-     * cuyo propio proveedor todavia no verifico ese mail.
+     * <p>Solo los que se reservaron con esta cuenta iniciada: la reserva guarda de
+     * que cuenta salio. Antes se emparejaba el telefono de la cuenta con el del
+     * cliente de cada reserva, y ese telefono no lo verifica nadie -- el alta lo
+     * acepta tal cual y solo se confirma el email. Bastaba con registrarse con el
+     * numero de otro para recibir su agenda entera, incluido el token con el que se
+     * cancela cada turno. El telefono es un dato de contacto, no una identidad.
+     *
+     * <p>Las reservas de invitado no aparecen acá, y es lo correcto: nada prueba que
+     * sean de quien pregunta. El jugador las recupera igual desde el dispositivo que
+     * las hizo y desde el link que recibio.
      */
     @Transactional(readOnly = true)
     public List<BookingRepository.PlayerBookingHistoryRow> history(String token) {
@@ -362,9 +365,6 @@ public class PlayerAuthService {
         if (!account.isEmailVerified()) {
             throw new BusinessRuleException("Confirmá tu email para ver tus turnos. Revisá tu casilla de entrada.");
         }
-        if (account.getPhoneNumber() == null) {
-            return List.of();
-        }
-        return bookingRepository.findHistoryByPhone(account.getPhoneNumber());
+        return bookingRepository.findHistoryByAccount(account.getId());
     }
 }

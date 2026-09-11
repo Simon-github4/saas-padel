@@ -54,13 +54,17 @@ export function Checkout({
     setSending(true);
     track('checkout_submit', { slotAt: slot.startsAt, paymentChoice });
     try {
-      const booking = await api.book(slug, {
-        courtId: court.courtId,
-        startTime: slot.startsAt,
-        fullName,
-        phoneNumber: phone,
-        paymentChoice,
-      });
+      const booking = await api.book(
+        slug,
+        {
+          courtId: court.courtId,
+          startTime: slot.startsAt,
+          fullName,
+          phoneNumber: phone,
+          paymentChoice,
+        },
+        session?.token,
+      );
 
       // El final del embudo, con el id de la reserva real: es lo que permite
       // preguntarle después a la base si el que entró por la búsqueda global

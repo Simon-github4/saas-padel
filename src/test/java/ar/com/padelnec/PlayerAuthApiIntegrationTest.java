@@ -115,33 +115,52 @@ class PlayerAuthApiIntegrationTest {
     @DisplayName("El historial del jugador junta turnos de todos los clubes en los que reservo")
     void historySpansMultipleClubs() {
         String phone = "2262415000";
-        bookAt("club-a", "Turno en A", phone);
-        bookAt("club-b", "Turno en B", phone);
-
         JsonNode session = registerAndConfirm(EMAIL, PASSWORD);
         String token = session.get("token").asText();
 
-        // El telefono se completa oportunistamente logueado; acá se simula que
-        // ya reservó antes con ese número.
-        client.put().uri("/api/public/player/profile")
-                .header("Authorization", "Bearer " + token)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("name", "Juana", "phoneNumber", phone))
-                .exchange()
-                .expectStatus().isOk();
+        bookAt("club-a", "Turno en A", phone, token);
+        bookAt("club-b", "Turno en B", phone, token);
 
-        JsonNode history = client.get().uri("/api/public/player/bookings")
-                .header("Authorization", "Bearer " + token)
-                .exchange()
-                .expectStatus().isOk()
-                .expectBody(JsonNode.class)
-                .returnResult().getResponseBody();
+        JsonNode history = historyOf(token);
 
         assertThat(history).hasSize(2);
         java.util.List<String> clubNames = java.util.List.of(
                 history.get(0).get("clubName").asText(),
                 history.get(1).get("clubName").asText());
         assertThat(clubNames).containsExactlyInAnyOrder("Club club-a", "Club club-b");
+    }
+
+    @Test
+    @DisplayName("Poner el telefono de otro en la propia cuenta no muestra los turnos de esa persona")
+    void anotherPersonsPhoneShowsNothing() {
+        // Antes esto devolvia los dos turnos: el historial emparejaba telefonos y
+        // nadie verifica el telefono que se carga en una cuenta. Con eso venia
+        // ademas el management_token de cada turno, que es lo que permite
+        // cancelarlo. Alcanzaba con saber el numero de alguien.
+        String victimPhone = "2262415000";
+        bookAt("club-a", "Turno de la victima", victimPhone);
+        bookAt("club-b", "Otro turno de la victima", victimPhone);
+
+        JsonNode session = registerAndConfirm(EMAIL, PASSWORD);
+        String token = session.get("token").asText();
+
+        client.put().uri("/api/public/player/profile")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("name", "Atacante", "phoneNumber", victimPhone))
+                .exchange()
+                .expectStatus().isOk();
+
+        assertThat(historyOf(token)).isEmpty();
+    }
+
+    private JsonNode historyOf(String token) {
+        return client.get().uri("/api/public/player/bookings")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
     }
 
     @Test
@@ -318,7 +337,13 @@ class PlayerAuthApiIntegrationTest {
                 .returnResult().getResponseBody();
     }
 
+    /** Reserva de invitado: sin sesion, como reserva la mayoria. */
     private void bookAt(String slug, String label, String phone) {
+        bookAt(slug, label, phone, null);
+    }
+
+    /** Con {@code token}, la reserva queda atada a esa cuenta y entra al historial. */
+    private void bookAt(String slug, String label, String phone, String token) {
         Tenant club = fixture.club(slug);
         TenantContext.set(club.getId());
         fixture.court("Cancha 1", 1);
@@ -326,9 +351,12 @@ class PlayerAuthApiIntegrationTest {
         TenantContext.clear();
 
         JsonNode slot = firstFreeSlot(slug);
-        client.post().uri("/api/public/" + slug + "/bookings")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of(
+        var request = client.post().uri("/api/public/" + slug + "/bookings")
+                .contentType(MediaType.APPLICATION_JSON);
+        if (token != null) {
+            request = request.header("Authorization", "Bearer " + token);
+        }
+        request.body(Map.of(
                         "courtId", slot.get("available").get(0).get("courtId").asText(),
                         "startTime", Instant.parse(slot.get("startsAt").asText()).toString(),
                         "fullName", label,

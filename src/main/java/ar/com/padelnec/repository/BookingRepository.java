@@ -101,6 +101,13 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
      * <p>Nativa a proposito, igual que {@link #findClubIdByAnyToken}: el filtro
      * por club_id de Hibernate no distingue "sin filtro" de "vacio" en JPQL, asi
      * que cruzar clubes solo se puede esquivandolo con SQL nativo.
+     *
+     * <p>Entra por {@code player_account_id} y no por el telefono del cliente. La
+     * version anterior emparejaba telefonos, y como nadie los verifica, bastaba
+     * con registrarse poniendo el numero de otro para recibir sus turnos -- con el
+     * {@code management_token} de cada uno, que es lo que permite cancelarlos. El
+     * token se sigue devolviendo porque {@code /account} lo necesita para abrir
+     * cada turno, y ahora las filas son de quien pregunta.
      */
     @Query(value = """
             SELECT b.id AS bookingId, t.name AS clubName, t.slug AS clubSlug,
@@ -108,13 +115,12 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                    b.status AS status, b.total_price AS totalPrice, b.paid_amount AS paidAmount,
                    b.management_token AS managementToken
             FROM booking b
-            JOIN customer cu ON cu.id = b.customer_id
             JOIN tenant t ON t.id = b.club_id
             JOIN court co ON co.id = b.court_id
-            WHERE cu.phone_number = :phone
+            WHERE b.player_account_id = :accountId
             ORDER BY b.start_time DESC
             """, nativeQuery = true)
-    List<PlayerBookingHistoryRow> findHistoryByPhone(@Param("phone") String phone);
+    List<PlayerBookingHistoryRow> findHistoryByAccount(@Param("accountId") UUID accountId);
 
     /** Proyeccion de {@link #findHistoryByPhone}. */
     interface PlayerBookingHistoryRow {

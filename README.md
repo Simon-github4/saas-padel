@@ -150,6 +150,22 @@ es la grilla pública, así que Vaadin se mapea bajo `/admin` y las rutas de la 
 index. Sin ese reenvío, entrar directo a un link de WhatsApp o refrescar la página
 daría 404 — y esos links son justamente los que recibe el jugador.
 
+**La identidad del jugador es la cuenta, no el teléfono.** El historial de
+`/account` sale de `booking.player_account_id`, que se completa cuando la reserva
+se hace con sesión iniciada. Antes cruzaba clubes emparejando el teléfono de la
+cuenta con el del cliente, y el teléfono no lo verifica nadie: el alta lo acepta
+tal cual y sólo se confirma el email. Alcanzaba con registrarse poniendo el número
+de otro para recibir su agenda entera —con el `management_token` de cada turno, que
+es con lo que se cancela—. El teléfono es un dato de contacto que cualquiera puede
+escribir. Lo cubre `PlayerHistoryIsolationTest`.
+
+**Que un club no vea los datos de otro está probado, no supuesto.**
+`TenantIsolationTest` corre las llamadas de siempre con el club equivocado
+instalado y verifica que no devuelvan una sola fila ajena, ni siquiera teniendo el
+id exacto en la mano. Importa porque hay dos consultas nativas que esquivan el
+filtro de Hibernate a propósito, y el test está para que la tercera no pase
+inadvertida.
+
 **Las visitas se miden en casa.** No hay Google Analytics ni nada parecido: el CSP
 de la app del jugador sólo admite scripts del propio origen y la política de
 privacidad promete que no hay rastreo de terceros. Además la conversión ya vive en
@@ -273,7 +289,7 @@ GROUP BY e.from_search, b.status;
 
 ## Estado
 
-Las tres piezas funcionando de punta a punta. 212 tests.
+Las tres piezas funcionando de punta a punta. 221 tests.
 
 - Motor de disponibilidad, precios por franja y por cancha
 - Reserva con seña (MercadoPago) y de palabra, confirmada al instante por defecto

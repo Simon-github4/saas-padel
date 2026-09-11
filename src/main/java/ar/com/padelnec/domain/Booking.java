@@ -15,6 +15,7 @@ import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -37,6 +38,25 @@ public class Booking extends TenantScopedEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "recurring_booking_id")
     private RecurringBooking recurringBooking;
+
+    /**
+     * Cuenta del jugador que reservo, si tenia sesion iniciada.
+     *
+     * <p>Es lo que responde "mis turnos" en {@code /account}. Antes eso se
+     * resolvia emparejando el telefono de la cuenta con el del cliente, y el
+     * telefono no lo verifica nadie: cualquiera podia registrarse con el numero
+     * de otro y quedarse con su agenda -- y con el token para cancelarla. La
+     * identidad es la cuenta; el telefono es un dato de contacto.
+     *
+     * <p>UUID pelado y no una relacion: {@code PlayerAccount} no pertenece a
+     * ningun club y esta entidad si, asi que una asociacion cruzaria el filtro
+     * por tenant. La integridad la sostiene la foranea de la base.
+     *
+     * <p>Nulo en las reservas de invitado, que son el camino principal: reservar
+     * nunca pidio cuenta.
+     */
+    @Column(name = "player_account_id")
+    private UUID playerAccountId;
 
     @Column(name = "start_time", nullable = false)
     private Instant startTime;

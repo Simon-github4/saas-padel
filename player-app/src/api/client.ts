@@ -257,6 +257,11 @@ export const api = {
   availability: (slug: string, date: string) =>
     request<Availability>(`/${slug}/availability?date=${date}`),
 
+  /**
+   * El token va cuando hay sesión iniciada, y es lo que hace que el turno
+   * después aparezca en "mis turnos": la reserva queda atada a la cuenta. Sin
+   * token se reserva igual, como invitado — nunca fue obligatorio tener cuenta.
+   */
   book: (
     slug: string,
     body: {
@@ -266,7 +271,12 @@ export const api = {
       phoneNumber: string;
       paymentChoice: PaymentChoice;
     },
-  ) => request<BookingCreated>(`/${slug}/bookings`, { method: 'POST', body: JSON.stringify(body) }),
+    token?: string,
+  ) => request<BookingCreated>(`/${slug}/bookings`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    token,
+  }),
 
   joinWaitlist: (
     slug: string,

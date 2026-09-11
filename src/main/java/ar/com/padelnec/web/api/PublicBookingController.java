@@ -11,6 +11,7 @@ import ar.com.padelnec.service.BookingService.PaymentChoice;
 import ar.com.padelnec.service.CheckoutService;
 import ar.com.padelnec.service.CheckoutService.CheckoutResult;
 import ar.com.padelnec.service.CourtSearchService;
+import ar.com.padelnec.service.PlayerAuthService;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.service.WaitlistService;
 import ar.com.padelnec.web.dto.AvailabilityResponse;
@@ -30,10 +31,12 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +44,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -65,6 +69,7 @@ public class PublicBookingController {
     private final CheckoutService checkoutService;
     private final CourtSearchService courtSearchService;
     private final WaitlistService waitlistService;
+    private final PlayerAuthService playerAuthService;
     private final NotificationService notificationService;
     private final BookingRateLimiter rateLimiter;
     private final Clock clock;
@@ -151,6 +156,8 @@ public class PublicBookingController {
     @ResponseStatus(HttpStatus.CREATED)
     public CreateBookingResponse book(@PathVariable String slug,
                                       @Valid @RequestBody CreateBookingRequest request,
+                                      @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false)
+                                      String authorization,
                                       HttpServletRequest httpRequest) {
         // Reservar bloquea la grilla sin haber pagado nada, asi que el endpoint se
         // limita por origen antes de tocar la base.
@@ -162,7 +169,8 @@ public class PublicBookingController {
                 request.startTime(),
                 request.fullName(),
                 request.phoneNumber(),
-                PaymentChoice.valueOf(request.paymentChoice().name())));
+                PaymentChoice.valueOf(request.paymentChoice().name()),
+                playerAccountId(authorization)));
 
         return new CreateBookingResponse(
                 result.booking().getId(),
@@ -215,6 +223,27 @@ public class PublicBookingController {
                 result.refundNeeded(),
                 result.clubWhatsapp(),
                 message);
+    }
+
+    /**
+     * La cuenta del jugador, si reservo con sesion iniciada.
+     *
+     * <p>Una sesion vencida o invalida no frena la reserva: se toma como invitado,
+     * que es un camino de primera clase en este producto. Reservar es lo que el
+     * jugador vino a hacer, y no puede fallar porque su sesion caduco mientras
+     * llenaba el formulario -- el precio de esa indulgencia es que ese turno no le
+     * aparece en "mis turnos", y el link de gestion le llega igual.
+     */
+    private UUID playerAccountId(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return null;
+        }
+        try {
+            return playerAuthService.resolveSession(
+                    authorization.substring("Bearer ".length()).trim()).getId();
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     private String messageFor(Tenant club, CheckoutResult result) {

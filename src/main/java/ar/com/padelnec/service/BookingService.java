@@ -69,8 +69,21 @@ public class BookingService {
         PAY_AT_CLUB
     }
 
+    /**
+     * {@code playerAccountId} es nulo cuando reserva un invitado, que es el camino
+     * principal: la cuenta nunca fue obligatoria. Cuando viene, es lo que hace que
+     * el turno aparezca despues en "mis turnos" -- y sale de la sesion, no de lo
+     * que el formulario diga que es el telefono del jugador.
+     */
     public record NewBooking(UUID courtId, Instant startTime, String fullName,
-                             String phoneNumber, PaymentChoice paymentChoice) {
+                             String phoneNumber, PaymentChoice paymentChoice,
+                             UUID playerAccountId) {
+
+        /** Reserva de invitado: sin cuenta, que es como reserva la mayoria. */
+        public NewBooking(UUID courtId, Instant startTime, String fullName,
+                          String phoneNumber, PaymentChoice paymentChoice) {
+            this(courtId, startTime, fullName, phoneNumber, paymentChoice, null);
+        }
     }
 
     /** Reserva junto con el club al que pertenece, para los flujos que llegan por token. */
@@ -111,6 +124,7 @@ public class BookingService {
         Booking booking = new Booking();
         booking.setCourt(court);
         booking.setCustomer(customer);
+        booking.setPlayerAccountId(request.playerAccountId());
         booking.setStartTime(slot.slot().startsAt());
         booking.setEndTime(slot.slot().endsAt());
         booking.setTotalPrice(price);
