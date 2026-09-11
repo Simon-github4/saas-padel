@@ -1,0 +1,74 @@
+name: Tests
+
+# Corre las dos suites en cada push. No hace nada mas: no despliega, no
+# comenta, no toca la rama. Si algo falla, GitHub manda el mail -- no hace
+# falta un paso que lo mande, y uno propio pediria guardar credenciales SMTP
+# en el repositorio para avisar lo mismo. Si pasa todo, nadie se entera, que
+# es como tiene que ser.
+#
+# El aviso depende de una opcion de la cuenta, no del workflow:
+# github.com/settings/notifications -> Actions -> "Notify for: Email", con
+# "Send notifications for failed workflows only" tildado (es el default).
+
+on:
+  push:
+  workflow_dispatch:
+
+# Un push encima del anterior cancela la corrida vieja: lo que importa es si
+# el ultimo commit esta sano, no los intermedios.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    # Los tests levantan un PostgreSQL embebido de verdad y arrancan varios
+    # contextos de Spring, asi que tardan. El limite existe para que una
+    # corrida colgada no quede girando, no porque se espere llegar cerca.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Correr los tests
+        # -B y -ntp: sin barras de progreso ni ANSI, para que el log se lea
+        # cuando haya que mirarlo.
+        run: mvn -B -ntp test
+
+  jugador:
+    name: App del jugador
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: player-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: player-app/package-lock.json
+
+      - name: Instalar dependencias
+        # npm ci y no npm install: instala exactamente lo que dice el lock,
+        # asi la corrida prueba las mismas versiones que tenes en tu maquina.
+        run: npm ci
+
+      - name: Correr los tests
+        run: npm test
+
+      - name: Chequear tipos y que compile
+        # Vitest no mira los tipos. Sin esto, un error de TypeScript pasaria
+        # el CI y recien aparecería al desplegar.
+        run: npm run build
