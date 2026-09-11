@@ -43,6 +43,14 @@ Los tests corren contra un PostgreSQL real y efímero. No es un capricho: la gar
 más importante del sistema es una restricción de exclusión de PostgreSQL, y contra
 una base en memoria no existiría.
 
+La app del jugador tiene los suyos aparte, con Vitest, para la lógica que no pasa por
+el backend: la poda de los turnos guardados en el navegador, la normalización de rutas
+de la bitácora de visitas y los cálculos del gráfico de actividad.
+
+```bash
+cd player-app && npm test
+```
+
 ## Probarlo a mano
 
 ### Opción A: todo en un puerto
@@ -300,7 +308,7 @@ GROUP BY e.from_search, b.status;
 
 ## Estado
 
-Las tres piezas funcionando de punta a punta. 226 tests.
+Las tres piezas funcionando de punta a punta. 226 tests del backend y 40 de la app del jugador.
 
 - Motor de disponibilidad, precios por franja y por cancha
 - Reserva con seña (MercadoPago) y de palabra, confirmada al instante por defecto
