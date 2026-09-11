@@ -150,14 +150,130 @@ es la grilla pública, así que Vaadin se mapea bajo `/admin` y las rutas de la 
 index. Sin ese reenvío, entrar directo a un link de WhatsApp o refrescar la página
 daría 404 — y esos links son justamente los que recibe el jugador.
 
+**Las visitas se miden en casa.** No hay Google Analytics ni nada parecido: el CSP
+de la app del jugador sólo admite scripts del propio origen y la política de
+privacidad promete que no hay rastreo de terceros. Además la conversión ya vive en
+esta base, así que el embudo sale de un JOIN y no de una integración. Ver
+[Estadísticas de visitas](#estadísticas-de-visitas).
+
 **Los teléfonos argentinos se fuerzan a celular.** Escrito sin el 15 ni el 9,
 `2262 415000` es indistinguible de una línea fija. Sin esa corrección, el mismo
 jugador queda como dos clientes según cómo haya tipeado, con su historial y su marca
 de confianza partidos.
 
+## Estadísticas de visitas
+
+La app del jugador anota el recorrido de cada visitante en `page_event`. Hasta acá
+el sistema sabía contar reservas —el final del recorrido— y nada de lo que pasa
+antes: quién entró, qué buscó, en qué pantalla se fue.
+
+La app es una SPA, así que los logs del servidor no sirven para esto: ve una sola
+petición por visita y no se entera de las rutas que el jugador recorre después.
+
+### Qué se registra
+
+| Evento | Cuándo | Lo propio que guarda |
+|---|---|---|
+| `VIEW` | Cada cambio de ruta | La ruta, el club si lo hay |
+| `SEARCH` | Cada búsqueda global | Día, franja, clubes filtrados y cuántos turnos volvieron |
+| `SEARCH_RESULT_CLICK` | Toca un resultado | Club de destino, horario y en qué lugar de la lista estaba |
+| `CLUB_STEP` | Avanza en el flujo de reserva | Paso (1 día, 2 hora, 3 datos) |
+| `SLOT_CLICK` | Elige un horario | El horario |
+| `CHECKOUT_SUBMIT` | Manda el formulario | Forma de pago |
+| `BOOKING_CREATED` | Reservó | Id de la reserva real |
+| `BOOKING_FAILED` | El checkout falló | Código del error |
+| `LINK_EXPIRED` | Vino de la búsqueda y el turno ya estaba tomado | Día y hora que se perdió |
+| `WAITLIST_JOINED` | Se anotó en un horario lleno | El horario |
+
+No hay evento de "no reservó": es la ausencia de `BOOKING_CREATED` en la sesión.
+Nadie avisa que se va de una página. Lo que sí se separa es el abandono de
+`BOOKING_FAILED`, `LINK_EXPIRED` y `WAITLIST_JOINED`, que son tres formas de
+"quiso y no pudo": mezclados dan una conversión pesimista y sin diagnóstico.
+
+### Qué no se guarda
+
+La sesión es un UUID anónimo en `sessionStorage` que muere al cerrar la pestaña:
+une los pasos de un recorrido, no reconoce a nadie entre visitas. Sin cookies, sin
+terceros y sin IP. Las rutas se guardan normalizadas (`/manage/:token`), porque ese
+token es la credencial del turno. La bitácora se borra sola a los 12 meses
+(`PageEventRetentionJob`), y `ANALYTICS_ENABLED=false` apaga el registro sin tocar
+la app.
+
+### Preguntarle a la tabla
+
+El embudo de un club, último mes:
+
+```sql
+SELECT count(DISTINCT session_id) FILTER (WHERE name = 'VIEW')            AS entraron,
+       count(DISTINCT session_id) FILTER (WHERE name = 'SLOT_CLICK')      AS eligieron_turno,
+       count(DISTINCT session_id) FILTER (WHERE name = 'CHECKOUT_SUBMIT') AS cargaron_datos,
+       count(DISTINCT session_id) FILTER (WHERE name = 'BOOKING_CREATED') AS reservaron
+FROM page_event
+WHERE club_id = (SELECT id FROM tenant WHERE slug = 'club-necochea')
+  AND created_at > now() - interval '30 days';
+```
+
+De dónde llegaron los que entraron a cada club, y cuántos de cada origen
+reservaron:
+
+```sql
+WITH entrada AS (
+    SELECT DISTINCT ON (session_id) session_id, path AS ruta_de_entrada, referrer_host
+    FROM page_event
+    ORDER BY session_id, seq
+),
+visita_club AS (
+    SELECT session_id,
+           club_id,
+           bool_or(name = 'SEARCH_RESULT_CLICK') AS toco_un_resultado,
+           bool_or(from_search)                  AS link_con_horario,
+           bool_or(name = 'BOOKING_CREATED')     AS reservo
+    FROM page_event
+    WHERE club_id IS NOT NULL AND created_at > now() - interval '30 days'
+    GROUP BY session_id, club_id
+)
+SELECT t.slug,
+       CASE
+           WHEN v.toco_un_resultado OR v.link_con_horario THEN 'búsqueda global'
+           WHEN e.ruta_de_entrada = '/club/:slug'         THEN 'link directo del club'
+           ELSE 'entró por la portada'
+       END                                   AS origen,
+       coalesce(e.referrer_host, 'directo')  AS de_donde,
+       count(*)                              AS visitas,
+       count(*) FILTER (WHERE v.reservo)     AS reservaron
+FROM visita_club v
+JOIN entrada e USING (session_id)
+JOIN tenant t ON t.id = v.club_id
+GROUP BY t.slug, origen, de_donde
+ORDER BY visitas DESC;
+```
+
+Búsquedas que no encontraron nada: demanda que hoy se pierde, y el argumento para
+sumar al club que falta.
+
+```sql
+SELECT search_date, time_from, time_to, count(*) AS busquedas
+FROM page_event
+WHERE name = 'SEARCH' AND results = 0 AND created_at > now() - interval '30 days'
+GROUP BY search_date, time_from, time_to
+ORDER BY busquedas DESC
+LIMIT 20;
+```
+
+Y el cruce que ningún servicio externo puede hacer, porque la reserva vive acá: de
+los que llegaron por la búsqueda global, cuántos terminaron pagando.
+
+```sql
+SELECT e.from_search, b.status, count(*)
+FROM page_event e
+JOIN booking b ON b.id = e.booking_id
+WHERE e.name = 'BOOKING_CREATED'
+GROUP BY e.from_search, b.status;
+```
+
 ## Estado
 
-Las tres piezas funcionando de punta a punta. 148 tests.
+Las tres piezas funcionando de punta a punta. 212 tests.
 
 - Motor de disponibilidad, precios por franja y por cancha
 - Reserva con seña (MercadoPago) y de palabra, confirmada al instante por defecto

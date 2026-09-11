@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { usePageViews } from './analytics';
 import { AuthProvider } from './auth/AuthContext';
 import { ClubPage } from './pages/ClubPage';
 import { ManagePage } from './pages/ManagePage';
@@ -17,10 +18,23 @@ import '@fontsource/bebas-neue';
 import '@fontsource-variable/archivo/wdth.css';
 import './index.css';
 
+/**
+ * Anota la visita a cada ruta.
+ *
+ * <p>Va como componente y no dentro de cada página porque la app es una SPA: el
+ * servidor ve una sola petición por visita y no se entera de las rutas que
+ * recorre después. Tiene que estar adentro del router para ver los cambios.
+ */
+function PageViews() {
+  usePageViews();
+  return null;
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
+        <PageViews />
         <Routes>
           <Route path="/" element={<Landing />} />
           {/* Buscar en todos los clubes: la entrada de quien no eligió dónde jugar. */}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { track } from '../analytics';
 import { ApiError, api } from '../api/client';
 import type { SearchMatch, SearchResult } from '../api/client';
 import { AccountButton } from '../components/AccountButton';
@@ -65,7 +66,17 @@ export function SearchPage() {
     setLoading(true);
     setError(null);
     try {
-      setData(await api.search({ date, from, to, clubs: selectedClubs }));
+      const result = await api.search({ date, from, to, clubs: selectedClubs });
+      setData(result);
+      // Con los filtros y el total: una búsqueda que vuelve con cero turnos es
+      // demanda que hoy se pierde, y es el dato que dice qué club falta sumar.
+      track('search', {
+        date,
+        from,
+        to,
+        clubs: selectedClubs.join(','),
+        results: result.matches.length,
+      });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo buscar. Probá de nuevo.');
     } finally {
@@ -246,6 +257,14 @@ export function SearchPage() {
                   <li key={`${match.clubSlug}-${match.startsAt}`}>
                     <Link
                       to={`/club/${match.clubSlug}?fecha=${data.date}&hora=${match.startTime}`}
+                      onClick={() =>
+                        track('search_result_click', {
+                          clubSlug: match.clubSlug,
+                          slotAt: match.startsAt,
+                          // En qué lugar de la lista estaba lo que eligió.
+                          detail: String(index + 1),
+                        })
+                      }
                       style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
                       className={`ficha-in flex items-center gap-4 rounded-2xl border p-4 transition ${
                         match.promo

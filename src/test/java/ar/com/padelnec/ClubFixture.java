@@ -10,6 +10,7 @@ import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.CustomerRepository;
 import ar.com.padelnec.repository.NotificationLogRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
+import ar.com.padelnec.repository.PageEventRepository;
 import ar.com.padelnec.repository.PaymentRepository;
 import ar.com.padelnec.repository.PendingPlayerSignupRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
@@ -47,6 +48,7 @@ public class ClubFixture {
     private final PlayerAccountRepository playerAccountRepository;
     private final PendingPlayerSignupRepository pendingPlayerSignupRepository;
     private final WaitlistEntryRepository waitlistEntryRepository;
+    private final PageEventRepository pageEventRepository;
 
     /** Deja la base limpia. Se corre como root porque abarca a todos los clubes. */
     @Transactional
@@ -62,6 +64,9 @@ public class ClubFixture {
             alertRepository.deleteAllInBatch();
             paymentRepository.deleteAllInBatch();
             waitlistEntryRepository.deleteAllInBatch();
+            // La bitacora de visitas no esta filtrada por club y sus filas de la
+            // portada no cuelgan de ninguno: borrar los clubes no se las lleva.
+            pageEventRepository.deleteAllInBatch();
             bookingRepository.deleteAllInBatch();
             recurringBookingRepository.deleteAllInBatch();
             blackoutRepository.deleteAllInBatch();

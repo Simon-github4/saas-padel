@@ -120,6 +120,13 @@ export function PrivacyPage() {
           Guardamos un token de sesión en tu navegador (localStorage) para mantenerte identificado
           entre visitas. No usamos cookies de rastreo ni de publicidad de terceros.
         </p>
+        <p>
+          Para saber qué partes del sitio se usan, anotamos las páginas que se visitan y los pasos
+          de una reserva. Van atados a un identificador al azar que vive mientras tenés la pestaña
+          abierta y se borra al cerrarla: no te reconoce entre visitas, no sale de nuestros
+          servidores y no se cruza con tu nombre ni tu teléfono. Ese registro se borra a los doce
+          meses.
+        </p>
       </LegalSection>
 
       <LegalSection heading="Menores de edad">

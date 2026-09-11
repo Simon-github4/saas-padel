@@ -95,6 +95,9 @@ app:
     recurring-horizon-weeks: 8
   google:
     client-id: ${GOOGLE_CLIENT_ID:}
+  analytics:
+    enabled: ${ANALYTICS_ENABLED:true}
+    retention-months: 12
   mail:
     # Sin default a "log": esos emails llevan links de reset/verificacion, que
     # son credenciales de verdad. Sin MAIL_PROVIDER definido, la app no

@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -39,8 +40,8 @@ public class TenantContextFilter extends OncePerRequestFilter {
     private static final String PUBLIC_PREFIX = "/api/public/";
     private static final String WEBHOOK_PREFIX = "/api/webhooks/mercadopago/";
 
-    /** Segmento reservado: es un endpoint de plataforma, no el slug de un club. */
-    private static final String SEARCH = "search";
+    /** Segmentos reservados: son endpoints de plataforma, no el slug de un club. */
+    private static final Set<String> PLATFORM_ENDPOINTS = Set.of("search", "events");
 
     private final TenantRepository tenantRepository;
     private final BookingRepository bookingRepository;
@@ -69,10 +70,12 @@ public class TenantContextFilter extends OncePerRequestFilter {
         String first = firstSegment(rest);
 
         // La busqueda global cruza clubes: no tiene uno solo que instalar, y cada club
-        // se activa despues, de a uno. Sin esta excepcion el segmento se leeria como un
-        // slug, y el dia que alguien registre un club llamado "search" la busqueda de
-        // todos los clubes quedaria atada a ese.
-        if (SEARCH.equals(first)) {
+        // se activa despues, de a uno. La bitacora de visitas es parecida: la mitad de
+        // los eventos son de la portada o de la busqueda, que no son de ningun club.
+        // Sin esta excepcion el segmento se leeria como un slug, y el dia que alguien
+        // registre un club llamado "search" o "events", esos endpoints quedarian
+        // atados a ese club.
+        if (PLATFORM_ENDPOINTS.contains(first)) {
             return Optional.empty();
         }
 

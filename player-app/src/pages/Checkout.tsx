@@ -10,6 +10,7 @@ import {
   type PaymentChoice,
   type Slot,
 } from '../api/client';
+import { track, trackNow } from '../analytics';
 import { usePlayerAuth } from '../auth/AuthContext';
 import { clockTime, durationMinutes, longDate, money, perPerson, shareBooking } from '../format';
 import { rememberGuestBooking } from '../guestBookings';
@@ -51,6 +52,7 @@ export function Checkout({
   async function submit(paymentChoice: PaymentChoice) {
     setError(null);
     setSending(true);
+    track('checkout_submit', { slotAt: slot.startsAt, paymentChoice });
     try {
       const booking = await api.book(slug, {
         courtId: court.courtId,
@@ -58,6 +60,16 @@ export function Checkout({
         fullName,
         phoneNumber: phone,
         paymentChoice,
+      });
+
+      // El final del embudo, con el id de la reserva real: es lo que permite
+      // preguntarle después a la base si el que entró por la búsqueda global
+      // terminó pagando. Sale ya, sin esperar el lote: con seña, la línea de
+      // abajo se lleva al jugador a MercadoPago y la cola se pierde ahí.
+      trackNow('booking_created', {
+        slotAt: slot.startsAt,
+        paymentChoice,
+        bookingId: booking.bookingId,
       });
 
       // Está logueado: el nombre (y el teléfono, si todavía no tenía) que
@@ -89,6 +101,13 @@ export function Checkout({
       }
       setResult(booking);
     } catch (err) {
+      // Con el código del error: un checkout que falla no es un abandono, y
+      // mezclarlos da una conversión pesimista y sin diagnóstico.
+      track('booking_failed', {
+        slotAt: slot.startsAt,
+        paymentChoice,
+        detail: err instanceof ApiError ? err.code : 'UNKNOWN',
+      });
       if (err instanceof ApiError && err.slotTaken) {
         // No hay nada que corregir: alguien llegó primero. Se refresca la grilla.
         onSlotTaken();

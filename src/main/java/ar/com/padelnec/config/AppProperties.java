@@ -1,5 +1,6 @@
 package ar.com.padelnec.config;
 
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import java.util.HashMap;
@@ -29,6 +30,7 @@ public class AppProperties {
     private final Jobs jobs = new Jobs();
     private final Google google = new Google();
     private final Mail mail = new Mail();
+    private final Analytics analytics = new Analytics();
 
     @Getter
     @Setter
@@ -105,5 +107,24 @@ public class AppProperties {
 
         /** Direccion que figura como remitente. */
         private String from = "no-responder@padelnec.com.ar";
+    }
+
+    @Getter
+    @Setter
+    public static class Analytics {
+        /**
+         * Registro del recorrido de los visitantes. En {@code false} el endpoint
+         * sigue existiendo y respondiendo, pero no guarda nada: apagarlo no puede
+         * romper la app del jugador, que lo llama igual.
+         */
+        private boolean enabled = true;
+
+        /**
+         * Cuanto se conserva la bitacora. Es la tabla que mas crece del sistema y la
+         * unica cuyo valor caduca: un embudo de hace dos años no describe al producto
+         * de hoy. Tambien es lo que hace que guardar esto sea proporcionado.
+         */
+        @Min(1)
+        private int retentionMonths = 12;
     }
 }

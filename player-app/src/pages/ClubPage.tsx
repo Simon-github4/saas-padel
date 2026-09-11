@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { track } from '../analytics';
 import { api, ApiError, type Availability, type Slot } from '../api/client';
 import { addDays, clockTime, longDate, perPerson, todayIso, whatsappLink } from '../format';
 import { setPageMeta, setStructuredData } from '../seo';
@@ -186,6 +187,9 @@ export function ClubPage() {
       setSelected(match);
       setStep(3);
     } else {
+      // Vino de la búsqueda y el turno ya no estaba. Se anota aparte del
+      // abandono: no es que no quiso reservar, es que no pudo.
+      track('link_expired', { date, detail: linkedTime });
       setLinkExpired(true);
       setStep(2);
     }
@@ -200,6 +204,18 @@ export function ClubPage() {
     }
     reserva.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [step]);
+
+  // Cada paso que alcanza del flujo de reserva: es el embudo de la ficha, el
+  // que dice en qué pantalla se cae la gente. El paso inicial no se anota
+  // porque ya lo cuenta la visita a la página.
+  const trackedStep = useRef(step);
+  useEffect(() => {
+    if (trackedStep.current === step) {
+      return;
+    }
+    trackedStep.current = step;
+    track('club_step', { step, date });
+  }, [step, date]);
 
   if (loading && !data) {
     return (
@@ -307,6 +323,7 @@ export function ClubPage() {
                   canGoNextDay={addDays(date, 1) <= lastBookable}
                   onNextDay={() => setDate(addDays(date, 1))}
                   onSelect={(slot) => {
+                    track('slot_click', { slotAt: slot.startsAt });
                     setSelected(slot);
                     setStep(3);
                   }}
@@ -534,7 +551,15 @@ function FullSlotCard({
           Anotado ✓
         </p>
       ) : open ? (
-        <WaitlistForm slug={slug} startTime={slot.startsAt} onJoined={() => setJoined(true)} />
+        <WaitlistForm
+          slug={slug}
+          startTime={slot.startsAt}
+          onJoined={() => {
+            // La otra forma de "quiso y no pudo": el horario estaba lleno.
+            track('waitlist_joined', { slotAt: slot.startsAt });
+            setJoined(true);
+          }}
+        />
       ) : (
         <button
           type="button"
