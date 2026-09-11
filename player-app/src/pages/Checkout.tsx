@@ -94,6 +94,9 @@ export function Checkout({
           clubSlug: slug,
           courtName: court.courtName,
           startTime: slot.startsAt,
+          // El fin es lo que decide cuándo se olvida: una hora después de
+          // terminar, el link ya no sirve para nada y se borra solo.
+          endTime: slot.endsAt,
         });
       }
 

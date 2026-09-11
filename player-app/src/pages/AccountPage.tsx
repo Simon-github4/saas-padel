@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { usePlayerAuth } from '../auth/AuthContext';
 import { ApiError, playerApi, type BookingHistoryItem } from '../api/client';
 import { clockTime, formatHours, longDate, money } from '../format';
-import { readGuestBookings } from '../guestBookings';
+import { readGuestBookings, type GuestBooking } from '../guestBookings';
 import { Alert, Button, Card, Chip, Loading, Screen, SectionTitle, StatusBadge, TopBar } from '../components/Ui';
 import { ActivityChart } from '../components/ActivityChart';
 import { summarize, type Period } from '../stats';
@@ -15,9 +15,12 @@ import { summarize, type Period } from '../stats';
  * reimplementar el detalle acá: esta pantalla es, ni más ni menos, un índice de
  * los links de gestión que el jugador ya tendría desperdigados en WhatsApp.
  *
- * <p>Sin sesión, si este dispositivo tiene turnos reservados como invitado
- * (ver {@code guestBookings.ts}), muestra esos en vez de mandar directo al
- * login: es la unica forma de volver a cancelarlos sin haberse registrado.
+ * <p>Los turnos reservados como invitado (ver {@code guestBookings.ts}) van en
+ * una lista aparte, y se muestran haya o no sesión. No pueden mezclarse con el
+ * historial: ese sale de la cuenta, y estos son de este dispositivo -- nada
+ * prueba que sean de quien está mirando. Pero esconderlos al iniciar sesión era
+ * dejar al jugador sin forma de volver a abrirlos, que es justamente para lo que
+ * existe esta lista.
  */
 export function AccountPage() {
   const navigate = useNavigate();
@@ -27,7 +30,12 @@ export function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<Period>('month');
   const now = useMemo(() => new Date(), [history]);
-  const guestBookings = useMemo(() => (session ? [] : readGuestBookings()), [session]);
+  // Se leen siempre, con o sin sesión. Un turno reservado como invitado no
+  // aparece en el historial de la cuenta -- nada prueba que sea de quien
+  // pregunta, solo que alguien escribió su teléfono -- pero este dispositivo sí
+  // sabe que lo reservó, y esconderlo al iniciar sesión era perder el único
+  // camino que le quedaba al jugador para volver a abrirlo.
+  const guestBookings = useMemo(() => readGuestBookings(), [session]);
 
   useEffect(() => {
     if (!session) {
@@ -89,8 +97,15 @@ export function AccountPage() {
       {loading && <Loading />}
       {error && <Alert>{error}</Alert>}
 
-      {!loading && !error && history && history.length === 0 && (
+      {!loading && !error && history && history.length === 0 && guestBookings.length === 0 && (
         <Alert tone="info">Todavía no reservaste ningún turno.</Alert>
+      )}
+
+      {!loading && !error && history && history.length === 0 && guestBookings.length > 0 && (
+        <Alert tone="info">
+          Todavía no reservaste ningún turno con esta cuenta. Abajo están los que
+          reservaste sin iniciar sesión.
+        </Alert>
       )}
 
       {!loading && history && history.length > 0 && (
@@ -120,7 +135,48 @@ export function AccountPage() {
           </ul>
         </>
       )}
+
+      {guestBookings.length > 0 && (
+        <section className="mt-8">
+          <SectionTitle
+            title="Reservados sin cuenta"
+            subtitle="En este dispositivo. No están atados a tu cuenta."
+          />
+          <ul className="mt-4 space-y-3">
+            {guestBookings.map((item) => (
+              <li key={item.bookingId}>
+                <GuestBookingCard booking={item} />
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 px-1 text-xs text-ink-soft">
+            Los reservaste antes de iniciar sesión, así que no figuran en el historial de
+            arriba. Se ven solo desde este navegador y desaparecen de acá una hora después
+            de terminar el turno.
+          </p>
+        </section>
+      )}
     </Screen>
+  );
+}
+
+/**
+ * Un turno de invitado. Mismo formato en las dos pantallas que los muestran: sin
+ * estado ni precio, que son datos que esta lista no tiene -- solo lo necesario
+ * para reconocerlo y abrirlo.
+ */
+function GuestBookingCard({ booking }: { booking: GuestBooking }) {
+  return (
+    <Link to={`/manage/${booking.managementToken}`}>
+      <Card className="transition hover:border-cal/25">
+        <p className="font-semibold">{booking.clubName}</p>
+        <p className="text-sm text-ink-soft">{booking.courtName}</p>
+        <p className="mt-3 text-sm text-ink-soft first-letter:uppercase">
+          {longDate(booking.startTime)} ·{' '}
+          {clockTime(booking.startTime, Intl.DateTimeFormat().resolvedOptions().timeZone)} hs
+        </p>
+      </Card>
+    </Link>
   );
 }
 
@@ -219,16 +275,7 @@ function GuestAccountView({
       <ul className="space-y-3">
         {bookings.map((item) => (
           <li key={item.bookingId}>
-            <Link to={`/manage/${item.managementToken}`}>
-              <Card className="transition hover:border-cal/25">
-                <p className="font-semibold">{item.clubName}</p>
-                <p className="text-sm text-ink-soft">{item.courtName}</p>
-                <p className="mt-3 text-sm text-ink-soft first-letter:uppercase">
-                  {longDate(item.startTime)} ·{' '}
-                  {clockTime(item.startTime, Intl.DateTimeFormat().resolvedOptions().timeZone)} hs
-                </p>
-              </Card>
-            </Link>
+            <GuestBookingCard booking={item} />
           </li>
         ))}
       </ul>
