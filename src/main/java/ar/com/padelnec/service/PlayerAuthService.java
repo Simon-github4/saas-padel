@@ -13,6 +13,7 @@ import ar.com.padelnec.security.GoogleIdTokenVerifier;
 import ar.com.padelnec.security.GoogleIdTokenVerifier.GoogleIdentity;
 import ar.com.padelnec.support.Masking;
 import ar.com.padelnec.support.PhoneNumbers;
+import ar.com.padelnec.support.TokenHash;
 import ar.com.padelnec.support.Tokens;
 import ar.com.padelnec.web.BusinessRuleException;
 import ar.com.padelnec.web.UnauthorizedSessionException;
@@ -98,7 +99,7 @@ public class PlayerAuthService {
             pending.setPhoneNumber(phoneNumbers.normalize(rawPhone));
         }
         pending.setCodeHash(passwordEncoder.encode(code));
-        pending.setConfirmToken(confirmToken);
+        pending.setConfirmTokenHash(TokenHash.of(confirmToken));
         pending.setExpiresAt(clock.instant().plus(SIGNUP_CONFIRM_TTL));
 
         try {
@@ -126,7 +127,7 @@ public class PlayerAuthService {
      * RuntimeException), y el contador de intentos nunca avanzaria. Cada
      * llamada al repositorio ya es transaccional por si sola.
      */
-    public PlayerSession confirmSignup(String rawEmail, String code) {
+    public IssuedSession confirmSignup(String rawEmail, String code) {
         String email = normalizeEmail(rawEmail);
         PendingPlayerSignup pending = pendingPlayerSignupRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessRuleException("Ese código venció o no es válido. Registrate de nuevo."));
@@ -152,7 +153,7 @@ public class PlayerAuthService {
     /** Mismo alta que {@link #confirmSignup}, por el link en vez del codigo. No abre sesion: es una pagina HTML. */
     @Transactional
     public boolean confirmSignupByToken(String token) {
-        Optional<PendingPlayerSignup> found = pendingPlayerSignupRepository.findByConfirmToken(token);
+        Optional<PendingPlayerSignup> found = pendingPlayerSignupRepository.findByConfirmTokenHash(TokenHash.of(token));
         if (found.isEmpty()) {
             return false;
         }
@@ -186,7 +187,7 @@ public class PlayerAuthService {
 
     /** Mismo mensaje generico para email inexistente y para contrasena incorrecta: no filtra cual de los dos fallo. */
     @Transactional
-    public PlayerSession login(String rawEmail, String rawPassword) {
+    public IssuedSession login(String rawEmail, String rawPassword) {
         String email = normalizeEmail(rawEmail);
         PlayerAccount account = playerAccountRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessRuleException("Email o contraseña incorrectos"));
@@ -204,7 +205,7 @@ public class PlayerAuthService {
 
     /** Verifica el ID token de Google y linkea o crea la cuenta segun corresponda. */
     @Transactional
-    public PlayerSession loginWithGoogle(String idToken) {
+    public IssuedSession loginWithGoogle(String idToken) {
         GoogleIdentity identity = googleIdTokenVerifier.verify(idToken)
                 .orElseThrow(() -> new BusinessRuleException("No pudimos verificar tu cuenta de Google"));
 
@@ -239,12 +240,24 @@ public class PlayerAuthService {
         return createSession(saved);
     }
 
-    private PlayerSession createSession(PlayerAccount account) {
+    /**
+     * La sesion recien abierta junto con su token en claro.
+     *
+     * <p>Van juntos porque es el unico momento en que el token existe fuera del
+     * navegador: la fila guarda su huella, asi que despues de esto no hay forma de
+     * volver a leerlo. Quien lo necesite para responderle al jugador, lo toma de
+     * aca.
+     */
+    public record IssuedSession(PlayerSession session, String token) {
+    }
+
+    private IssuedSession createSession(PlayerAccount account) {
+        String token = Tokens.generate();
         PlayerSession session = new PlayerSession();
         session.setPlayer(account);
-        session.setToken(Tokens.generate());
+        session.setTokenHash(TokenHash.of(token));
         session.setExpiresAt(clock.instant().plus(SESSION_TTL));
-        return playerSessionRepository.save(session);
+        return new IssuedSession(playerSessionRepository.save(session), token);
     }
 
     // ------------------------------------------------------ email y contrasena
@@ -259,7 +272,7 @@ public class PlayerAuthService {
         }
         PlayerAccount account = found.get();
         String token = Tokens.generate();
-        account.setPasswordResetToken(token);
+        account.setPasswordResetTokenHash(TokenHash.of(token));
         account.setPasswordResetTokenExpiresAt(clock.instant().plus(PASSWORD_RESET_TTL));
         playerAccountRepository.save(account);
 
@@ -273,7 +286,7 @@ public class PlayerAuthService {
     /** Cambia la contrasena y cierra toda otra sesion activa de la cuenta. */
     @Transactional
     public void resetPassword(String token, String newPassword) {
-        PlayerAccount account = playerAccountRepository.findByPasswordResetToken(token)
+        PlayerAccount account = playerAccountRepository.findByPasswordResetTokenHash(TokenHash.of(token))
                 .orElseThrow(() -> new BusinessRuleException("Ese link venció o no es válido. Pedí uno nuevo"));
         if (account.getPasswordResetTokenExpiresAt() == null
                 || account.getPasswordResetTokenExpiresAt().isBefore(clock.instant())) {
@@ -281,7 +294,7 @@ public class PlayerAuthService {
         }
 
         account.setPasswordHash(passwordEncoder.encode(newPassword));
-        account.setPasswordResetToken(null);
+        account.setPasswordResetTokenHash(null);
         account.setPasswordResetTokenExpiresAt(null);
         playerAccountRepository.save(account);
 
@@ -310,7 +323,7 @@ public class PlayerAuthService {
     /** Resuelve la cuenta duena de una sesion vigente. */
     @Transactional(readOnly = true)
     public PlayerAccount resolveSession(String token) {
-        PlayerSession session = playerSessionRepository.findByTokenAndRevokedAtIsNull(token)
+        PlayerSession session = playerSessionRepository.findByTokenHashAndRevokedAtIsNull(TokenHash.of(token))
                 .orElseThrow(() -> new UnauthorizedSessionException("Tu sesión venció. Volvé a iniciar sesión."));
         if (session.getExpiresAt().isBefore(clock.instant())) {
             throw new UnauthorizedSessionException("Tu sesión venció. Volvé a iniciar sesión.");
@@ -325,7 +338,7 @@ public class PlayerAuthService {
 
     @Transactional
     public void logout(String token) {
-        playerSessionRepository.findByTokenAndRevokedAtIsNull(token)
+        playerSessionRepository.findByTokenHashAndRevokedAtIsNull(TokenHash.of(token))
                 .ifPresent(session -> {
                     session.setRevokedAt(clock.instant());
                     playerSessionRepository.save(session);

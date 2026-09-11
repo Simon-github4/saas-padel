@@ -52,9 +52,12 @@ public class PlayerAccount extends BaseEntity {
     @Column(name = "google_subject", unique = true, length = 255)
     private String googleSubject;
 
-    /** Token vigente para resetear la contrasena. Null cuando no hay ningun pedido abierto. */
-    @Column(name = "password_reset_token", length = 64)
-    private String passwordResetToken;
+    /**
+     * Huella del token vigente para resetear la contrasena, nunca el token. Null
+     * cuando no hay ningun pedido abierto. El valor real solo viaja en el mail.
+     */
+    @Column(name = "password_reset_token_hash", length = 64)
+    private String passwordResetTokenHash;
 
     @Column(name = "password_reset_token_expires_at")
     private Instant passwordResetTokenExpiresAt;

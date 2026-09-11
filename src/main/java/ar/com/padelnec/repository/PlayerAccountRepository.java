@@ -11,5 +11,5 @@ public interface PlayerAccountRepository extends JpaRepository<PlayerAccount, UU
 
     Optional<PlayerAccount> findByGoogleSubject(String googleSubject);
 
-    Optional<PlayerAccount> findByPasswordResetToken(String passwordResetToken);
+    Optional<PlayerAccount> findByPasswordResetTokenHash(String passwordResetTokenHash);
 }

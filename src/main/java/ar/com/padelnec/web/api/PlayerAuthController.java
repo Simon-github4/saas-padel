@@ -4,6 +4,7 @@ import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.PlayerSession;
 import ar.com.padelnec.service.PlayerAuthService;
+import ar.com.padelnec.service.PlayerAuthService.IssuedSession;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.BookingHistoryItem;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.ConfigResponse;
@@ -71,16 +72,14 @@ public class PlayerAuthController {
     public SessionResponse confirmSignup(@Valid @RequestBody ConfirmSignupRequest request,
                                          HttpServletRequest httpRequest) {
         bookingRateLimiter.check(httpRequest.getRemoteAddr());
-        PlayerSession session = playerAuthService.confirmSignup(request.email(), request.code());
-        return toResponse(session);
+        return toResponse(playerAuthService.confirmSignup(request.email(), request.code()));
     }
 
     /** Login con email y contrasena. */
     @PostMapping("/login")
     public SessionResponse login(@Valid @RequestBody LoginRequest request) {
         loginRateLimiter.check(request.email());
-        PlayerSession session = playerAuthService.login(request.email(), request.password());
-        return toResponse(session);
+        return toResponse(playerAuthService.login(request.email(), request.password()));
     }
 
     /**
@@ -96,8 +95,7 @@ public class PlayerAuthController {
     public SessionResponse loginWithGoogle(@Valid @RequestBody GoogleLoginRequest request,
                                            HttpServletRequest httpRequest) {
         bookingRateLimiter.check(httpRequest.getRemoteAddr());
-        PlayerSession session = playerAuthService.loginWithGoogle(request.idToken());
-        return toResponse(session);
+        return toResponse(playerAuthService.loginWithGoogle(request.idToken()));
     }
 
     /** Pide el link para resetear la contrasena. Responde igual exista o no ese email. */
@@ -157,9 +155,9 @@ public class PlayerAuthController {
                 .toList();
     }
 
-    private SessionResponse toResponse(PlayerSession session) {
-        PlayerAccount account = session.getPlayer();
-        return new SessionResponse(session.getToken(), session.getExpiresAt(), account.getId(),
+    private SessionResponse toResponse(IssuedSession issued) {
+        PlayerAccount account = issued.session().getPlayer();
+        return new SessionResponse(issued.token(), issued.session().getExpiresAt(), account.getId(),
                 account.getEmail(), account.isEmailVerified(), account.getPhoneNumber(), account.getDisplayName());
     }
 

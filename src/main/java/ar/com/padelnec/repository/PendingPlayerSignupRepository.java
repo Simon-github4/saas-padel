@@ -10,7 +10,7 @@ public interface PendingPlayerSignupRepository extends JpaRepository<PendingPlay
 
     Optional<PendingPlayerSignup> findByEmail(String email);
 
-    Optional<PendingPlayerSignup> findByConfirmToken(String confirmToken);
+    Optional<PendingPlayerSignup> findByConfirmTokenHash(String confirmTokenHash);
 
     void deleteByEmail(String email);
 

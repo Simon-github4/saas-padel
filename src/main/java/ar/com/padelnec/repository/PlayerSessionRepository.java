@@ -11,7 +11,7 @@ import org.springframework.data.repository.query.Param;
 
 public interface PlayerSessionRepository extends JpaRepository<PlayerSession, UUID> {
 
-    Optional<PlayerSession> findByTokenAndRevokedAtIsNull(String token);
+    Optional<PlayerSession> findByTokenHashAndRevokedAtIsNull(String tokenHash);
 
     /** Cierra toda sesion activa de la cuenta, para que un cambio de contrasena no deje una robada viva. */
     @Modifying

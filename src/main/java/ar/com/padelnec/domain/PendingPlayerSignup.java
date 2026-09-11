@@ -35,8 +35,8 @@ public class PendingPlayerSignup extends BaseEntity {
     private String codeHash;
 
     /** Token del link alternativo, en texto plano -- misma logica que el resto de los links del sistema. */
-    @Column(name = "confirm_token", nullable = false, unique = true, length = 64)
-    private String confirmToken;
+    @Column(name = "confirm_token_hash", nullable = false, unique = true, length = 64)
+    private String confirmTokenHash;
 
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;

@@ -150,6 +150,17 @@ es la grilla pública, así que Vaadin se mapea bajo `/admin` y las rutas de la 
 index. Sin ese reenvío, entrar directo a un link de WhatsApp o refrescar la página
 daría 404 — y esos links son justamente los que recibe el jugador.
 
+**Los tokens de cuenta se guardan como huella, no en claro.** El de sesión, el de
+reseteo de contraseña y el del link que confirma un alta son credenciales: quien los
+tenga entra como ese jugador. Se guarda su SHA-256, así que una copia de la base
+—un backup mal guardado, un dump pedido para depurar algo— no alcanza para entrar
+como nadie. SHA-256 y no bcrypt, que es lo que usan las contraseñas de al lado: estos
+tokens son 32 bytes de `SecureRandom`, no algo que una persona elige, y la búsqueda
+es por igualdad —una sal al azar obligaría a recorrer la tabla comparando de a una—.
+Los tokens de reserva (`management_token` y sus hermanos) siguen en claro: viajan por
+WhatsApp y hay que poder resolverlos desde la URL, y ese cambio es más grande. Lo
+cubre `TokenStorageTest`.
+
 **La identidad del jugador es la cuenta, no el teléfono.** El historial de
 `/account` sale de `booking.player_account_id`, que se completa cuando la reserva
 se hace con sesión iniciada. Antes cruzaba clubes emparejando el teléfono de la
@@ -289,7 +300,7 @@ GROUP BY e.from_search, b.status;
 
 ## Estado
 
-Las tres piezas funcionando de punta a punta. 221 tests.
+Las tres piezas funcionando de punta a punta. 226 tests.
 
 - Motor de disponibilidad, precios por franja y por cancha
 - Reserva con seña (MercadoPago) y de palabra, confirmada al instante por defecto

@@ -154,6 +154,18 @@ class PlayerAuthApiIntegrationTest {
         assertThat(historyOf(token)).isEmpty();
     }
 
+    /** El token tal como le llega al jugador: del cuerpo del mail, no de la base. */
+    private String tokenFromLastEmail(String after) {
+        String body = emailSender.lastBody;
+        assertThat(body).as("no salio ningun mail").isNotNull();
+        int from = body.indexOf(after);
+        assertThat(from).as("el mail no traia el link esperado").isNotNegative();
+        String rest = body.substring(from + after.length());
+        Matcher matcher = Pattern.compile("^[A-Za-z0-9_-]+").matcher(rest);
+        assertThat(matcher.find()).as("el link no traia token").isTrue();
+        return matcher.group();
+    }
+
     private JsonNode historyOf(String token) {
         return client.get().uri("/api/public/player/bookings")
                 .header("Authorization", "Bearer " + token)
@@ -244,9 +256,13 @@ class PlayerAuthApiIntegrationTest {
                 .exchange()
                 .expectStatus().isEqualTo(202);
 
-        PlayerAccount account = playerAccountRepository.findByEmail(EMAIL).orElseThrow();
-        String token = account.getPasswordResetToken();
-        assertThat(token).isNotBlank();
+        // El token sale del mail y no de la base: la fila guarda su huella. Es
+        // ademas el camino real del jugador, que nunca vio esa tabla.
+        String token = tokenFromLastEmail("/reset-password/");
+        assertThat(playerAccountRepository.findByEmail(EMAIL).orElseThrow()
+                .getPasswordResetTokenHash())
+                .as("lo guardado no puede ser el token que viajo por mail")
+                .isNotEqualTo(token);
 
         client.post().uri("/api/public/player/password/reset")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -271,7 +287,10 @@ class PlayerAuthApiIntegrationTest {
     @DisplayName("El link de confirmacion crea la cuenta; un token invalido no rompe, solo avisa")
     void verifyEmailOverHttp() {
         register(EMAIL, PASSWORD);
-        String token = pendingPlayerSignupRepository.findByEmail(EMAIL).orElseThrow().getConfirmToken();
+        String token = tokenFromLastEmail("verify-email?token=");
+        assertThat(pendingPlayerSignupRepository.findByEmail(EMAIL).orElseThrow().getConfirmTokenHash())
+                .as("lo guardado no puede ser el token del link")
+                .isNotEqualTo(token);
 
         client.get().uri("/api/public/player/verify-email?token=" + token)
                 .exchange()

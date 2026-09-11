@@ -6,11 +6,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import ar.com.padelnec.domain.PendingPlayerSignup;
 import ar.com.padelnec.domain.PlayerSession;
 import ar.com.padelnec.notification.EmailSender;
+import ar.com.padelnec.support.TokenHash;
 import ar.com.padelnec.repository.PendingPlayerSignupRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.repository.PlayerSessionRepository;
 import ar.com.padelnec.security.GoogleIdTokenVerifier;
 import ar.com.padelnec.service.PlayerAuthService;
+import ar.com.padelnec.service.PlayerAuthService.IssuedSession;
 import ar.com.padelnec.web.BusinessRuleException;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import java.time.Clock;
@@ -125,12 +127,12 @@ class PlayerAuthServiceTest {
         assertThat(playerAccountRepository.findByEmail(EMAIL)).isEmpty();
         assertThat(emailSender.lastTo).isEqualTo(EMAIL);
 
-        PlayerSession session = playerAuthService.confirmSignup(EMAIL, extractCode());
+        IssuedSession session = playerAuthService.confirmSignup(EMAIL, extractCode());
 
-        assertThat(session.getToken()).isNotBlank();
-        assertThat(session.getPlayer().getEmail()).isEqualTo(EMAIL);
-        assertThat(session.getPlayer().isEmailVerified()).isTrue();
-        assertThat(session.getPlayer().getDisplayName()).isEqualTo("Juana Pérez");
+        assertThat(session.token()).isNotBlank();
+        assertThat(session.session().getPlayer().getEmail()).isEqualTo(EMAIL);
+        assertThat(session.session().getPlayer().isEmailVerified()).isTrue();
+        assertThat(session.session().getPlayer().getDisplayName()).isEqualTo("Juana Pérez");
         assertThat(pendingPlayerSignupRepository.findByEmail(EMAIL)).isEmpty();
     }
 
@@ -140,7 +142,7 @@ class PlayerAuthServiceTest {
         playerAuthService.register(EMAIL, PASSWORD, null, null);
         PendingPlayerSignup pending = pendingPlayerSignupRepository.findByEmail(EMAIL).orElseThrow();
 
-        boolean confirmed = playerAuthService.confirmSignupByToken(pending.getConfirmToken());
+        boolean confirmed = playerAuthService.confirmSignupByToken(tokenFromLastEmail("verify-email?token="));
 
         assertThat(confirmed).isTrue();
         assertThat(playerAccountRepository.findByEmail(EMAIL).orElseThrow().isEmailVerified()).isTrue();
@@ -178,7 +180,7 @@ class PlayerAuthServiceTest {
         assertThatThrownBy(() -> playerAuthService.confirmSignup(EMAIL, staleCode))
                 .isInstanceOf(BusinessRuleException.class);
 
-        PlayerSession session = playerAuthService.confirmSignup(EMAIL, extractCode());
+        IssuedSession session = playerAuthService.confirmSignup(EMAIL, extractCode());
         assertThat(session).isNotNull();
     }
 
@@ -194,7 +196,7 @@ class PlayerAuthServiceTest {
         assertThatThrownBy(() -> playerAuthService.confirmSignup(EMAIL, code))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("venció");
-        assertThat(playerAuthService.confirmSignupByToken(pending.getConfirmToken())).isFalse();
+        assertThat(playerAuthService.confirmSignupByToken(tokenFromLastEmail("verify-email?token="))).isFalse();
     }
 
     @Test
@@ -215,10 +217,10 @@ class PlayerAuthServiceTest {
         registerAndConfirm(EMAIL, PASSWORD, null, null);
         ((MutableClock) clock).advance(Duration.ofMinutes(5));
 
-        PlayerSession session = playerAuthService.login(EMAIL, PASSWORD);
+        IssuedSession session = playerAuthService.login(EMAIL, PASSWORD);
 
-        assertThat(session.getToken()).isNotBlank();
-        assertThat(session.getPlayer().getLastLoginAt()).isEqualTo(Instant.parse(NOW).plus(Duration.ofMinutes(5)));
+        assertThat(session.token()).isNotBlank();
+        assertThat(session.session().getPlayer().getLastLoginAt()).isEqualTo(Instant.parse(NOW).plus(Duration.ofMinutes(5)));
     }
 
     @Test
@@ -254,11 +256,11 @@ class PlayerAuthServiceTest {
         googleVerifier.nextResult = Optional.of(
                 new GoogleIdTokenVerifier.GoogleIdentity("sub-1", EMAIL, true, "Juana"));
 
-        PlayerSession session = playerAuthService.loginWithGoogle("token");
+        IssuedSession session = playerAuthService.loginWithGoogle("token");
 
-        assertThat(session.getPlayer().getEmail()).isEqualTo(EMAIL);
-        assertThat(session.getPlayer().isEmailVerified()).isTrue();
-        assertThat(session.getPlayer().getPasswordHash()).isNull();
+        assertThat(session.session().getPlayer().getEmail()).isEqualTo(EMAIL);
+        assertThat(session.session().getPlayer().isEmailVerified()).isTrue();
+        assertThat(session.session().getPlayer().getPasswordHash()).isNull();
     }
 
     @Test
@@ -293,11 +295,11 @@ class PlayerAuthServiceTest {
     void sameGoogleSubjectAlwaysResolvesTheSameAccount() {
         googleVerifier.nextResult = Optional.of(
                 new GoogleIdTokenVerifier.GoogleIdentity("sub-1", EMAIL, true, "Juana"));
-        PlayerSession first = playerAuthService.loginWithGoogle("token");
+        IssuedSession first = playerAuthService.loginWithGoogle("token");
 
-        PlayerSession second = playerAuthService.loginWithGoogle("token");
+        IssuedSession second = playerAuthService.loginWithGoogle("token");
 
-        assertThat(second.getPlayer().getId()).isEqualTo(first.getPlayer().getId());
+        assertThat(second.session().getPlayer().getId()).isEqualTo(first.session().getPlayer().getId());
         assertThat(playerAccountRepository.count()).isEqualTo(1);
     }
 
@@ -309,7 +311,7 @@ class PlayerAuthServiceTest {
         registerAndConfirm(EMAIL, PASSWORD, null, null);
 
         playerAuthService.requestPasswordReset(EMAIL);
-        String token = playerAccountRepository.findByEmail(EMAIL).orElseThrow().getPasswordResetToken();
+        String token = tokenFromLastEmail("/reset-password/");
         assertThat(token).isNotBlank();
 
         playerAuthService.resetPassword(token, "unaClaveNueva456");
@@ -331,7 +333,7 @@ class PlayerAuthServiceTest {
     void expiredResetTokenIsRejected() {
         registerAndConfirm(EMAIL, PASSWORD, null, null);
         playerAuthService.requestPasswordReset(EMAIL);
-        String token = playerAccountRepository.findByEmail(EMAIL).orElseThrow().getPasswordResetToken();
+        String token = tokenFromLastEmail("/reset-password/");
 
         ((MutableClock) clock).advance(Duration.ofHours(2));
 
@@ -343,13 +345,13 @@ class PlayerAuthServiceTest {
     @Test
     @DisplayName("Resetear la contrasena revoca las demas sesiones activas de la cuenta")
     void passwordResetRevokesOtherSessions() {
-        PlayerSession session = registerAndConfirm(EMAIL, PASSWORD, null, null);
+        IssuedSession session = registerAndConfirm(EMAIL, PASSWORD, null, null);
 
         playerAuthService.requestPasswordReset(EMAIL);
-        String token = playerAccountRepository.findByEmail(EMAIL).orElseThrow().getPasswordResetToken();
+        String token = tokenFromLastEmail("/reset-password/");
         playerAuthService.resetPassword(token, "unaClaveNueva456");
 
-        assertThatThrownBy(() -> playerAuthService.resolveSession(session.getToken()))
+        assertThatThrownBy(() -> playerAuthService.resolveSession(session.token()))
                 .isInstanceOf(UnauthorizedSessionException.class);
     }
 
@@ -358,9 +360,9 @@ class PlayerAuthServiceTest {
     @Test
     @DisplayName("Sin telefono cargado, el historial devuelve vacio en vez de fallar")
     void historyIsEmptyWithoutAPhone() {
-        PlayerSession session = registerAndConfirm(EMAIL, PASSWORD, null, null);
+        IssuedSession session = registerAndConfirm(EMAIL, PASSWORD, null, null);
 
-        assertThat(playerAuthService.history(session.getToken())).isEmpty();
+        assertThat(playerAuthService.history(session.token())).isEmpty();
     }
 
     @Test
@@ -368,9 +370,9 @@ class PlayerAuthServiceTest {
     void googleAccountWithUnverifiedEmailCannotSeeHistory() {
         googleVerifier.nextResult = Optional.of(
                 new GoogleIdTokenVerifier.GoogleIdentity("sub-1", EMAIL, false, "Juana"));
-        PlayerSession session = playerAuthService.loginWithGoogle("token");
+        IssuedSession session = playerAuthService.loginWithGoogle("token");
 
-        assertThatThrownBy(() -> playerAuthService.history(session.getToken()))
+        assertThatThrownBy(() -> playerAuthService.history(session.token()))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Confirmá tu email");
     }
@@ -380,33 +382,45 @@ class PlayerAuthServiceTest {
     @Test
     @DisplayName("Una sesion vencida no resuelve, y el logout la corta antes de tiempo")
     void sessionExpiryAndLogout() {
-        PlayerSession session = registerAndConfirm(EMAIL, PASSWORD, null, null);
+        IssuedSession session = registerAndConfirm(EMAIL, PASSWORD, null, null);
 
-        assertThat(playerAuthService.resolveSession(session.getToken())).isNotNull();
+        assertThat(playerAuthService.resolveSession(session.token())).isNotNull();
 
         ((MutableClock) clock).advance(Duration.ofDays(91));
-        assertThatThrownBy(() -> playerAuthService.resolveSession(session.getToken()))
+        assertThatThrownBy(() -> playerAuthService.resolveSession(session.token()))
                 .isInstanceOf(UnauthorizedSessionException.class);
 
         // Logout, con una sesion nueva y vigente esta vez.
         ((MutableClock) clock).set(Instant.parse(NOW));
-        PlayerSession fresh = playerAuthService.login(EMAIL, PASSWORD);
-        playerAuthService.logout(fresh.getToken());
+        IssuedSession fresh = playerAuthService.login(EMAIL, PASSWORD);
+        playerAuthService.logout(fresh.token());
 
-        assertThatThrownBy(() -> playerAuthService.resolveSession(fresh.getToken()))
+        assertThatThrownBy(() -> playerAuthService.resolveSession(fresh.token()))
                 .isInstanceOf(UnauthorizedSessionException.class);
-        assertThat(playerSessionRepository.findByTokenAndRevokedAtIsNull(fresh.getToken())).isEmpty();
+        assertThat(playerSessionRepository.findByTokenHashAndRevokedAtIsNull(TokenHash.of(fresh.token()))).isEmpty();
     }
 
     // ------------------------------------------------------------ ayudantes
 
     /** Registra y confirma de una, para los tests a los que solo les importa tener una cuenta usable. */
-    private PlayerSession registerAndConfirm(String email, String password, String displayName, String phoneNumber) {
+    private IssuedSession registerAndConfirm(String email, String password, String displayName, String phoneNumber) {
         playerAuthService.register(email, password, displayName, phoneNumber);
         return playerAuthService.confirmSignup(email, extractCode());
     }
 
     /** Saca el codigo de 6 digitos del ultimo mail mandado, tal como lo leeria el jugador. */
+    /** El token tal como le llega al jugador. La fila guarda su huella, no el valor. */
+    private String tokenFromLastEmail(String after) {
+        String body = emailSender.lastBody;
+        assertThat(body).as("no salio ningun mail").isNotNull();
+        int from = body.indexOf(after);
+        assertThat(from).as("el mail no traia el link esperado").isNotNegative();
+        Matcher matcher = Pattern.compile("^[A-Za-z0-9_-]+")
+                .matcher(body.substring(from + after.length()));
+        assertThat(matcher.find()).as("el link no traia token").isTrue();
+        return matcher.group();
+    }
+
     private String extractCode() {
         Matcher matcher = Pattern.compile("\\d{6}").matcher(emailSender.lastBody);
         assertThat(matcher.find()).isTrue();

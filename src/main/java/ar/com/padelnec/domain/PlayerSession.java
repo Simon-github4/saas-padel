@@ -22,8 +22,13 @@ public class PlayerSession extends BaseEntity {
     private PlayerAccount player;
 
     /** Credencial de la sesion. Generado con {@link ar.com.padelnec.support.Tokens#generate()}. */
-    @Column(name = "token", nullable = false, unique = true, length = 64)
-    private String token;
+    /**
+     * Huella SHA-256 del token, nunca el token. El valor que abre la sesion solo
+     * existe en el navegador del jugador: una copia de esta tabla no alcanza para
+     * entrar como nadie. Ver {@link ar.com.padelnec.support.TokenHash}.
+     */
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
 
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
