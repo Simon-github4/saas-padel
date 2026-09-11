@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { forgetGuestBooking, readGuestBookings } from '../guestBookings';
 import { playerApi, type PlayerSession } from '../api/client';
 
 /**
@@ -83,6 +84,41 @@ function storeSession(session: AuthState | null) {
   }
 }
 
+/**
+ * Guarda en la cuenta los turnos que este navegador reservó sin ella.
+ *
+ * <p>Es la promesa que hace la pantalla de "Turno reservado" cuando ofrece
+ * guardarlo en una cuenta. Lo que autoriza el reclamo es tener el token de
+ * gestión: ya alcanza para ver y cancelar ese turno, así que atarlo a la cuenta
+ * no le da a nadie un poder que no tuviera. El teléfono, en cambio, no prueba
+ * nada, y por eso el historial no se arma con él.
+ *
+ * <p>Se reclaman todos los que este navegador tenga guardados, no sólo el
+ * último: el token de cada uno es la misma prueba. Los reclamados salen de la
+ * lista local porque pasan a estar en el historial de la cuenta, y no tiene
+ * sentido que figuren dos veces.
+ *
+ * <p>Si falla, no pasa nada: los turnos siguen en esta lista y el jugador los
+ * sigue viendo. No vale la pena romperle el login por esto.
+ */
+async function claimGuestBookings(token: string): Promise<void> {
+  const guardados = readGuestBookings();
+  if (guardados.length === 0) {
+    return;
+  }
+  try {
+    const { claimed } = await playerApi.claimBookings(
+      token,
+      guardados.map((booking) => booking.managementToken),
+    );
+    if (claimed > 0) {
+      guardados.forEach((booking) => forgetGuestBooking(booking.bookingId));
+    }
+  } catch {
+    // Sin reclamo, pero con sesión.
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthState | null>(() => readStoredSession());
 
@@ -96,6 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await playerApi.confirmSignup(email, code);
     const next = toAuthState(result);
     storeSession(next);
+    await claimGuestBookings(next.token);
     setSession(next);
     return next;
   }, []);
@@ -104,6 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await playerApi.login(email, password);
     const next = toAuthState(result);
     storeSession(next);
+    await claimGuestBookings(next.token);
     setSession(next);
     return next;
   }, []);
@@ -112,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await playerApi.loginWithGoogle(idToken);
     const next = toAuthState(result);
     storeSession(next);
+    await claimGuestBookings(next.token);
     setSession(next);
     return next;
   }, []);

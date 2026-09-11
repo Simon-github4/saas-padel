@@ -3,11 +3,14 @@ package ar.com.padelnec.web.api;
 import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.PlayerSession;
+import ar.com.padelnec.service.BookingClaimService;
 import ar.com.padelnec.service.PlayerAuthService;
 import ar.com.padelnec.service.PlayerAuthService.IssuedSession;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.BookingHistoryItem;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.ConfigResponse;
+import ar.com.padelnec.web.dto.PlayerAuthDtos.ClaimBookingsRequest;
+import ar.com.padelnec.web.dto.PlayerAuthDtos.ClaimBookingsResponse;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.ConfirmSignupRequest;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.ForgotPasswordRequest;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.GoogleLoginRequest;
@@ -20,6 +23,7 @@ import ar.com.padelnec.web.dto.PlayerAuthDtos.UpdateProfileRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -48,6 +52,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PlayerAuthController {
 
     private final PlayerAuthService playerAuthService;
+    private final BookingClaimService bookingClaimService;
     private final LoginRateLimiter loginRateLimiter;
     private final BookingRateLimiter bookingRateLimiter;
     private final AppProperties properties;
@@ -145,6 +150,21 @@ public class PlayerAuthController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(@RequestHeader("Authorization") String authorization) {
         playerAuthService.logout(bearerToken(authorization));
+    }
+
+    /**
+     * Guarda en la cuenta los turnos que este navegador reservo sin ella.
+     *
+     * <p>Lo llama la app apenas se abre sesion, con los tokens que tenga
+     * guardados. Lo que autoriza cada reclamo es tener ese token, que ya alcanza
+     * para cancelar el turno -- no el telefono, que no prueba nada.
+     */
+    @PostMapping("/bookings/claim")
+    public ClaimBookingsResponse claimBookings(@RequestHeader("Authorization") String authorization,
+                                               @Valid @RequestBody ClaimBookingsRequest request) {
+        UUID accountId = playerAuthService.resolveSession(bearerToken(authorization)).getId();
+        return new ClaimBookingsResponse(
+                bookingClaimService.claim(accountId, request.managementTokens()));
     }
 
     /** Turnos del jugador en todos los clubes de la plataforma. */

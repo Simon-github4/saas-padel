@@ -308,7 +308,7 @@ GROUP BY e.from_search, b.status;
 
 ## Estado
 
-Las tres piezas funcionando de punta a punta. 226 tests del backend y 40 de la app del jugador.
+Las tres piezas funcionando de punta a punta. 231 tests del backend y 40 de la app del jugador.
 
 - Motor de disponibilidad, precios por franja y por cancha
 - Reserva con seña (MercadoPago) y de palabra, confirmada al instante por defecto

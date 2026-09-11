@@ -434,6 +434,39 @@ public class BookingService {
         return new ManagedBooking(club, booking);
     }
 
+    /**
+     * Ata a una cuenta un turno reservado como invitado.
+     *
+     * <p>Lo que autoriza es tener el token de gestion, no decir un telefono. Ese
+     * token ya alcanza para ver y cancelar el turno, asi que atarlo a una cuenta
+     * no le da a quien lo tiene ningun poder que no tuviera. Es la diferencia con
+     * el emparejamiento por telefono que habia antes, donde el dato que se
+     * presentaba no probaba nada.
+     *
+     * <p>Un turno que ya pertenece a otra cuenta no se toca: cancelarlo si lo
+     * puede hacer quien tenga el token, pero mudarlo de historial seria sacarselo
+     * a su dueño.
+     *
+     * <p>Da por hecho que el club ya esta en contexto, igual que el resto de los
+     * flujos por token.
+     *
+     * @return true si este turno quedo atado a la cuenta en esta llamada
+     */
+    @Transactional
+    public boolean linkToAccount(String managementToken, UUID accountId) {
+        Optional<Booking> found = bookingRepository.findByManagementToken(managementToken);
+        if (found.isEmpty()) {
+            return false;
+        }
+        Booking booking = found.get();
+        if (booking.getPlayerAccountId() != null) {
+            return false;
+        }
+        booking.setPlayerAccountId(accountId);
+        bookingRepository.save(booking);
+        return true;
+    }
+
     private Booking requireBooking(UUID bookingId) {
         return bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("El turno no existe"));

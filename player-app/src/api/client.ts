@@ -333,4 +333,17 @@ export const playerApi = {
   logout: (token: string) => request<void>('/player/logout', { method: 'POST', token }),
 
   bookingHistory: (token: string) => request<BookingHistoryItem[]>('/player/bookings', { token }),
+
+  /**
+   * Guarda en la cuenta los turnos que este navegador reservó sin ella.
+   *
+   * <p>Lo que autoriza cada reclamo es tener el token de gestión, que ya alcanza
+   * para cancelar ese turno. El backend ignora los que ya son de otra cuenta.
+   */
+  claimBookings: (token: string, managementTokens: string[]) =>
+    request<{ claimed: number }>('/player/bookings/claim', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ managementTokens }),
+    }),
 };

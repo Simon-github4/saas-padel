@@ -3,10 +3,12 @@ package ar.com.padelnec.web.dto;
 import ar.com.padelnec.repository.BookingRepository.PlayerBookingHistoryRow;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /** Contratos del login del jugador. */
@@ -83,6 +85,23 @@ public final class PlayerAuthDtos {
     }
 
     /** Nombre y telefono de contacto del jugador. */
+    /**
+     * Turnos que este navegador reservo sin cuenta y ahora quiere guardar en una.
+     *
+     * <p>Lo que autoriza el reclamo es tener el token: ya alcanza para ver y
+     * cancelar el turno, asi que atarlo a una cuenta no suma ningun poder.
+     *
+     * <p>El tope es el mismo que guarda el navegador, veinte.
+     */
+    public record ClaimBookingsRequest(
+            @NotEmpty(message = "No hay turnos para guardar")
+            @Size(max = 20, message = "Son demasiados turnos")
+            List<@NotBlank @Size(max = 64) String> managementTokens) {
+    }
+
+    public record ClaimBookingsResponse(int claimed) {
+    }
+
     public record UpdateProfileRequest(
             @NotBlank(message = "Necesitamos tu nombre")
             @Size(max = 100, message = "El nombre es muy largo") String name,
