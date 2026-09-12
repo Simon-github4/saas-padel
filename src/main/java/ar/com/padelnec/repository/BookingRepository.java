@@ -122,7 +122,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
             """, nativeQuery = true)
     List<PlayerBookingHistoryRow> findHistoryByAccount(@Param("accountId") UUID accountId);
 
-    /** Proyeccion de {@link #findHistoryByPhone}. */
+    /** Proyeccion de {@link #findHistoryByAccount}. */
     interface PlayerBookingHistoryRow {
         UUID getBookingId();
 
