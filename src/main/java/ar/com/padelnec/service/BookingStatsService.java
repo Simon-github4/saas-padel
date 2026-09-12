@@ -2,6 +2,7 @@ package ar.com.padelnec.service;
 
 import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Court;
+import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CancellationReason;
@@ -13,6 +14,7 @@ import ar.com.padelnec.repository.BookingStatsRow;
 import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.PaymentCashRow;
 import ar.com.padelnec.repository.PaymentRepository;
+import ar.com.padelnec.repository.PlayerAccountRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
@@ -26,7 +28,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -54,6 +58,7 @@ public class BookingStatsService {
     private final CourtRepository courtRepository;
     private final PaymentRepository paymentRepository;
     private final BlackoutRepository blackoutRepository;
+    private final PlayerAccountRepository playerAccountRepository;
     private final SlotGenerator slotGenerator;
 
     public enum Periodo {
@@ -172,18 +177,58 @@ public class BookingStatsService {
                 .toList();
     }
 
-    /** Los clientes que mas facturaron en el rango. */
+    /**
+     * Agrupa turnos para top clientes: por cuenta si el turno esta vinculado a
+     * una (dos ids de cuenta iguales son la misma fila), por cliente si no.
+     */
+    private record CustomerGroupKey(UUID accountId, UUID customerId) {
+    }
+
+    /**
+     * Los clientes que mas facturaron en el rango.
+     *
+     * <p>Se agrupa por cuenta cuando el turno la tiene vinculada ({@code
+     * Booking#playerAccountId}), no por {@code Customer}: un mismo jugador
+     * logueado puede haber reservado alguna vez con otro telefono y terminar
+     * repartido en dos filas de "top clientes" que en realidad son la misma
+     * persona. Sin cuenta vinculada (la mayoria de las reservas, que nunca
+     * piden login) se sigue agrupando por cliente, como antes.
+     *
+     * <p>El nombre que se muestra para una cuenta es el actual
+     * ({@code PlayerAccount#displayName}), no el que quedo guardado en el
+     * {@code Customer} de la reserva mas vieja del grupo: si el jugador
+     * corrigio su nombre despues, la lista tiene que reflejarlo.
+     */
     @Transactional(readOnly = true)
     public List<CustomerStat> topCustomers(Tenant club, LocalDate from, LocalDate to, int limit) {
         // Se agrupa por id, no por el registro entero: dos filas del mismo cliente
         // difieren en horario/precio, asi que agrupar "por cliente" solo funciona
         // por su identidad, no por igualdad estructural de la proyeccion.
-        Map<UUID, List<BookingStatsRow>> byCustomer = bookingsInRange(club, from, to).stream()
-                .collect(Collectors.groupingBy(BookingStatsRow::customerId));
+        Map<CustomerGroupKey, List<BookingStatsRow>> grouped = bookingsInRange(club, from, to).stream()
+                .collect(Collectors.groupingBy(row -> row.playerAccountId() != null
+                        ? new CustomerGroupKey(row.playerAccountId(), null)
+                        : new CustomerGroupKey(null, row.customerId())));
 
-        return byCustomer.values().stream()
-                .map(rows -> new CustomerStat(rows.get(0).customerFullName(), rows.get(0).customerPhoneNumber(),
-                        rows.size(), facturado(rows)))
+        Set<UUID> accountIds = grouped.keySet().stream()
+                .map(CustomerGroupKey::accountId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<UUID, PlayerAccount> accountsById = playerAccountRepository.findAllById(accountIds).stream()
+                .collect(Collectors.toMap(PlayerAccount::getId, account -> account));
+
+        return grouped.entrySet().stream()
+                .map(entry -> {
+                    List<BookingStatsRow> rows = entry.getValue();
+                    BookingStatsRow first = rows.get(0);
+                    PlayerAccount account = accountsById.get(entry.getKey().accountId());
+                    String name = account != null && account.getDisplayName() != null
+                            ? account.getDisplayName()
+                            : first.customerFullName();
+                    String phone = account != null && account.getPhoneNumber() != null
+                            ? account.getPhoneNumber()
+                            : first.customerPhoneNumber();
+                    return new CustomerStat(name, phone, rows.size(), facturado(rows));
+                })
                 .sorted(Comparator.comparing(CustomerStat::facturado).reversed())
                 .limit(limit)
                 .toList();

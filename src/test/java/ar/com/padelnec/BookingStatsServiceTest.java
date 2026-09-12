@@ -8,11 +8,13 @@ import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Payment;
+import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
+import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.BookingService.NewBooking;
 import ar.com.padelnec.service.BookingService.PaymentChoice;
@@ -83,6 +85,7 @@ class BookingStatsServiceTest {
     @Autowired private PaymentService paymentService;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private BookingRepository bookingRepository;
+    @Autowired private PlayerAccountRepository playerAccountRepository;
     @Autowired private BlackoutRepository blackoutRepository;
     @Autowired private SlotGenerator slotGenerator;
     @Autowired private ClubFixture fixture;
@@ -153,6 +156,41 @@ class BookingStatsServiceTest {
                 .containsExactlyInAnyOrder(
                         tuple("Cliente A", 1, new BigDecimal("20000.00")),
                         tuple("Cliente B", 1, new BigDecimal("20000.00")));
+    }
+
+    @Test
+    @DisplayName("Dos turnos de la misma cuenta se agrupan aunque hayan reservado con telefonos distintos")
+    void groupsByAccountEvenAcrossDifferentPhones() {
+        PlayerAccount account = new PlayerAccount();
+        account.setEmail("jugador@example.com");
+        account.setPhoneNumber("+5492262415000");
+        account.setDisplayName("Nombre Actualizado");
+        account = playerAccountRepository.saveAndFlush(account);
+
+        Booking first = reserve(LocalTime.of(12, 30), "2262415000", "Nombre Viejo");
+        linkToAccount(first, account.getId());
+        markCompleted(first);
+        // Mismo jugador, otro turno con un telefono distinto (por ejemplo, el de un
+        // amigo) -- sin la cuenta, esto seria un "Cliente" aparte.
+        Booking second = reserve(LocalTime.of(17, 0), "2262415999", "Nombre Viejo");
+        linkToAccount(second, account.getId());
+        markCompleted(second);
+        // Turno de otro jugador, sin cuenta: no tiene que mezclarse con el de arriba.
+        markCompleted(reserve(LocalTime.of(8, 0), "2262415111", "Cliente Sin Cuenta"));
+
+        List<CustomerStat> customers = statsService.topCustomers(club, TUESDAY, TUESDAY, 10);
+
+        assertThat(customers)
+                .extracting(CustomerStat::name, CustomerStat::turnos, CustomerStat::facturado)
+                .containsExactlyInAnyOrder(
+                        tuple("Nombre Actualizado", 2, new BigDecimal("40000.00")),
+                        tuple("Cliente Sin Cuenta", 1, new BigDecimal("20000.00")));
+    }
+
+    private void linkToAccount(Booking booking, java.util.UUID accountId) {
+        Booking managed = bookingRepository.findById(booking.getId()).orElseThrow();
+        managed.setPlayerAccountId(accountId);
+        bookingRepository.saveAndFlush(managed);
     }
 
     @Test

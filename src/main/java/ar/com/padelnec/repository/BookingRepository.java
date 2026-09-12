@@ -208,7 +208,7 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     @Query("""
             SELECT new ar.com.padelnec.repository.BookingStatsRow(
                 b.id, b.status, b.startTime, b.endTime, b.totalPrice, b.paidAmount, b.cancellationReason,
-                b.customer.id, b.customer.fullName, b.customer.phoneNumber)
+                b.customer.id, b.customer.fullName, b.customer.phoneNumber, b.playerAccountId)
             FROM Booking b
             WHERE b.startTime >= :from AND b.startTime < :until
             ORDER BY b.startTime ASC
