@@ -44,7 +44,9 @@ export function ClubPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Slot | null>(null);
   const [step, setStep] = useState<1 | 2 | 3>(linkedTime ? 2 : 1);
-  const [linkExpired, setLinkExpired] = useState(false);
+  // Por qué el jugador volvió a la grilla sin el turno que había elegido. Sin
+  // esto, perder el turno al confirmar se veía como una recarga sin motivo.
+  const [slotNotice, setSlotNotice] = useState<SlotNotice | null>(null);
   const reserva = useRef<HTMLElement>(null);
   const mounted = useRef(false);
   const linkApplied = useRef(false);
@@ -158,12 +160,14 @@ export function ClubPage() {
   // además descarta el turno que se hubiera elegido: ya no aplica.
   const handleDaySelect = useCallback((day: string) => {
     setSelected(null);
+    setSlotNotice(null);
     setStep(2);
     setDate(day);
   }, []);
 
   useEffect(() => {
     setSelected(null);
+    setSlotNotice(null);
   }, [date]);
 
   // Turno preseleccionado desde la busqueda global: se salta directo a los datos.
@@ -189,7 +193,10 @@ export function ClubPage() {
       // Vino de la búsqueda y el turno ya no estaba. Se anota aparte del
       // abandono: no es que no quiso reservar, es que no pudo.
       track('link_expired', { date, detail: linkedTime });
-      setLinkExpired(true);
+      setSlotNotice({
+        tone: 'info',
+        message: 'Ese turno ya se ocupó. Estos son los que quedan libres.',
+      });
       setStep(2);
     }
   }, [data, linkedTime]);
@@ -310,10 +317,10 @@ export function ClubPage() {
             {step === 2 && (
               <div className="space-y-4">
                 <SectionTitle title="Elegí la hora" />
-                {linkExpired && (
-                  <Alert tone="info">
-                    Ese turno ya se ocupó. Estos son los que quedan libres.
-                  </Alert>
+                {slotNotice && (
+                  <div role="alert">
+                    <Alert tone={slotNotice.tone}>{slotNotice.message}</Alert>
+                  </div>
                 )}
                 <HourGrid
                   slug={slug}
@@ -324,6 +331,7 @@ export function ClubPage() {
                   onSelect={(slot) => {
                     track('slot_click', { slotAt: slot.startsAt });
                     setSelected(slot);
+                    setSlotNotice(null);
                     setStep(3);
                   }}
                   onBack={() => setStep(1)}
@@ -340,6 +348,15 @@ export function ClubPage() {
                   slot={selected}
                   onBack={() => setStep(2)}
                   onSlotTaken={() => {
+                    // Rojo y no gris como el del link vencido: acá el jugador
+                    // tocó "Reservar" y la reserva no salió.
+                    setSlotNotice({
+                      tone: 'error',
+                      message: `No pudimos reservarte el turno de las ${clockTime(
+                        selected.startsAt,
+                        club.timeZone,
+                      )} hs: otra persona lo tomó justo antes. Elegí otro horario.`,
+                    });
                     setSelected(null);
                     setStep(2);
                     void load();
@@ -571,6 +588,8 @@ function FullSlotCard({
     </div>
   );
 }
+
+type SlotNotice = { tone: 'info' | 'error'; message: string };
 
 /** Una fecha del link solo se acepta si tiene la forma que produce la busqueda. */
 function validDate(value: string | null): string | null {
