@@ -287,13 +287,17 @@ class BookingServiceTest {
     @Test
     @DisplayName("Un mismo telefono no puede bloquear la agenda entera")
     void aSinglePhoneCannotHoldTheWholeAgenda() {
-        reserve(court1, LocalTime.of(15, 30), PaymentChoice.PAY_AT_CLUB);
-        reserve(court1, LocalTime.of(17, 0), PaymentChoice.PAY_AT_CLUB);
-        reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
+        // Turnos de 90 minutos desde las 08:00: los siete primeros del dia llenan el cupo.
+        LocalTime slot = LocalTime.of(8, 0);
+        for (int i = 0; i < 7; i++) {
+            reserve(court1, slot, PaymentChoice.PAY_AT_CLUB);
+            slot = slot.plusMinutes(90);
+        }
 
-        assertThatThrownBy(() -> reserve(court1, LocalTime.of(20, 0), PaymentChoice.PAY_AT_CLUB))
+        LocalTime eighth = slot;
+        assertThatThrownBy(() -> reserve(court1, eighth, PaymentChoice.PAY_AT_CLUB))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("3 turnos");
+                .hasMessageContaining("7 turnos");
     }
 
     @Test

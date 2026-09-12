@@ -95,7 +95,7 @@ public class Tenant extends BaseEntity {
 
     /** Cuantos turnos futuros puede tener tomados un mismo telefono a la vez. */
     @Column(name = "max_active_bookings", nullable = false)
-    private int maxActiveBookings = 3;
+    private int maxActiveBookings = 7;
 
     @Column(nullable = false)
     private boolean active = true;
