@@ -19,10 +19,13 @@ import { Alert, Button, Field } from './Ui';
 export function WaitlistForm({
   slug,
   startTime,
+  returnTo,
   onJoined,
 }: {
   slug: string;
   startTime: string;
+  /** A dónde volver después de iniciar sesión o registrarse: el día y el horario, no solo el club. */
+  returnTo: string;
   onJoined: () => void;
 }) {
   const navigate = useNavigate();
@@ -34,16 +37,17 @@ export function WaitlistForm({
 
   if (!session) {
     // Sin cuenta todavía: se vuelve acá mismo después de iniciar sesión o
-    // registrarse, así no se pierde el club en el camino.
-    const returnTo = encodeURIComponent(`/club/${slug}`);
+    // registrarse -mismo día, mismo horario, con este formulario abierto-, así
+    // no hay que buscar el turno de nuevo.
+    const encoded = encodeURIComponent(returnTo);
     return (
       <div className="mt-3 space-y-2">
         <Alert tone="info">Para anotarte necesitás una cuenta, así te avisamos si se libera.</Alert>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => navigate(`/login?returnTo=${returnTo}`)}>
+          <Button variant="secondary" onClick={() => navigate(`/login?returnTo=${encoded}`)}>
             Iniciar sesión
           </Button>
-          <Button onClick={() => navigate(`/login?mode=register&returnTo=${returnTo}`)}>
+          <Button onClick={() => navigate(`/login?mode=register&returnTo=${encoded}`)}>
             Crear cuenta
           </Button>
         </div>

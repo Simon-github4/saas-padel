@@ -38,12 +38,19 @@ export function ClubPage() {
   const [search] = useSearchParams();
   const linkedDate = validDate(search.get('fecha'));
   const linkedTime = search.get('hora');
+  // La vuelta del login desde "Avisame si se libera" manda ?fecha=&espera=:
+  // el jugador cae en la grilla de ese día con el formulario de ese horario
+  // abierto, en vez de tener que buscarlo de nuevo. Sin fecha no significa nada.
+  const linkedWaitlist = linkedDate ? search.get('espera') : null;
   const [date, setDate] = useState(linkedDate ?? todayIso());
   const [data, setData] = useState<Availability | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Slot | null>(null);
-  const [step, setStep] = useState<1 | 2 | 3>(linkedTime ? 2 : 1);
+  const [step, setStep] = useState<1 | 2 | 3>(linkedTime || linkedWaitlist ? 2 : 1);
+  // Se consume una sola vez: la ficha lo avisa al abrirse, y así volver a este
+  // día más tarde no reabre el formulario solo.
+  const [waitlistToOpen, setWaitlistToOpen] = useState(linkedWaitlist);
   // Por qué el jugador volvió a la grilla sin el turno que había elegido. Sin
   // esto, perder el turno al confirmar se veía como una recarga sin motivo.
   const [slotNotice, setSlotNotice] = useState<SlotNotice | null>(null);
@@ -328,6 +335,10 @@ export function ClubPage() {
                   loading={loading}
                   canGoNextDay={addDays(date, 1) <= lastBookable}
                   onNextDay={() => setDate(addDays(date, 1))}
+                  // Solo en el día del link: "21:30" existe todos los días, y si
+                  // ese horario ya no estaba lleno la marca queda sin consumir.
+                  waitlistToOpen={data!.date === linkedDate ? waitlistToOpen : null}
+                  onWaitlistOpened={() => setWaitlistToOpen(null)}
                   onSelect={(slot) => {
                     track('slot_click', { slotAt: slot.startsAt });
                     setSelected(slot);
@@ -408,6 +419,8 @@ function HourGrid({
   loading,
   canGoNextDay,
   onNextDay,
+  waitlistToOpen,
+  onWaitlistOpened,
   onSelect,
   onBack,
 }: {
@@ -416,6 +429,9 @@ function HourGrid({
   loading: boolean;
   canGoNextDay: boolean;
   onNextDay: () => void;
+  /** Horario ("21:30") cuyo formulario de lista de espera arranca abierto. */
+  waitlistToOpen: string | null;
+  onWaitlistOpened: () => void;
   onSelect: (slot: Slot) => void;
   onBack: () => void;
 }) {
@@ -462,9 +478,12 @@ function HourGrid({
               <FullSlotCard
                 key={slot.startsAt}
                 slug={slug}
+                date={data.date}
                 slot={slot}
                 index={index}
                 timeZone={data.club.timeZone}
+                startsOpen={slot.startTime === waitlistToOpen}
+                onOpenedFromLink={onWaitlistOpened}
               />
             ),
           )}
@@ -540,20 +559,40 @@ function HourCard({
 /** Horario sin canchas libres: se ofrece anotarse en vez de reservar. */
 function FullSlotCard({
   slug,
+  date,
   slot,
   index,
   timeZone,
+  startsOpen,
+  onOpenedFromLink,
 }: {
   slug: string;
+  /** Día de la grilla (no el de startsAt: un turno de la 00:30 es del día anterior). */
+  date: string;
   slot: Slot;
   index: number;
   timeZone: string;
+  /** Vuelve del login con este horario: el formulario ya abierto y a la vista. */
+  startsOpen: boolean;
+  onOpenedFromLink: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startsOpen);
   const [joined, setJoined] = useState(false);
+  const card = useRef<HTMLDivElement>(null);
+
+  // Solo al montar: la página arranca arriba de todo, en la portada, y el
+  // formulario al que volvió el jugador queda varias pantallas más abajo.
+  useEffect(() => {
+    if (!startsOpen) {
+      return;
+    }
+    card.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    onOpenedFromLink();
+  }, []);
 
   return (
     <div
+      ref={card}
       style={{ animationDelay: `${index * 40}ms` }}
       className="ficha-in rounded-2xl border border-cal/10 bg-vidrio/50 p-4 text-left"
     >
@@ -570,6 +609,7 @@ function FullSlotCard({
         <WaitlistForm
           slug={slug}
           startTime={slot.startsAt}
+          returnTo={`/club/${slug}?fecha=${date}&espera=${slot.startTime}`}
           onJoined={() => {
             // La otra forma de "quiso y no pudo": el horario estaba lleno.
             track('waitlist_joined', { slotAt: slot.startsAt });
