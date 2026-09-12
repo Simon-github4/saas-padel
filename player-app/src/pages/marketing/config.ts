@@ -12,7 +12,7 @@ export function salesWhatsappHref(): string {
 }
 
 /** Precio único, por club. El alta y el cobro los hace el vendedor a mano. */
-export const MONTHLY_PRICE_ARS = 22000; // TODO: precio real
+export const MONTHLY_PRICE_ARS = 35000;
 export const TRIAL_DAYS = 7;
 
 const SUBSCRIBE_MESSAGE = 'Hola, quiero contratar el plan para mi club.';
