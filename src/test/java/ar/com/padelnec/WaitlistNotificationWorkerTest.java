@@ -2,16 +2,21 @@ package ar.com.padelnec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
+import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.WaitlistEntry;
+import ar.com.padelnec.notification.EmailSender;
 import ar.com.padelnec.notification.whatsapp.NotificationTemplate;
 import ar.com.padelnec.notification.whatsapp.WhatsAppSender;
 import ar.com.padelnec.repository.NotificationLogRepository;
+import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.repository.WaitlistEntryRepository;
 import ar.com.padelnec.scheduler.WaitlistNotificationWorker;
 import ar.com.padelnec.service.BookingService;
@@ -67,12 +72,15 @@ class WaitlistNotificationWorkerTest {
     @Autowired private WaitlistEntryRepository waitlistEntryRepository;
     @Autowired private NotificationLogRepository notificationLogRepository;
     @Autowired private BookingService bookingService;
+    @Autowired private PlayerAccountRepository playerAccountRepository;
     @Autowired private ClubFixture fixture;
     @Autowired private Clock clock;
     @MockitoBean private WhatsAppSender sender;
+    @MockitoBean private EmailSender emailSender;
 
     private Tenant club;
     private Court court;
+    private PlayerAccount player;
 
     @BeforeEach
     void setUp() {
@@ -81,11 +89,25 @@ class WaitlistNotificationWorkerTest {
         // Por defecto se comporta como el canal apagado de siempre (WHATSAPP_PROVIDER=off
         // en test): "manejado" sin mandar nada de verdad. Los tests de fallo pisan esto.
         when(sender.send(any(), any(), any(), any())).thenReturn(WhatsAppSender.SendResult.skipped("test"));
+        // Sin proveedor de verdad tampoco: asi el WhatsApp "apagado" sigue dando
+        // "atendido" en los tests de siempre, igual que antes de que existiera
+        // este respaldo. Los tests del propio respaldo pisan esto.
+        when(emailSender.send(any(), any(), any())).thenReturn(EmailSender.SendResult.failed("sin smtp en el test"));
 
         club = fixture.club("club-necochea");
         TenantContext.set(club.getId());
         court = fixture.court("Cancha 1", 1);
         fixture.allDayPrice(DayOfWeek.TUESDAY, "20000");
+        player = player("jugador@test.com");
+    }
+
+    /** Anotarse exige sesion (ver WaitlistService): la cuenta es global, no del club. */
+    private PlayerAccount player(String email) {
+        PlayerAccount account = new PlayerAccount();
+        account.setEmail(email);
+        account.setEmailVerified(true);
+        account.setDisplayName("Jugador de prueba");
+        return playerAccountRepository.saveAndFlush(account);
     }
 
     @AfterEach
@@ -98,7 +120,7 @@ class WaitlistNotificationWorkerTest {
     void notifiesOnceTheSlotIsFreedByACancellation() {
         Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
         Booking taking = fillTheOnlyCourt(startTime);
-        WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado");
+        WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
 
         bookingService.cancelByClub(club, taking.getId(), "Se cayo el grupo");
         int notified = worker.notifyFreedSlots(club);
@@ -120,7 +142,7 @@ class WaitlistNotificationWorkerTest {
     void doesNotNotifyWhileTheSlotIsStillFull() {
         Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
         fillTheOnlyCourt(startTime);
-        waitlistService.join(club, startTime, "2262415111", "Jugador anotado");
+        waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
 
         int notified = worker.notifyFreedSlots(club);
 
@@ -133,7 +155,7 @@ class WaitlistNotificationWorkerTest {
     void notifiedEntriesDropOutOfThePendingList() {
         Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
         Booking taking = fillTheOnlyCourt(startTime);
-        waitlistService.join(club, startTime, "2262415111", "Jugador anotado");
+        waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
         bookingService.cancelByClub(club, taking.getId(), "Se cayo el grupo");
 
         worker.notifyFreedSlots(club);
@@ -144,13 +166,16 @@ class WaitlistNotificationWorkerTest {
     }
 
     @Test
-    @DisplayName("Si el envio falla de verdad, la entrada sigue pendiente para reintentar")
+    @DisplayName("Si el WhatsApp y el mail fallan los dos de verdad, la entrada sigue pendiente para reintentar")
     void aFailedSendLeavesTheEntryPendingForRetry() {
         Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
         Booking taking = fillTheOnlyCourt(startTime);
-        WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado");
+        WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
         bookingService.cancelByClub(club, taking.getId(), "Se cayo el grupo");
         when(sender.send(any(), any(), any(), any())).thenReturn(WhatsAppSender.SendResult.failed("boom"));
+        // Explicito y no solo el default de setUp: es la condicion exacta que
+        // este test quiere probar, no una casualidad heredada.
+        when(emailSender.send(any(), any(), any())).thenReturn(EmailSender.SendResult.failed("smtp caido"));
 
         int notified = worker.notifyFreedSlots(club);
 
@@ -158,6 +183,40 @@ class WaitlistNotificationWorkerTest {
         WaitlistEntry reloaded = waitlistEntryRepository.findById(entry.getId()).orElseThrow();
         assertThat(reloaded.isNotified()).isFalse();
         assertThat(waitlistEntryRepository.findPending()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Si el WhatsApp del club esta apagado, el mail de la cuenta rescata el aviso")
+    void emailRescuesTheNoticeWhenWhatsappIsOff() {
+        Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
+        Booking taking = fillTheOnlyCourt(startTime);
+        WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
+        bookingService.cancelByClub(club, taking.getId(), "Se cayo el grupo");
+        // sender ya esta "skipped" por el default de setUp (WhatsApp apagado).
+        when(emailSender.send(any(), any(), any())).thenReturn(EmailSender.SendResult.ok());
+
+        int notified = worker.notifyFreedSlots(club);
+
+        assertThat(notified).isEqualTo(1);
+        WaitlistEntry reloaded = waitlistEntryRepository.findById(entry.getId()).orElseThrow();
+        assertThat(reloaded.isNotified()).isTrue();
+        verify(emailSender).send(eq("jugador@test.com"), any(), any());
+    }
+
+    @Test
+    @DisplayName("Si el WhatsApp falla de verdad, el mail de la cuenta rescata el aviso igual")
+    void emailRescuesTheNoticeWhenWhatsappReallyFails() {
+        Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
+        Booking taking = fillTheOnlyCourt(startTime);
+        WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
+        bookingService.cancelByClub(club, taking.getId(), "Se cayo el grupo");
+        when(sender.send(any(), any(), any(), any())).thenReturn(WhatsAppSender.SendResult.failed("boom"));
+        when(emailSender.send(any(), any(), any())).thenReturn(EmailSender.SendResult.ok());
+
+        int notified = worker.notifyFreedSlots(club);
+
+        assertThat(notified).isEqualTo(1);
+        assertThat(waitlistEntryRepository.findById(entry.getId()).orElseThrow().isNotified()).isTrue();
     }
 
     private Booking fillTheOnlyCourt(Instant startTime) {

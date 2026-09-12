@@ -39,10 +39,14 @@ public class WaitlistNotificationWorker {
     /**
      * Avisa a los anotados cuyo horario ya tiene alguna cancha libre.
      *
-     * <p>Solo marca {@code notified} si el WhatsApp de verdad salio (o el canal esta
-     * apagado a proposito, que tambien cuenta como atendido) - un fallo real deja la
-     * entrada pendiente para que la proxima pasada del job la reintente, en vez de
-     * perderse en silencio.
+     * <p>WhatsApp primero, mail despues: si el WhatsApp no salio -este club lo
+     * tiene apagado, o el envio de verdad fallo- se prueba el mail de la
+     * cuenta antes de rendirse. Solo marca {@code notified} si alguno de los
+     * dos entrego, o si el WhatsApp estaba apagado a proposito y no hay mas
+     * canal que reintentar (mismo criterio de antes, "atendido" aunque nadie
+     * recibio nada); un fallo real de los dos deja la entrada pendiente para
+     * que la proxima pasada del job la reintente, en vez de perderse en
+     * silencio.
      */
     @Transactional
     public int notifyFreedSlots(Tenant club) {
@@ -52,8 +56,7 @@ public class WaitlistNotificationWorker {
             if (!availabilityService.anyCourtFree(entry.getStartsAt(), entry.getEndsAt())) {
                 continue;
             }
-            WhatsAppSender.SendResult result = notificationService.waitlistSlotFreed(club, entry);
-            if (!result.delivered() && !result.skipped()) {
+            if (!attemptedDelivery(club, entry)) {
                 continue;
             }
             entry.markNotified(clock.instant());
@@ -61,5 +64,22 @@ public class WaitlistNotificationWorker {
             notified++;
         }
         return notified;
+    }
+
+    /** Prueba WhatsApp y, si hace falta, el mail de respaldo. */
+    private boolean attemptedDelivery(Tenant club, WaitlistEntry entry) {
+        WhatsAppSender.SendResult whatsapp = notificationService.waitlistSlotFreed(club, entry);
+        if (whatsapp.delivered()) {
+            return true;
+        }
+        boolean emailDelivered = entry.getEmail() != null
+                && notificationService.waitlistSlotFreedEmail(club, entry).delivered();
+        if (emailDelivered) {
+            return true;
+        }
+        // El WhatsApp esta apagado a proposito (no es una falla): sin mail que
+        // probar, o con el mail tambien sin entregar, no queda otro canal, asi
+        // que se da por atendido igual que antes de que existiera el respaldo.
+        return whatsapp.skipped();
     }
 }

@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Court;
+import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.WaitlistEntry;
+import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.repository.WaitlistEntryRepository;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.BookingService.NewBooking;
@@ -59,11 +61,13 @@ class WaitlistServiceTest {
     @Autowired private WaitlistService waitlistService;
     @Autowired private WaitlistEntryRepository waitlistEntryRepository;
     @Autowired private BookingService bookingService;
+    @Autowired private PlayerAccountRepository playerAccountRepository;
     @Autowired private ClubFixture fixture;
     @Autowired private Clock clock;
 
     private Tenant club;
     private Court court;
+    private PlayerAccount player;
 
     @BeforeEach
     void setUp() {
@@ -74,6 +78,16 @@ class WaitlistServiceTest {
         TenantContext.set(club.getId());
         court = fixture.court("Cancha 1", 1);
         fixture.allDayPrice(DayOfWeek.TUESDAY, "20000");
+        player = player("jugador@test.com");
+    }
+
+    /** Anotarse exige sesion (ver WaitlistService): la cuenta es global, no del club. */
+    private PlayerAccount player(String email) {
+        PlayerAccount account = new PlayerAccount();
+        account.setEmail(email);
+        account.setEmailVerified(true);
+        account.setDisplayName("Jugador de prueba");
+        return playerAccountRepository.saveAndFlush(account);
     }
 
     @AfterEach
@@ -86,7 +100,7 @@ class WaitlistServiceTest {
     void cannotJoinWhenCourtsAreStillFree() {
         Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
 
-        assertThatThrownBy(() -> waitlistService.join(club, startTime, "2262415000", "Jugador"))
+        assertThatThrownBy(() -> waitlistService.join(club, startTime, "2262415000", "Jugador", player))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("libres");
         assertThat(waitlistEntryRepository.findPending()).isEmpty();
@@ -98,10 +112,13 @@ class WaitlistServiceTest {
         Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
         fillTheOnlyCourt(startTime);
 
-        WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado");
+        WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
 
         assertThat(entry.isNotified()).isFalse();
         assertThat(entry.getStartsAt()).isEqualTo(startTime);
+        // El mail de la cuenta, no algo que el formulario le pida al jugador:
+        // es el respaldo para cuando el WhatsApp del club esta apagado.
+        assertThat(entry.getEmail()).isEqualTo("jugador@test.com");
         assertThat(waitlistEntryRepository.findPending()).singleElement()
                 .satisfies(pending -> assertThat(pending.getCustomer().getFullName())
                         .isEqualTo("Jugador anotado"));
@@ -112,9 +129,9 @@ class WaitlistServiceTest {
     void cannotJoinTheSameSlotTwice() {
         Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
         fillTheOnlyCourt(startTime);
-        waitlistService.join(club, startTime, "2262415111", "Jugador anotado");
+        waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
 
-        assertThatThrownBy(() -> waitlistService.join(club, startTime, "2262415111", "Jugador anotado"))
+        assertThatThrownBy(() -> waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("anotado");
         assertThat(waitlistEntryRepository.findPending()).hasSize(1);
@@ -127,7 +144,7 @@ class WaitlistServiceTest {
         fillTheOnlyCourt(startTime);
         ((MutableClock) clock).advance(java.time.Duration.ofHours(1));
 
-        assertThatThrownBy(() -> waitlistService.join(club, startTime, "2262415111", "Jugador"))
+        assertThatThrownBy(() -> waitlistService.join(club, startTime, "2262415111", "Jugador", player))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("pasó");
     }

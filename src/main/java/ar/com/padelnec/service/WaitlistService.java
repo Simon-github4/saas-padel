@@ -1,6 +1,7 @@
 package ar.com.padelnec.service;
 
 import ar.com.padelnec.domain.Customer;
+import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.WaitlistEntry;
 import ar.com.padelnec.repository.WaitlistEntryRepository;
@@ -21,6 +22,11 @@ import org.springframework.transaction.annotation.Transactional;
  * demasiados caminos por los que un turno se libera (el jugador cancela, el club lo
  * da de baja, un turno fijo salta una fecha, vence sin pago) como para instrumentar
  * cada uno sin riesgo de olvidarse alguno.
+ *
+ * <p>Pide sesion de jugador ({@link PlayerAccount}) y no solo nombre y telefono
+ * como antes: el aviso necesita un mail al que caer cuando el WhatsApp del club
+ * esta apagado o el envio real falla (ver {@link WaitlistNotificationWorker}), y
+ * un invitado sin cuenta no tiene uno confiable que ofrecer.
  */
 @Service
 @RequiredArgsConstructor
@@ -33,7 +39,8 @@ public class WaitlistService {
     private final Clock clock;
 
     @Transactional
-    public WaitlistEntry join(Tenant club, Instant startTime, String phone, String fullName) {
+    public WaitlistEntry join(Tenant club, Instant startTime, String phone, String fullName,
+                              PlayerAccount account) {
         SlotGenerator.ResolvedSlot slot = slotGenerator.resolve(club, startTime)
                 .orElseThrow(() -> new BusinessRuleException(
                         "Ese horario no forma parte de la grilla del club"));
@@ -52,6 +59,7 @@ public class WaitlistService {
         entry.setCustomer(customer);
         entry.setStartsAt(slot.slot().startsAt());
         entry.setEndsAt(slot.slot().endsAt());
+        entry.setEmail(account.getEmail());
 
         try {
             return waitlistEntryRepository.saveAndFlush(entry);

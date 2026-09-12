@@ -207,6 +207,11 @@ export class ApiError extends Error {
   get slotTaken() {
     return this.code === 'SLOT_TAKEN';
   }
+
+  /** Sin sesion, o vencida: hace falta iniciar sesion (o crear cuenta) para seguir. */
+  get requiresLogin() {
+    return this.code === 'SESSION_EXPIRED';
+  }
 }
 
 async function request<T>(path: string, init?: RequestInit & { token?: string }): Promise<T> {
@@ -278,10 +283,12 @@ export const api = {
     token,
   }),
 
+  /** Exige sesion: el aviso necesita un mail al que caer si el WhatsApp del club esta apagado. */
   joinWaitlist: (
     slug: string,
     body: { startTime: string; fullName: string; phoneNumber: string },
-  ) => request<WaitlistJoined>(`/${slug}/waitlist`, { method: 'POST', body: JSON.stringify(body) }),
+    token: string,
+  ) => request<WaitlistJoined>(`/${slug}/waitlist`, { method: 'POST', body: JSON.stringify(body), token }),
 
   confirm: (token: string) => request<BookingDetail>(`/confirm/${token}`, { method: 'POST' }),
 

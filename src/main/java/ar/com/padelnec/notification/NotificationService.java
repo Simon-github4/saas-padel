@@ -42,6 +42,7 @@ public class NotificationService {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm", ES_AR);
 
     private final WhatsAppSender sender;
+    private final EmailSender emailSender;
     private final NotificationLogRepository notificationLogRepository;
     private final AppProperties properties;
 
@@ -191,6 +192,32 @@ public class NotificationService {
                 Reservalo antes de que se lo lleve otro: %s"""
                 .formatted(name, club.getName(), date(club, entry.getStartsAt()),
                         time(club, entry.getStartsAt()), link));
+    }
+
+    /**
+     * Mismo aviso que {@link #waitlistSlotFreed}, pero por mail: el respaldo
+     * para cuando el WhatsApp del club esta apagado o el envio real fallo (lo
+     * decide {@link ar.com.padelnec.scheduler.WaitlistNotificationWorker}, no
+     * este metodo -- aca solo se manda). Existe porque anotarse en la lista de
+     * espera exige sesion de jugador, y esa cuenta siempre tiene un mail.
+     */
+    public EmailSender.SendResult waitlistSlotFreedEmail(Tenant club, WaitlistEntry entry) {
+        String name = firstName(entry.getCustomer().getFullName());
+        String link = waitlistLink(club, entry);
+        String body = """
+                Hola %s, se liberó un turno en %s el %s a las %s hs.
+                Reservalo antes de que se lo lleve otro: %s"""
+                .formatted(name, club.getName(), date(club, entry.getStartsAt()),
+                        time(club, entry.getStartsAt()), link);
+        try {
+            return emailSender.send(entry.getEmail(), "Se liberó un turno en " + club.getName(), body);
+        } catch (RuntimeException ex) {
+            // Mismo criterio que el WhatsApp de al lado: un proveedor caido no
+            // puede tumbar el barrido entero, la entrada queda pendiente para
+            // el proximo minuto.
+            log.warn("Fallo el email de lista de espera a {}", Masking.email(entry.getEmail()), ex);
+            return EmailSender.SendResult.failed(ex.getMessage());
+        }
     }
 
     // --------------------------------------------------------------- envio

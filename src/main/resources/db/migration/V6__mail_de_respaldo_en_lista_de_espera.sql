@@ -1,0 +1,11 @@
+-- Anotarse en la lista de espera ahora exige sesion de jugador (ver
+-- WaitlistService.join): sin cuenta no hay a donde mandar el mail de
+-- respaldo cuando el WhatsApp del club esta apagado o el envio real
+-- fallo. El email queda congelado en el momento del alta -mismo criterio
+-- que ProductSale con nombre y precio-, no como referencia viva a la
+-- cuenta: si el jugador cambia de mail despues, este aviso puntual ya
+-- estaba armado con el que tenia en ese momento.
+--
+-- Nullable a proposito: las filas que ya existan de antes de este cambio
+-- se quedan sin mail de respaldo, no se completa retroactivamente.
+ALTER TABLE waitlist_entry ADD COLUMN email VARCHAR(255);

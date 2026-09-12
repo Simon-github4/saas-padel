@@ -32,6 +32,11 @@ export function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>(
     searchParams.get('mode') === 'register' ? 'register' : 'login',
   );
+  // A donde volver despues de entrar, ej. el club donde el jugador queria
+  // anotarse en la lista de espera. Solo una ruta propia -"/..."-, nunca lo
+  // que venga en el query tal cual: ver WaitlistForm, que es quien la manda.
+  const returnToParam = searchParams.get('returnTo');
+  const returnTo = returnToParam?.startsWith('/') ? returnToParam : '/account';
   // Solo aplica en modo "register": 'form' pide los datos, 'code' pide el
   // código de 6 dígitos que se mandó por mail. La cuenta no existe hasta que
   // ese código (o el link del mismo mail) se confirma.
@@ -76,7 +81,7 @@ export function LoginPage() {
           setWorking(true);
           try {
             await loginWithGoogle(response.credential);
-            navigate('/account');
+            navigate(returnTo);
           } catch (err) {
             setError(err instanceof ApiError ? err.message : 'No pudimos verificar tu cuenta de Google.');
           } finally {
@@ -105,7 +110,7 @@ export function LoginPage() {
     try {
       if (mode === 'login') {
         await login(email, password);
-        navigate('/account');
+        navigate(returnTo);
       } else {
         await register(email, password, displayName || undefined, phoneNumber || undefined);
         setCode('');
@@ -124,7 +129,7 @@ export function LoginPage() {
     setWorking(true);
     try {
       await confirmSignup(email, code);
-      navigate('/account');
+      navigate(returnTo);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Tuvimos un problema. Probá de nuevo.');
     } finally {

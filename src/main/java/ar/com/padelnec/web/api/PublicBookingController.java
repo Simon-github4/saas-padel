@@ -1,5 +1,6 @@
 package ar.com.padelnec.web.api;
 
+import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.notification.NotificationService;
 import ar.com.padelnec.repository.TenantHeroImageRepository;
@@ -20,6 +21,7 @@ import ar.com.padelnec.web.dto.BookingDtos.BookingShareResponse;
 import ar.com.padelnec.web.dto.BookingDtos.CancellationResponse;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingRequest;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingResponse;
+import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.CourtSearchResponse;
 import ar.com.padelnec.web.dto.WaitlistDtos.JoinWaitlistRequest;
 import ar.com.padelnec.web.dto.WaitlistDtos.JoinWaitlistResponse;
@@ -135,20 +137,32 @@ public class PublicBookingController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    /** Anotarse para que avisen si se libera una cancha en un horario lleno. */
+    /**
+     * Anotarse para que avisen si se libera una cancha en un horario lleno.
+     *
+     * <p>A diferencia de reservar, esto exige sesion iniciada: el aviso necesita
+     * un mail al que caer cuando el WhatsApp del club esta apagado o el envio
+     * real falla (ver {@link WaitlistService}), y un invitado sin cuenta no
+     * tiene uno confiable que ofrecer. Sin token, o con uno vencido, se corta
+     * ahi con 401 -la app le ofrece iniciar sesion o crear una cuenta en vez de
+     * mostrar el formulario.
+     */
     @PostMapping("/{slug}/waitlist")
     @ResponseStatus(HttpStatus.CREATED)
     public JoinWaitlistResponse joinWaitlist(@PathVariable String slug,
                                              @Valid @RequestBody JoinWaitlistRequest request,
+                                             @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false)
+                                             String authorization,
                                              HttpServletRequest httpRequest) {
         // El telefono es de quien lo escribe, no de quien lo autentica: sin este
         // limite, un script podia anotar el numero de un tercero en la lista de
         // espera de cada horario, y esa persona terminaba recibiendo el aviso.
         rateLimiter.check(httpRequest.getRemoteAddr());
 
+        PlayerAccount account = requireSession(authorization);
         Tenant club = tenantService.activate(slug);
-        waitlistService.join(club, request.startTime(), request.phoneNumber(), request.fullName());
-        return new JoinWaitlistResponse("Listo, te avisamos por WhatsApp si se libera una cancha.");
+        waitlistService.join(club, request.startTime(), request.phoneNumber(), request.fullName(), account);
+        return new JoinWaitlistResponse("Listo, te avisamos si se libera una cancha.");
     }
 
     /** Alta de la reserva. Devuelve el link de pago o el aviso de confirmacion. */
@@ -244,6 +258,20 @@ public class PublicBookingController {
         } catch (RuntimeException ex) {
             return null;
         }
+    }
+
+    /**
+     * Como {@link #playerAccountId}, pero exige la sesion en vez de degradar a
+     * invitado: {@link WaitlistService} necesita la cuenta entera (el mail, no
+     * solo el id), y sin uno al que caer el aviso no tiene forma de llegarle al
+     * jugador cuando el WhatsApp del club esta apagado.
+     */
+    private PlayerAccount requireSession(String authorization) {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            throw new UnauthorizedSessionException(
+                    "Necesitás iniciar sesión para anotarte en la lista de espera.");
+        }
+        return playerAuthService.resolveSession(authorization.substring("Bearer ".length()).trim());
     }
 
     private String messageFor(Tenant club, CheckoutResult result) {

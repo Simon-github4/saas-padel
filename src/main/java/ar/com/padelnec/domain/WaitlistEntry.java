@@ -39,6 +39,17 @@ public class WaitlistEntry extends TenantScopedEntity {
     @Column(name = "notified_at")
     private Instant notifiedAt;
 
+    /**
+     * El mail de la cuenta del jugador al momento de anotarse, para poder
+     * avisarle igual cuando el WhatsApp del club esta apagado o el envio real
+     * fallo. Congelado, no una referencia viva a la cuenta -mismo criterio que
+     * {@code ProductSale} con el nombre y el precio del producto-: si el
+     * jugador cambia de mail despues, este aviso puntual ya estaba armado con
+     * el que tenia cuando se anoto.
+     */
+    @Column(length = 255)
+    private String email;
+
     public void markNotified(Instant now) {
         this.notified = true;
         this.notifiedAt = now;
