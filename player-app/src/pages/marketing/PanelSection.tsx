@@ -11,7 +11,7 @@ const POINTS = [
 /** El otro lado del sistema: lo que pasa fuera de internet, en el panel. */
 export function PanelSection() {
   return (
-    <section id="panel" className="py-16 md:py-20">
+    <section id="panel" className="scroll-mt-20 py-16 md:py-20">
       <div className="grid gap-10 md:grid-cols-2 md:items-center md:gap-12">
         <div>
           <SectionTitle

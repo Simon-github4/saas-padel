@@ -30,7 +30,7 @@ const FEATURES = [
 /** Qué resuelve el sistema, en tarjetas cortas y sin jerga. */
 export function FeaturesSection() {
   return (
-    <section id="funciones" className="py-16 md:py-20">
+    <section id="funciones" className="scroll-mt-20 py-16 md:py-20">
       <SectionTitle
         title="Qué hace por vos"
         subtitle="Lo que hoy resolvés a mano, resuelto solo."

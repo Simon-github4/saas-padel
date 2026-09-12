@@ -23,7 +23,7 @@ const INCLUDED = [
  */
 export function PricingSection() {
   return (
-    <section id="precio" className="py-16 md:py-20">
+    <section id="precio" className="scroll-mt-20 py-16 md:py-20">
       <SectionTitle title="Precio" subtitle="Un plan, sin letra chica." />
       <div className="mx-auto mt-8 max-w-md rounded-2xl border border-cal/10 bg-vidrio p-6 sm:p-8">
         <p className="eyebrow text-ladrillo-claro">Plan único</p>

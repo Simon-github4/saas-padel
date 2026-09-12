@@ -18,7 +18,7 @@ const STEPS = [
 /** Sin promesas de plazo: los tres pasos, sin fecha porque no la controlamos. */
 export function StepsSection() {
   return (
-    <section id="empezar" className="py-16 md:py-20">
+    <section id="empezar" className="scroll-mt-20 py-16 md:py-20">
       <SectionTitle title="Cómo empezamos" subtitle="Sin vueltas, en tres pasos." />
       <ol className="mt-8 grid gap-6 md:grid-cols-3">
         {STEPS.map((step, index) => (
