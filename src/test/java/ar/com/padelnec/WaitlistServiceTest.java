@@ -103,7 +103,7 @@ class WaitlistServiceTest {
         assertThatThrownBy(() -> waitlistService.join(club, startTime, "2262415000", "Jugador", player))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("libres");
-        assertThat(waitlistEntryRepository.findPending()).isEmpty();
+        assertThat(waitlistEntryRepository.findPending(clock.instant())).isEmpty();
     }
 
     @Test
@@ -119,7 +119,7 @@ class WaitlistServiceTest {
         // El mail de la cuenta, no algo que el formulario le pida al jugador:
         // es el respaldo para cuando el WhatsApp del club esta apagado.
         assertThat(entry.getEmail()).isEqualTo("jugador@test.com");
-        assertThat(waitlistEntryRepository.findPending()).singleElement()
+        assertThat(waitlistEntryRepository.findPending(clock.instant())).singleElement()
                 .satisfies(pending -> assertThat(pending.getCustomer().getFullName())
                         .isEqualTo("Jugador anotado"));
     }
@@ -134,7 +134,7 @@ class WaitlistServiceTest {
         assertThatThrownBy(() -> waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("anotado");
-        assertThat(waitlistEntryRepository.findPending()).hasSize(1);
+        assertThat(waitlistEntryRepository.findPending(clock.instant())).hasSize(1);
     }
 
     @Test

@@ -50,7 +50,7 @@ public class WaitlistNotificationWorker {
      */
     @Transactional
     public int notifyFreedSlots(Tenant club) {
-        List<WaitlistEntry> pending = waitlistEntryRepository.findPending();
+        List<WaitlistEntry> pending = waitlistEntryRepository.findPending(clock.instant());
         int notified = 0;
         for (WaitlistEntry entry : pending) {
             if (!availabilityService.anyCourtFree(entry.getStartsAt(), entry.getEndsAt())) {

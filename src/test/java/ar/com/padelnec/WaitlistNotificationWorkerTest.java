@@ -3,6 +3,7 @@ package ar.com.padelnec;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -147,7 +148,7 @@ class WaitlistNotificationWorkerTest {
         int notified = worker.notifyFreedSlots(club);
 
         assertThat(notified).isZero();
-        assertThat(waitlistEntryRepository.findPending()).hasSize(1);
+        assertThat(waitlistEntryRepository.findPending(clock.instant())).hasSize(1);
     }
 
     @Test
@@ -162,7 +163,7 @@ class WaitlistNotificationWorkerTest {
         int secondPass = worker.notifyFreedSlots(club);
 
         assertThat(secondPass).isZero();
-        assertThat(waitlistEntryRepository.findPending()).isEmpty();
+        assertThat(waitlistEntryRepository.findPending(clock.instant())).isEmpty();
     }
 
     @Test
@@ -182,7 +183,7 @@ class WaitlistNotificationWorkerTest {
         assertThat(notified).isZero();
         WaitlistEntry reloaded = waitlistEntryRepository.findById(entry.getId()).orElseThrow();
         assertThat(reloaded.isNotified()).isFalse();
-        assertThat(waitlistEntryRepository.findPending()).hasSize(1);
+        assertThat(waitlistEntryRepository.findPending(clock.instant())).hasSize(1);
     }
 
     @Test
@@ -217,6 +218,29 @@ class WaitlistNotificationWorkerTest {
 
         assertThat(notified).isEqualTo(1);
         assertThat(waitlistEntryRepository.findById(entry.getId()).orElseThrow().isNotified()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Un horario que ya empezo no se avisa aunque la cancha se libere, y sale de pendientes")
+    void doesNotNotifyOnceTheSlotHasStarted() {
+        Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
+        Booking taking = fillTheOnlyCourt(startTime);
+        bookingService.confirmByToken(taking.getConfirmationToken());
+        WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
+
+        // El club marca el ausente con el turno ya en juego: la cancha deja de
+        // figurar ocupada, pero esa hora ya no se puede reservar.
+        ((MutableClock) clock).set(TODAY.atTime(20, 30).atZone(ZONE).toInstant());
+        bookingService.markNoShow(taking.getId());
+        int notified = worker.notifyFreedSlots(club);
+
+        assertThat(notified).isZero();
+        // El turno que tapaba el horario ya mando sus propios WhatsApp (pedido de
+        // confirmacion, confirmado): lo que no tiene que salir es el de la lista.
+        verify(sender, never()).send(any(), eq(NotificationTemplate.WAITLIST_SLOT_FREED), any(), any());
+        verify(emailSender, never()).send(any(), any(), any());
+        assertThat(waitlistEntryRepository.findById(entry.getId()).orElseThrow().isNotified()).isFalse();
+        assertThat(waitlistEntryRepository.findPending(clock.instant())).isEmpty();
     }
 
     private Booking fillTheOnlyCourt(Instant startTime) {
