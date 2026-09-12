@@ -1,11 +1,14 @@
 package ar.com.padelnec.ui;
 
 import ar.com.padelnec.config.AppProperties;
+import ar.com.padelnec.domain.OperationalAlert;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.AlertService;
 import ar.com.padelnec.service.TenantService;
+import com.vaadin.flow.component.AttachEvent;
 import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.DetachEvent;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.applayout.AppLayout;
 import com.vaadin.flow.component.applayout.DrawerToggle;
@@ -32,8 +35,11 @@ import com.vaadin.flow.router.AfterNavigationObserver;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.theme.lumo.LumoIcon;
 import com.vaadin.flow.theme.lumo.LumoUtility;
+import com.vaadin.flow.shared.Registration;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import jakarta.annotation.security.PermitAll;
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -61,6 +67,14 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
 
     /** Se rellena en cada navegacion con el nombre de la pantalla activa. */
     private final H1 viewTitle = new H1();
+
+    private static final int ALERT_POLL_MILLIS = 30_000;
+
+    private SideNavItem alertsNavItem;
+    private final Span alertsBadge = new Span();
+    /** Las alertas creadas despues de esto todavia no se avisaron en pantalla. */
+    private Instant lastAlertSeen = Instant.now();
+    private Registration alertPoll;
 
     public MainLayout(AuthenticationContext authenticationContext, AlertService alertService,
                       TenantService tenantService, AppProperties properties) {
@@ -197,6 +211,9 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
     @Override
     public void afterNavigation(AfterNavigationEvent event) {
         viewTitle.setText(currentViewTitle());
+        // El layout sobrevive a la navegacion: sin esto, resolver la ultima
+        // alerta dejaba el punto rojo prendido hasta recargar la pagina.
+        showPendingAlerts(alertService.pendingCount());
     }
 
     private String currentViewTitle() {
@@ -273,6 +290,9 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         diario.addItem(new SideNavItem("Caja", CajaView.class, iconChip(LumoIcon.ORDERED_LIST)));
         diario.addItem(new SideNavItem("Turnos fijos", RecurringView.class, iconChip(LumoIcon.RELOAD)));
         diario.addItem(new SideNavItem("Jugadores", CustomersView.class, iconChip(LumoIcon.USER)));
+        // Junto a Alertas: la alerta de un turno cancelado por la web lleva aca.
+        diario.addItem(new SideNavItem("Lista de espera", WaitlistView.class,
+                iconChip(LumoIcon.UNORDERED_LIST)));
         diario.addItem(alertsItem());
         // Suspender un dia o una cancha es una decision operativa del dia a dia,
         // no financiera: el mostrador tambien la necesita.
@@ -308,11 +328,79 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
      * nota sin buscarlo.
      */
     private SideNavItem alertsItem() {
-        SideNavItem item = new SideNavItem("Alertas", AlertsView.class, iconChip(LumoIcon.BELL));
-        if (alertService.pendingCount() > 0) {
-            item.setSuffixComponent(pendingDot());
+        alertsNavItem = new SideNavItem("Alertas", AlertsView.class, iconChip(LumoIcon.BELL));
+        showPendingAlerts(alertService.pendingCount());
+        return alertsNavItem;
+    }
+
+    /** Punto rojo y aviso de abajo, al dia con lo que quedo sin resolver. */
+    private void showPendingAlerts(long pending) {
+        alertsNavItem.setSuffixComponent(pending > 0 ? pendingDot() : null);
+        alertsBadge.setVisible(pending > 0);
+        alertsBadge.setText(pending == 1 ? "1 alerta sin resolver" : pending + " alertas sin resolver");
+    }
+
+    // --------------------------------------------------- alertas en vivo
+
+    /**
+     * Revisa cada tanto si entraron alertas nuevas.
+     *
+     * <p>El panel no tiene push: sin esto, el mostrador parado en la agenda no se
+     * entera de que un jugador cancelo por la web un turno con gente en lista de
+     * espera hasta que cambia de pantalla, y a esa altura el turno ya puede
+     * haberse perdido. Treinta segundos alcanzan para eso y es una consulta por
+     * pasada.
+     */
+    @Override
+    protected void onAttach(AttachEvent attachEvent) {
+        super.onAttach(attachEvent);
+        UI ui = attachEvent.getUI();
+        ui.setPollInterval(ALERT_POLL_MILLIS);
+        alertPoll = ui.addPollListener(event -> checkNewAlerts());
+    }
+
+    @Override
+    protected void onDetach(DetachEvent detachEvent) {
+        if (alertPoll != null) {
+            alertPoll.remove();
+            alertPoll = null;
         }
-        return item;
+        detachEvent.getUI().setPollInterval(-1);
+        super.onDetach(detachEvent);
+    }
+
+    private void checkNewAlerts() {
+        showPendingAlerts(alertService.pendingCount());
+        List<OperationalAlert> fresh = alertService.pendingSince(lastAlertSeen);
+        if (fresh.isEmpty()) {
+            return;
+        }
+        lastAlertSeen = fresh.getFirst().getCreatedAt();
+
+        String text = fresh.size() == 1 ? fresh.getFirst().getMessage() : fresh.size() + " alertas nuevas";
+        Notification notification = new Notification();
+        notification.setPosition(Notification.Position.TOP_END);
+        // Sin tiempo de cierre: si el mostrador estaba atendiendo, el aviso lo
+        // espera en vez de irse solo.
+        notification.setDuration(0);
+
+        Button open = new Button("Ver", event -> {
+            notification.close();
+            UI.getCurrent().navigate(AlertsView.class);
+        });
+        open.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SMALL);
+        Button close = new Button("Cerrar", event -> notification.close());
+        close.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_SMALL);
+
+        Span message = new Span(text);
+        // Sin base de ancho, los botones le ganaban el lugar y el mensaje de la
+        // alerta quedaba partido en una columna de dos palabras por renglon.
+        message.getStyle().set("flex", "1 1 20rem");
+        HorizontalLayout content = new HorizontalLayout(message, open, close);
+        content.setAlignItems(HorizontalLayout.Alignment.CENTER);
+        content.addClassNames(LumoUtility.Gap.SMALL);
+        notification.add(content);
+        notification.open();
     }
 
     // El azul de fabrica de Lumo, no el --lumo-primary-color de la app (el
@@ -360,17 +448,11 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
      * cuando el jugador reclama.
      */
     private Span pendingAlertsBadge() {
-        long pending = alertService.pendingCount();
-        if (pending == 0) {
-            return new Span();
-        }
-        Span badge = new Span(pending == 1
-                ? "1 alerta sin resolver"
-                : pending + " alertas sin resolver");
-        badge.getElement().getThemeList().add("badge error");
+        alertsBadge.getElement().getThemeList().add("badge error");
         // Se despega del bloque de navegacion: es un aviso, no un item mas.
-        badge.addClassNames(LumoUtility.Margin.Top.MEDIUM, LumoUtility.Margin.Horizontal.SMALL);
-        return badge;
+        alertsBadge.addClassNames(LumoUtility.Margin.Top.MEDIUM, LumoUtility.Margin.Horizontal.SMALL);
+        showPendingAlerts(alertService.pendingCount());
+        return alertsBadge;
     }
 
     private Optional<ClubUserPrincipal> currentUser() {

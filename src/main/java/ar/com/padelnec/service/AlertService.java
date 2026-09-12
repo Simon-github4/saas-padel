@@ -2,10 +2,15 @@ package ar.com.padelnec.service;
 
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.OperationalAlert;
+import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
 import ar.com.padelnec.repository.OperationalAlertRepository;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Slf4j
 public class AlertService {
+
+    private static final Locale ES_AR = Locale.forLanguageTag("es-AR");
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEEE d/MM", ES_AR);
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm", ES_AR);
 
     private final OperationalAlertRepository alertRepository;
     private final Clock clock;
@@ -72,6 +81,23 @@ public class AlertService {
         raise(AlertType.RECURRING_CONFLICT, null, detail);
     }
 
+    /**
+     * Un jugador cancelo por la web un turno con gente esperando ese horario.
+     *
+     * <p>El barrido automatico les avisa por WhatsApp o por mail, pero el club
+     * no se entera, y con el WhatsApp del club en stand by el unico aviso que
+     * sale es el mail. Asi el mostrador revisa la lista de espera y les escribe
+     * a mano, con el link para reservar ese turno.
+     */
+    @Transactional
+    public void waitlistSlotFreed(Tenant club, Booking booking, long waiting) {
+        ZonedDateTime start = booking.getStartTime().atZone(club.zoneId());
+        raise(AlertType.WAITLIST_SLOT_FREED, booking, ("Se canceló por la web el turno de %s del %s a las %s hs. "
+                + "%s en la lista de espera: avisales por WhatsApp.").formatted(
+                booking.getCourt().getName(), start.format(DAY), start.format(TIME),
+                waiting == 1 ? "Hay 1 anotado" : "Hay " + waiting + " anotados"));
+    }
+
     @Transactional(readOnly = true)
     public List<OperationalAlert> pending() {
         return alertRepository.findPending();
@@ -80,6 +106,12 @@ public class AlertService {
     @Transactional(readOnly = true)
     public long pendingCount() {
         return alertRepository.countByResolvedFalse();
+    }
+
+    /** Las que siguen sin resolver y aparecieron despues de un momento dado, las mas nuevas primero. */
+    @Transactional(readOnly = true)
+    public List<OperationalAlert> pendingSince(Instant since) {
+        return alertRepository.findByResolvedFalseAndCreatedAtAfterOrderByCreatedAtDesc(since);
     }
 
     @Transactional

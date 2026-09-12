@@ -22,6 +22,7 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
+import com.vaadin.flow.router.RouterLink;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
@@ -110,7 +111,7 @@ public class AlertsView extends VerticalLayout {
 
         grid.addColumn(OperationalAlert::getMessage).setHeader("Detalle").setFlexGrow(1);
 
-        grid.addComponentColumn(this::contactLink).setHeader("Jugador").setAutoWidth(true);
+        grid.addComponentColumn(this::contactLink).setHeader("Contacto").setAutoWidth(true);
 
         grid.addComponentColumn(this::resolveButton)
                 .setAutoWidth(true)
@@ -125,6 +126,7 @@ public class AlertsView extends VerticalLayout {
             case REFUND_REQUIRED, ORPHAN_PAYMENT -> "badge error";
             case RECURRING_CONFLICT -> "badge contrast";
             case NOTIFICATION_FAILED -> "badge";
+            case WAITLIST_SLOT_FREED -> "badge success";
         });
         return badge;
     }
@@ -135,6 +137,9 @@ public class AlertsView extends VerticalLayout {
             case ORPHAN_PAYMENT -> "Pago sin turno";
             case NOTIFICATION_FAILED -> "WhatsApp no entregado";
             case RECURRING_CONFLICT -> "Turno fijo en conflicto";
+            // Corto a proposito: el badge es de ancho fijo y le robaba lugar al
+            // detalle, que ya dice que turno se libero y cuantos esperan.
+            case WAITLIST_SLOT_FREED -> "Lista de espera";
         };
     }
 
@@ -142,6 +147,12 @@ public class AlertsView extends VerticalLayout {
     private Component contactLink(OperationalAlert alert) {
         if (alert.getBooking() == null) {
             return new Span();
+        }
+        if (alert.getType() == AlertType.WAITLIST_SLOT_FREED) {
+            // A quien hay que escribirle no es al que cancelo, es a los anotados.
+            RouterLink waiting = new RouterLink("Ver anotados", WaitlistView.class);
+            waiting.setQueryParameters(WaitlistView.focusOn(alert.getBooking().getStartTime()));
+            return waiting;
         }
         String phone = alert.getBooking().getCustomer().getPhoneNumber();
         Anchor link = new Anchor(phoneNumbers.whatsappLink(phone,

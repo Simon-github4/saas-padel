@@ -4,16 +4,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ar.com.padelnec.config.TenantContext;
+import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.WaitlistEntry;
+import ar.com.padelnec.domain.enums.AlertType;
+import ar.com.padelnec.repository.OperationalAlertRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.repository.WaitlistEntryRepository;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.BookingService.NewBooking;
 import ar.com.padelnec.service.BookingService.PaymentChoice;
 import ar.com.padelnec.service.WaitlistService;
+import ar.com.padelnec.service.WaitlistService.SlotWaitlist;
 import ar.com.padelnec.web.BusinessRuleException;
 import java.time.Clock;
 import java.time.DayOfWeek;
@@ -21,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -62,6 +67,7 @@ class WaitlistServiceTest {
     @Autowired private WaitlistEntryRepository waitlistEntryRepository;
     @Autowired private BookingService bookingService;
     @Autowired private PlayerAccountRepository playerAccountRepository;
+    @Autowired private OperationalAlertRepository alertRepository;
     @Autowired private ClubFixture fixture;
     @Autowired private Clock clock;
 
@@ -149,8 +155,66 @@ class WaitlistServiceTest {
                 .hasMessageContaining("pasó");
     }
 
-    private void fillTheOnlyCourt(Instant startTime) {
-        bookingService.create(club, new NewBooking(court.getId(), startTime,
+    // ------------------------------------------------------ panel del club
+
+    @Test
+    @DisplayName("Si el jugador cancela por la web un turno con anotados, el panel recibe la alerta")
+    void cancellingOnTheWebWithPeopleWaitingRaisesAnAlert() {
+        Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
+        Booking taking = fillTheOnlyCourt(startTime);
+        waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
+        waitlistService.join(club, startTime, "2262415222", "Otro anotado", player("otro@test.com"));
+
+        bookingService.cancelByManagementToken(taking.getManagementToken());
+
+        assertThat(alertRepository.findPending())
+                .singleElement()
+                .satisfies(alert -> {
+                    assertThat(alert.getType()).isEqualTo(AlertType.WAITLIST_SLOT_FREED);
+                    assertThat(alert.getBooking().getId()).isEqualTo(taking.getId());
+                    assertThat(alert.getMessage()).contains("20:00", "Hay 2 anotados");
+                });
+    }
+
+    @Test
+    @DisplayName("Cancelar por la web un turno sin anotados no molesta al panel")
+    void cancellingOnTheWebWithNobodyWaitingRaisesNothing() {
+        Booking taking = fillTheOnlyCourt(TODAY.atTime(20, 0).atZone(ZONE).toInstant());
+
+        bookingService.cancelByManagementToken(taking.getManagementToken());
+
+        assertThat(alertRepository.findPending()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("El panel ve los anotados por horario, en orden de llegada y sin los horarios que ya empezaron")
+    void upcomingGroupsBySlotInArrivalOrder() {
+        Instant early = TODAY.atTime(18, 30).atZone(ZONE).toInstant();
+        Instant late = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
+        fillTheOnlyCourt(early);
+        Booking lateBooking = fillTheOnlyCourt(late);
+        // El de las 20:00 se anota antes: el orden entre horarios es por hora del turno.
+        waitlistService.join(club, late, "2262415111", "Primero en llegar", player);
+        waitlistService.join(club, late, "2262415222", "Segundo en llegar", player("otro@test.com"));
+        waitlistService.join(club, early, "2262415333", "Anotado temprano", player("tercero@test.com"));
+        bookingService.cancelByClub(club, lateBooking.getId(), "Se cayo el grupo");
+
+        List<SlotWaitlist> slots = waitlistService.upcomingBySlot();
+
+        assertThat(slots).extracting(SlotWaitlist::startsAt).containsExactly(early, late);
+        assertThat(slots.get(0).courtFree()).isFalse();
+        assertThat(slots.get(1).courtFree()).isTrue();
+        assertThat(slots.get(1).entries())
+                .extracting(entry -> entry.getCustomer().getFullName())
+                .containsExactly("Primero en llegar", "Segundo en llegar");
+
+        // A las 19:00 el de las 18:30 ya empezo: no hay a quien avisarle nada.
+        ((MutableClock) clock).set(TODAY.atTime(19, 0).atZone(ZONE).toInstant());
+        assertThat(waitlistService.upcomingBySlot()).extracting(SlotWaitlist::startsAt).containsExactly(late);
+    }
+
+    private Booking fillTheOnlyCourt(Instant startTime) {
+        return bookingService.create(club, new NewBooking(court.getId(), startTime,
                 "El que llego primero", "2262415000", PaymentChoice.PAY_AT_CLUB));
     }
 }

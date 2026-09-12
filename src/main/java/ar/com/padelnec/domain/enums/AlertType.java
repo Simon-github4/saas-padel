@@ -8,5 +8,7 @@ public enum AlertType {
     /** No se pudo entregar un WhatsApp al jugador. */
     NOTIFICATION_FAILED,
     /** Un turno fijo no pudo materializarse porque la franja estaba ocupada. */
-    RECURRING_CONFLICT
+    RECURRING_CONFLICT,
+    /** Un jugador cancelo por la web un turno con gente anotada en la lista de espera. */
+    WAITLIST_SLOT_FREED
 }

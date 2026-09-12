@@ -8,6 +8,10 @@ import ar.com.padelnec.repository.WaitlistEntryRepository;
 import ar.com.padelnec.web.BusinessRuleException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -69,6 +73,34 @@ public class WaitlistService {
             }
             throw ex;
         }
+    }
+
+    /**
+     * Los anotados de un horario, tal como los revisa el club en el panel.
+     *
+     * @param courtFree si ya hay alguna cancha libre, o sea si tiene sentido
+     *                  escribirles que se libero
+     * @param entries   por orden de llegada: el primero que se anoto va primero
+     */
+    public record SlotWaitlist(Instant startsAt, Instant endsAt, boolean courtFree,
+                               List<WaitlistEntry> entries) {
+    }
+
+    /** Horarios que todavia no empezaron y tienen gente anotada, el mas proximo primero. */
+    @Transactional(readOnly = true)
+    public List<SlotWaitlist> upcomingBySlot() {
+        Map<Instant, List<WaitlistEntry>> bySlot = waitlistEntryRepository.findUpcoming(clock.instant())
+                .stream()
+                .collect(Collectors.groupingBy(WaitlistEntry::getStartsAt, LinkedHashMap::new,
+                        Collectors.toList()));
+        return bySlot.values().stream()
+                .map(entries -> {
+                    WaitlistEntry first = entries.getFirst();
+                    return new SlotWaitlist(first.getStartsAt(), first.getEndsAt(),
+                            availabilityService.anyCourtFree(first.getStartsAt(), first.getEndsAt()),
+                            entries);
+                })
+                .toList();
     }
 
     private boolean isDuplicate(Throwable error) {

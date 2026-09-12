@@ -9,10 +9,12 @@ import ar.com.padelnec.domain.enums.NotificationStatus;
 import ar.com.padelnec.notification.whatsapp.NotificationTemplate;
 import ar.com.padelnec.notification.whatsapp.WhatsAppSender;
 import ar.com.padelnec.repository.NotificationLogRepository;
+import ar.com.padelnec.service.SlotGenerator;
 import ar.com.padelnec.support.Masking;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -45,6 +47,7 @@ public class NotificationService {
     private final EmailSender emailSender;
     private final NotificationLogRepository notificationLogRepository;
     private final AppProperties properties;
+    private final SlotGenerator slotGenerator;
 
     // ------------------------------------------------------------- mensajes
 
@@ -195,6 +198,21 @@ public class NotificationService {
     }
 
     /**
+     * El aviso de que se libero un horario, para que el club lo mande a mano por
+     * wa.me desde la lista de espera del panel. Lleva el link para reservar ese
+     * turno, igual que el automatico de {@link #waitlistSlotFreed}.
+     */
+    public String waitlistManualMessage(Tenant club, WaitlistEntry entry) {
+        return """
+                Hola %s, te escribimos de %s. Se liberó una cancha el %s a las %s hs, \
+                el horario en el que te anotaste en la lista de espera.
+                Si todavía lo querés, reservalo acá: %s"""
+                .formatted(firstName(entry.getCustomer().getFullName()), club.getName(),
+                        date(club, entry.getStartsAt()), time(club, entry.getStartsAt()),
+                        waitlistLink(club, entry));
+    }
+
+    /**
      * Mismo aviso que {@link #waitlistSlotFreed}, pero por mail: el respaldo
      * para cuando el WhatsApp del club esta apagado o el envio real fallo (lo
      * decide {@link ar.com.padelnec.scheduler.WaitlistNotificationWorker}, no
@@ -277,11 +295,25 @@ public class NotificationService {
         return properties.getBaseUrl() + "/turno/" + booking.getShareToken();
     }
 
-    /** Mismo deep-link que ya entiende la portada del club: ?fecha=&hora= precarga el horario. */
-    private String waitlistLink(Tenant club, WaitlistEntry entry) {
-        ZonedDateTime local = entry.getStartsAt().atZone(club.zoneId());
+    /**
+     * Link a la portada del club con el horario ya elegido: el mismo ?fecha=&hora=
+     * que arma la busqueda global, y que lleva al jugador directo a sus datos.
+     *
+     * <p>La fecha es la del dia operativo y no la del calendario: en un club que
+     * cierra a la 01:00, el turno de las 00:30 esta en la grilla del dia
+     * anterior, y con la fecha de calendario la portada no lo encontraba.
+     */
+    public String bookSlotLink(Tenant club, Instant startsAt) {
+        ZonedDateTime local = startsAt.atZone(club.zoneId());
+        LocalDate day = slotGenerator.resolve(club, startsAt)
+                .map(SlotGenerator.ResolvedSlot::operatingDate)
+                .orElse(local.toLocalDate());
         return properties.getBaseUrl() + "/club/" + club.getSlug()
-                + "?fecha=" + local.toLocalDate() + "&hora=" + local.toLocalTime();
+                + "?fecha=" + day + "&hora=" + local.format(TIME);
+    }
+
+    private String waitlistLink(Tenant club, WaitlistEntry entry) {
+        return bookSlotLink(club, entry.getStartsAt());
     }
 
     private String firstName(Booking booking) {

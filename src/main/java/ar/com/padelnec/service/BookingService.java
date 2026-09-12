@@ -11,6 +11,7 @@ import ar.com.padelnec.domain.enums.CancellationReason;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.TenantRepository;
+import ar.com.padelnec.repository.WaitlistEntryRepository;
 import ar.com.padelnec.service.SlotGenerator.ResolvedSlot;
 import ar.com.padelnec.support.Tokens;
 import ar.com.padelnec.web.BusinessRuleException;
@@ -58,6 +59,7 @@ public class BookingService {
     private final PricingService pricingService;
     private final SlotGenerator slotGenerator;
     private final AlertService alertService;
+    private final WaitlistEntryRepository waitlistEntryRepository;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
@@ -311,6 +313,13 @@ public class BookingService {
         boolean refundNeeded = booking.hasMoneyIn();
         if (refundNeeded) {
             alertService.refundRequired(booking);
+        }
+
+        // Si habia gente esperando ese horario, el club se entera en el momento y
+        // les puede escribir desde la lista de espera del panel.
+        long waiting = waitlistEntryRepository.countOverlapping(booking.getStartTime(), booking.getEndTime());
+        if (waiting > 0) {
+            alertService.waitlistSlotFreed(club, booking, waiting);
         }
         return new CancellationResult(booking, refundNeeded, club.getWhatsappNumber());
     }

@@ -1,6 +1,7 @@
 package ar.com.padelnec.repository;
 
 import ar.com.padelnec.domain.OperationalAlert;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -18,4 +19,6 @@ public interface OperationalAlertRepository extends JpaRepository<OperationalAle
     List<OperationalAlert> findPending();
 
     long countByResolvedFalse();
+
+    List<OperationalAlert> findByResolvedFalseAndCreatedAtAfterOrderByCreatedAtDesc(Instant since);
 }
