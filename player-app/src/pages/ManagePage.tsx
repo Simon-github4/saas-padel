@@ -1,9 +1,19 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { api, ApiError, type BookingDetail, type Cancellation } from '../api/client';
 import { clockTime, longDate, money, shareBooking, whatsappLink } from '../format';
 import { forgetGuestBooking } from '../guestBookings';
-import { Alert, Button, Card, Loading, Screen, StatusBadge, TopBar, WhatsappLink } from '../components/Ui';
+import {
+  Alert,
+  Button,
+  Card,
+  Loading,
+  Screen,
+  SiteFooter,
+  StatusBadge,
+  TopBar,
+  WhatsappLink,
+} from '../components/Ui';
 import { AccountButton } from '../components/AccountButton';
 
 /**
@@ -13,7 +23,6 @@ import { AccountButton } from '../components/AccountButton';
  * se registre para ver su propio turno lo devuelve directo a WhatsApp.
  */
 export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
-  const navigate = useNavigate();
   const { token = '' } = useParams();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [cancelled, setCancelled] = useState<Cancellation | null>(null);
@@ -80,7 +89,7 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
   const active = booking.status === 'CONFIRMED' || booking.status === 'AWAITING_CONFIRMATION';
 
   return (
-    <Screen className="pt-6" top={<TopBar name={booking.clubName} accountSlot={<AccountButton />} onTitleClick={() => navigate(`/club/${booking.clubSlug}`)} />}>
+    <Screen className="pt-6" top={<TopBar name={booking.clubName} accountSlot={<AccountButton />} titleTo={`/club/${booking.clubSlug}`} />}>
       <header className="mb-5 mt-6">
         <h1 className="text-3xl">Tu turno</h1>
       </header>
@@ -179,6 +188,8 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
           )}
         </div>
       )}
+
+      <SiteFooter name={booking.clubName} address={null} />
     </Screen>
   );
 }

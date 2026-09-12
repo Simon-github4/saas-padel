@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { usePlayerAuth } from '../auth/AuthContext';
 import { ApiError, playerApi, type BookingHistoryItem } from '../api/client';
 import { clockTime, formatHours, longDate, money } from '../format';
@@ -23,7 +23,6 @@ import { summarize, type Period } from '../stats';
  * existe esta lista.
  */
 export function AccountPage() {
-  const navigate = useNavigate();
   const { session, logout, clearExpiredSession } = usePlayerAuth();
   const [history, setHistory] = useState<BookingHistoryItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +35,17 @@ export function AccountPage() {
   // sabe que lo reservó, y esconderlo al iniciar sesión era perder el único
   // camino que le quedaba al jugador para volver a abrirlo.
   const guestBookings = useMemo(() => readGuestBookings(), [session]);
+
+  // A dónde vuelve "atrás". Declarado y no navigate(-1): a esta pantalla se
+  // llega desde un link de WhatsApp, desde un marcador o justo después de
+  // loguearse, y en esos casos el historial del navegador devuelve a otro sitio
+  // o al login que el jugador acaba de completar. El club del próximo turno es
+  // lo más cercano a "de dónde venías"; sin turnos, la búsqueda. La raíz no
+  // sirve: es la landing comercial para dueños de club.
+  const volverA = useMemo(() => {
+    const club = history?.[0]?.clubSlug ?? guestBookings[0]?.clubSlug;
+    return club ? `/club/${club}` : '/buscar';
+  }, [history, guestBookings]);
 
   useEffect(() => {
     if (!session) {
@@ -61,7 +71,7 @@ export function AccountPage() {
   }
 
   if (!session) {
-    return <GuestAccountView bookings={guestBookings} onBack={() => navigate(-1)} />;
+    return <GuestAccountView bookings={guestBookings} backTo={volverA} />;
   }
 
   return (
@@ -71,16 +81,14 @@ export function AccountPage() {
         <TopBar
           name="Mis turnos"
           accountSlot={
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
+            <Link
+              to={volverA}
               aria-label="Volver"
               className="grid size-9 shrink-0 place-items-center rounded-full border border-cal/10 text-ink-soft transition hover:border-cal/25 hover:text-cal"
             >
               <ArrowLeftGlyph className="size-4" />
-            </button>
+            </Link>
           }
-          onTitleClick={() => navigate(history?.[0]?.clubSlug ? `/club/${history[0].clubSlug}` : '/')}
         />
       }
     >
@@ -244,10 +252,10 @@ function ActivitySummary({
 /** Vista sin cuenta: los turnos que este dispositivo recuerda, nada más. */
 function GuestAccountView({
   bookings,
-  onBack,
+  backTo,
 }: {
   bookings: ReturnType<typeof readGuestBookings>;
-  onBack: () => void;
+  backTo: string;
 }) {
   return (
     <Screen
@@ -256,14 +264,13 @@ function GuestAccountView({
         <TopBar
           name="Tus turnos"
           accountSlot={
-            <button
-              type="button"
-              onClick={onBack}
+            <Link
+              to={backTo}
               aria-label="Volver"
               className="grid size-9 shrink-0 place-items-center rounded-full border border-cal/10 text-ink-soft transition hover:border-cal/25 hover:text-cal"
             >
               <ArrowLeftGlyph className="size-4" />
-            </button>
+            </Link>
           }
         />
       }

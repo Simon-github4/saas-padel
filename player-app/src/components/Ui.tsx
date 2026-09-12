@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 
 /**
  * Piezas visuales compartidas, para que las pantallas se ocupen del flujo.
@@ -38,26 +39,31 @@ export function TopBar({
   name,
   whatsappHref,
   accountSlot,
-  onTitleClick,
+  titleTo,
 }: {
   name: string;
   whatsappHref?: string;
   /** Botón de "Mis turnos" / entrar, armado afuera: este componente no sabe de sesiones. */
   accountSlot?: ReactNode;
-  /** Al tocar el título vuelve al inicio. Si no se pasa, el título es estático. */
-  onTitleClick?: () => void;
+  /**
+   * A dónde lleva tocar el título. Sin esto el título es texto, no un botón.
+   *
+   * <p>Se pasa sólo cuando lleva a otra pantalla. Estando ya en el destino hay
+   * que omitirlo: un título que parece botón y navega a la página donde ya
+   * estás no hace nada, y lo que el jugador aprende de eso es a no tocarlo.
+   */
+  titleTo?: string;
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-cal/10 bg-pista/90 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-lg items-center justify-between gap-3 px-4 md:h-16 md:max-w-2xl">
-        {onTitleClick ? (
-          <button
-            type="button"
-            onClick={onTitleClick}
-            className="display cursor-pointer truncate text-left text-xl tracking-[0.14em]"
+        {titleTo ? (
+          <Link
+            to={titleTo}
+            className="display cursor-pointer truncate text-left text-xl tracking-[0.14em] transition hover:text-ink-soft"
           >
             {name}
-          </button>
+          </Link>
         ) : (
           <p className="display truncate text-xl tracking-[0.14em]">{name}</p>
         )}
@@ -428,12 +434,26 @@ function WhatsappGlyph({ className }: { className?: string }) {
  * la barra de arriba ya tiene otro. Tres accesos al mismo chat en la misma
  * esquina no ayudan a nadie.
  */
+/**
+ * Cierre de las pantallas que pertenecen a un club.
+ *
+ * <p>Lleva el link a la búsqueda porque es la única salida hacia el resto de la
+ * app: a `/manage/:token` se entra por WhatsApp, sin haber pasado por ninguna
+ * otra pantalla, y sin esto el jugador que quiere buscar otro turno no tiene
+ * por dónde. La raíz no sirve para eso -- es la landing comercial para dueños
+ * de club, no el inicio del jugador.
+ */
 export function SiteFooter({ name, address }: { name: string; address: string | null }) {
   return (
     <footer className="mt-14 border-t border-cal/10 pt-8 text-center">
       <p className="display text-2xl tracking-[0.14em]">{name}</p>
       {address && <p className="mt-2 text-sm text-ink-soft">{address}</p>}
-      <p className="eyebrow mt-6 text-ink-mute">Reservá tu cancha en tres pasos</p>
+      <Link
+        to="/buscar"
+        className="eyebrow mt-6 inline-block text-ink-soft underline-offset-4 transition hover:text-cal hover:underline"
+      >
+        Buscar cancha en otro club
+      </Link>
     </footer>
   );
 }

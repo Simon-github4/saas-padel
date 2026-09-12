@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, ApiError, type BookingShareInfo } from '../api/client';
 import { clockTime, longDate } from '../format';
-import { Alert, Card, Loading, Screen, StatusBadge, TopBar } from '../components/Ui';
+import { Alert, Card, Loading, Screen, SiteFooter, StatusBadge, TopBar } from '../components/Ui';
 import { AccountButton } from '../components/AccountButton';
 
 /**
@@ -45,7 +45,7 @@ export function SharePage() {
   }
 
   return (
-    <Screen className="pt-6" top={<TopBar name={booking.clubName} accountSlot={<AccountButton />} />}>
+    <Screen className="pt-6" top={<TopBar name={booking.clubName} accountSlot={<AccountButton />} titleTo={`/club/${booking.clubSlug}`} />}>
       <header className="mb-5 mt-6">
         <h1 className="text-3xl">Turno</h1>
         {booking.bookedByName && <p className="mt-1 text-ink-soft">Reservado por {booking.bookedByName}</p>}
@@ -81,6 +81,8 @@ export function SharePage() {
           Reservá tu cancha en {booking.clubName}
         </Link>
       </div>
+
+      <SiteFooter name={booking.clubName} address={null} />
     </Screen>
   );
 }

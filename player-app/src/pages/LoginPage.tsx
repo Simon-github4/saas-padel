@@ -37,6 +37,10 @@ export function LoginPage() {
   // que venga en el query tal cual: ver WaitlistForm, que es quien la manda.
   const returnToParam = searchParams.get('returnTo');
   const returnTo = returnToParam?.startsWith('/') ? returnToParam : '/account';
+  // "Volver" es abandonar el login, asi que no puede caer en /account: sin
+  // sesion esa pantalla rebota de nuevo al login y el jugador queda en un
+  // bucle. Sin returnTo explicito, la salida es la busqueda.
+  const salidaSinEntrar = returnToParam?.startsWith('/') ? returnToParam : '/buscar';
   // Solo aplica en modo "register": 'form' pide los datos, 'code' pide el
   // código de 6 dígitos que se mandó por mail. La cuenta no existe hasta que
   // ese código (o el link del mismo mail) se confirma.
@@ -141,7 +145,7 @@ export function LoginPage() {
 
   return (
     <Screen className="pt-10">
-      <BackLink onClick={() => navigate(-1)} />
+      <BackLink to={salidaSinEntrar} />
       <SectionTitle
         title="Tus turnos"
         subtitle={
@@ -275,16 +279,22 @@ export function LoginPage() {
 }
 
 /** Volver a la página anterior (al club del que venías), con la flecha + texto. */
-function BackLink({ onClick }: { onClick: () => void }) {
+/**
+ * Vuelve a donde el jugador venía, que ya viaja en `returnTo`.
+ *
+ * <p>No `navigate(-1)`: a esta pantalla se llega también desde un link directo
+ * o desde el ofrecimiento de crear cuenta, y ahí el historial del navegador
+ * devuelve fuera de la app -- o, después de loguearse, al login otra vez.
+ */
+function BackLink({ to }: { to: string }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="mb-6 flex cursor-pointer items-center gap-1.5 text-sm font-semibold text-ink-soft transition hover:text-cal"
+    <Link
+      to={to}
+      className="mb-6 flex w-fit cursor-pointer items-center gap-1.5 text-sm font-semibold text-ink-soft transition hover:text-cal"
     >
       <ArrowLeftGlyph className="size-4" />
       Volver
-    </button>
+    </Link>
   );
 }
 

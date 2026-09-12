@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { track } from '../analytics';
 import { ApiError, api } from '../api/client';
 import type { SearchMatch, SearchResult } from '../api/client';
@@ -37,7 +37,6 @@ const TIMES = buildTimes();
  * WhatsApp y para que volver desde un club no la pierda.
  */
 export function SearchPage() {
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
 
   const date = params.get('fecha') || todayIso();
@@ -130,7 +129,6 @@ export function SearchPage() {
         <TopBar
           name="Reservá tu cancha"
           accountSlot={<AccountButton />}
-          onTitleClick={() => navigate('/buscar')}
         />
       }
     >

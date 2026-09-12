@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { track } from '../analytics';
 import { api, ApiError, type Availability, type Slot } from '../api/client';
 import { addDays, clockTime, longDate, perPerson, todayIso, whatsappLink } from '../format';
@@ -34,7 +34,6 @@ import { HowToGetThereSection } from './sections/HowToGetThereSection';
  */
 export function ClubPage() {
   const { slug = '' } = useParams();
-  const navigate = useNavigate();
   // La busqueda global manda el dia y el horario ya elegidos: ?fecha=&hora=
   const [search] = useSearchParams();
   const linkedDate = validDate(search.get('fecha'));
@@ -244,7 +243,7 @@ export function ClubPage() {
 
   return (
     <Screen
-      top={<TopBar name={club.name} whatsappHref={whatsapp} accountSlot={<AccountButton />} onTitleClick={() => navigate(`/club/${slug}`)} />}
+      top={<TopBar name={club.name} whatsappHref={whatsapp} accountSlot={<AccountButton />} />}
     >
       <HeroSection
         name={club.name}
