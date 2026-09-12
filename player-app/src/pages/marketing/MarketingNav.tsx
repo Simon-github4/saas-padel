@@ -60,7 +60,7 @@ export function MarketingNav() {
             to="/buscar"
             className="hidden text-xs font-semibold uppercase tracking-[0.12em] text-ink-soft transition hover:text-cal lg:inline"
           >
-            Buscar cancha
+            Reservar cancha
           </Link>
           {/* Acceso rápido para el dueño que ya es cliente: sin este link tiene
               que bajar hasta el pie para entrar a su panel.
@@ -121,7 +121,7 @@ export function MarketingNav() {
               onClick={() => setAbierto(false)}
               className="border-b border-cal/[0.06] py-3 text-xs font-semibold uppercase tracking-[0.12em] text-ink-soft transition hover:text-cal"
             >
-              Buscar cancha
+              Reservar cancha
             </Link>
             {/* Pagina completa, no Link: /admin es el panel Vaadin del backend. */}
             <a
@@ -181,7 +181,7 @@ export function MarketingFooter() {
       <p className="display text-xl tracking-[0.14em]">{BRAND}</p>
       <div className="mt-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
         <Link to="/buscar" className="font-semibold text-ink-soft transition hover:text-cal">
-          Buscar cancha
+          Reservar cancha
         </Link>
         {/* Pagina completa, no Link: /admin es el panel Vaadin del backend. */}
         <a href="/admin" className="text-ink-mute transition hover:text-ink-soft">
