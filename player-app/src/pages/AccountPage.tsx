@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { usePlayerAuth } from '../auth/AuthContext';
 import { ApiError, playerApi, type BookingHistoryItem } from '../api/client';
 import { clockTime, formatHours, longDate, money } from '../format';
@@ -36,16 +36,27 @@ export function AccountPage() {
   // camino que le quedaba al jugador para volver a abrirlo.
   const guestBookings = useMemo(() => readGuestBookings(), [session]);
 
-  // A dónde vuelve "atrás". Declarado y no navigate(-1): a esta pantalla se
-  // llega desde un link de WhatsApp, desde un marcador o justo después de
-  // loguearse, y en esos casos el historial del navegador devuelve a otro sitio
-  // o al login que el jugador acaba de completar. El club del próximo turno es
-  // lo más cercano a "de dónde venías"; sin turnos, la búsqueda. La raíz no
-  // sirve: es la landing comercial para dueños de club.
+  // A dónde vuelve "atrás", en dos escalones.
+  //
+  // Si el jugador entró desde adentro de la app, el botón de la barra dejó
+  // anotado de dónde venía (AccountButton) y se vuelve exactamente ahí, con la
+  // query incluida: desde /buscar tiene que volver a esa misma búsqueda, no a
+  // una nueva ni al club de un turno cualquiera.
+  //
+  // Si no hay nada anotado -- se entró por un link de WhatsApp, por un marcador
+  // o recargando la página -- se cae a un destino declarado y no a
+  // navigate(-1), que en esos casos saca de la app o devuelve al login recién
+  // completado. La raíz no sirve como destino: es la landing comercial para
+  // dueños de club.
+  const location = useLocation();
   const volverA = useMemo(() => {
+    const desde = (location.state as { from?: string } | null)?.from;
+    if (desde?.startsWith('/') && !desde.startsWith('/account')) {
+      return desde;
+    }
     const club = history?.[0]?.clubSlug ?? guestBookings[0]?.clubSlug;
     return club ? `/club/${club}` : '/buscar';
-  }, [history, guestBookings]);
+  }, [location.state, history, guestBookings]);
 
   useEffect(() => {
     if (!session) {

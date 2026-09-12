@@ -8,6 +8,7 @@ import { MonthCalendar } from '../components/MonthCalendar';
 import { Alert, Badge, Button, Card, Chip, Loading, Screen, SectionTitle, TopBar } from '../components/Ui';
 import { addDays, longDate, perPerson, todayIso } from '../format';
 import { setPageMeta } from '../seo';
+import { BRAND } from './marketing/config';
 
 /** Primera y última hora que ofrece el selector, en pasos de media hora. */
 const FIRST_HOUR = 0;
@@ -308,6 +309,23 @@ export function SearchPage() {
           </>
         )}
       </section>
+
+      {/*
+        La única salida hacia la landing. A /buscar se entra por un link
+        compartido o por un marcador, sin pasar por la portada, y sin esto no
+        hay forma de llegar a ella. Va con el texto de a quién le sirve: esa
+        página le vende al dueño del club, no al jugador que está buscando
+        cancha, así que ofrecerla como "inicio" sería mandarlo a una página que
+        no es para él.
+      */}
+      <footer className="mt-14 border-t border-cal/10 pt-8 text-center">
+        <Link
+          to="/"
+          className="eyebrow text-ink-soft underline-offset-4 transition hover:text-cal hover:underline"
+        >
+          ¿Tenés un club? Conocé {BRAND}
+        </Link>
+      </footer>
     </Screen>
   );
 }

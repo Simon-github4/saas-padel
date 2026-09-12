@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { usePlayerAuth } from '../auth/AuthContext';
 import { readGuestBookings } from '../guestBookings';
 
@@ -13,11 +13,17 @@ import { readGuestBookings } from '../guestBookings';
  */
 export function AccountButton() {
   const { session } = usePlayerAuth();
+  const location = useLocation();
+  // De dónde sale el jugador, para que "volver" lo devuelva acá y no a un
+  // destino supuesto. Incluye la query a propósito: en /buscar los filtros
+  // viven ahí, y volver sin ellos es volver a otra búsqueda.
+  const desde = { from: location.pathname + location.search };
 
   if (session) {
     return (
       <Link
         to="/account"
+        state={desde}
         aria-label={`Ver mis turnos de ${session.displayName ?? session.email}`}
         className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 pl-3 pr-4 transition hover:border-emerald-500/50"
       >
@@ -34,6 +40,7 @@ export function AccountButton() {
   return (
     <Link
       to={hasGuestBookings ? '/account' : '/login'}
+      state={desde}
       aria-label={hasGuestBookings ? 'Ver tus turnos de este dispositivo' : 'Iniciar sesión o ver tus turnos'}
       className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-cal/10 px-3 text-ink-soft transition hover:border-cal/25 hover:text-cal"
     >

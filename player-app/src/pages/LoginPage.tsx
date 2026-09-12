@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { usePlayerAuth } from '../auth/AuthContext';
 import { ApiError, playerApi } from '../api/client';
 import { Alert, Button, Card, Field, Screen, SectionTitle } from '../components/Ui';
@@ -27,6 +27,7 @@ declare global {
 export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const { login, register, confirmSignup, loginWithGoogle } = usePlayerAuth();
 
   const [mode, setMode] = useState<'login' | 'register'>(
@@ -37,10 +38,17 @@ export function LoginPage() {
   // que venga en el query tal cual: ver WaitlistForm, que es quien la manda.
   const returnToParam = searchParams.get('returnTo');
   const returnTo = returnToParam?.startsWith('/') ? returnToParam : '/account';
-  // "Volver" es abandonar el login, asi que no puede caer en /account: sin
-  // sesion esa pantalla rebota de nuevo al login y el jugador queda en un
-  // bucle. Sin returnTo explicito, la salida es la busqueda.
-  const salidaSinEntrar = returnToParam?.startsWith('/') ? returnToParam : '/buscar';
+  // "Volver" es abandonar el login, y es otra cosa que returnTo: no puede caer
+  // en /account, porque sin sesion esa pantalla rebota de nuevo al login y el
+  // jugador queda en un bucle.
+  //
+  // Primero de donde venia, si el link que lo trajo lo dejo anotado
+  // (AccountButton); despues el returnTo explicito; y si no hay nada, la
+  // busqueda.
+  const desde = (location.state as { from?: string } | null)?.from;
+  const salidaSinEntrar = desde?.startsWith('/') && !desde.startsWith('/login')
+    ? desde
+    : returnToParam?.startsWith('/') ? returnToParam : '/buscar';
   // Solo aplica en modo "register": 'form' pide los datos, 'code' pide el
   // código de 6 dígitos que se mandó por mail. La cuenta no existe hasta que
   // ese código (o el link del mismo mail) se confirma.
