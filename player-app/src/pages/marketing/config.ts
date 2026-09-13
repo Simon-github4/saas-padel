@@ -2,8 +2,8 @@ import { whatsappLink } from '../../format';
 
 /** Editable de un solo lugar: nombre del producto y contacto de venta. */
 export const BRAND = 'Padel Ya';
-export const SALES_WHATSAPP = '5492262000000'; // TODO: número real de venta
-export const SALES_EMAIL = 'hola@ejemplo.com'; // TODO: mail real
+export const SALES_WHATSAPP = '5492262566185';
+export const SALES_EMAIL = 'diazsimon1230@gmail.com';
 export const SALES_MESSAGE =
   'Hola, tengo un club y quiero ver cómo funciona el sistema de reservas.';
 
