@@ -185,6 +185,25 @@ class PlayerAuthApiIntegrationTest {
     }
 
     @Test
+    @DisplayName("Sin el header de sesion la respuesta es 401 de sesion vencida, no un error de servidor")
+    void aMissingAuthorizationHeaderIsAnExpiredSession() {
+        // Antes Spring exigia el header y, sin el, la API respondia 500.
+        JsonNode history = client.get().uri("/api/public/player/bookings")
+                .exchange()
+                .expectStatus().isUnauthorized()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+        assertThat(history.get("code").asText()).isEqualTo("SESSION_EXPIRED");
+
+        client.delete().uri("/api/public/player/waitlist/" + java.util.UUID.randomUUID())
+                .exchange()
+                .expectStatus().isUnauthorized();
+        client.post().uri("/api/public/player/logout")
+                .exchange()
+                .expectStatus().isUnauthorized();
+    }
+
+    @Test
     @DisplayName("Registrarse no crea la cuenta todavia; confirmar el codigo si, y despues se puede loguear")
     void registerThenLoginRoundTrip() {
         registerAndConfirm(EMAIL, PASSWORD);

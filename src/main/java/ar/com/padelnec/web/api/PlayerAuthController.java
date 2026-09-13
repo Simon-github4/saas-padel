@@ -27,6 +27,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -137,7 +138,8 @@ public class PlayerAuthController {
 
     /** Identidad de la sesion vigente. */
     @GetMapping("/me")
-    public MeResponse me(@RequestHeader("Authorization") String authorization) {
+    public MeResponse me(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
         PlayerAccount account = playerAuthService.resolveSession(bearerToken(authorization));
         return new MeResponse(account.getId(), account.getEmail(), account.isEmailVerified(),
                 account.getPhoneNumber(), account.getDisplayName());
@@ -145,15 +147,17 @@ public class PlayerAuthController {
 
     /** Nombre y telefono de contacto del jugador. */
     @PutMapping("/profile")
-    public void updateProfile(@RequestHeader("Authorization") String authorization,
-                              @Valid @RequestBody UpdateProfileRequest request) {
+    public void updateProfile(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @Valid @RequestBody UpdateProfileRequest request) {
         playerAuthService.updateProfile(bearerToken(authorization), request.name(), request.phoneNumber());
     }
 
     /** Cierra la sesion. */
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void logout(@RequestHeader("Authorization") String authorization) {
+    public void logout(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
         playerAuthService.logout(bearerToken(authorization));
     }
 
@@ -165,8 +169,9 @@ public class PlayerAuthController {
      * para cancelar el turno -- no el telefono, que no prueba nada.
      */
     @PostMapping("/bookings/claim")
-    public ClaimBookingsResponse claimBookings(@RequestHeader("Authorization") String authorization,
-                                               @Valid @RequestBody ClaimBookingsRequest request) {
+    public ClaimBookingsResponse claimBookings(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @Valid @RequestBody ClaimBookingsRequest request) {
         UUID accountId = playerAuthService.resolveSession(bearerToken(authorization)).getId();
         return new ClaimBookingsResponse(
                 bookingClaimService.claim(accountId, request.managementTokens()));
@@ -174,7 +179,8 @@ public class PlayerAuthController {
 
     /** Turnos del jugador en todos los clubes de la plataforma. */
     @GetMapping("/bookings")
-    public List<BookingHistoryItem> bookings(@RequestHeader("Authorization") String authorization) {
+    public List<BookingHistoryItem> bookings(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
         return playerAuthService.history(bearerToken(authorization)).stream()
                 .map(BookingHistoryItem::of)
                 .toList();
@@ -182,7 +188,8 @@ public class PlayerAuthController {
 
     /** Horarios en los que el jugador está anotado, en todos los clubes. */
     @GetMapping("/waitlist")
-    public List<WaitlistItem> waitlist(@RequestHeader("Authorization") String authorization) {
+    public List<WaitlistItem> waitlist(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
         UUID accountId = playerAuthService.resolveSession(bearerToken(authorization)).getId();
         return waitlistService.forAccount(accountId).stream()
                 .map(WaitlistItem::of)
@@ -192,8 +199,9 @@ public class PlayerAuthController {
     /** Se baja de la lista de espera de un horario. */
     @DeleteMapping("/waitlist/{entryId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void leaveWaitlist(@RequestHeader("Authorization") String authorization,
-                              @PathVariable UUID entryId) {
+    public void leaveWaitlist(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization,
+            @PathVariable UUID entryId) {
         UUID accountId = playerAuthService.resolveSession(bearerToken(authorization)).getId();
         waitlistService.leave(accountId, entryId);
     }
@@ -204,6 +212,14 @@ public class PlayerAuthController {
                 account.getEmail(), account.isEmailVerified(), account.getPhoneNumber(), account.getDisplayName());
     }
 
+    /**
+     * El token de la sesion, o 401 si no hay.
+     *
+     * <p>Por eso el header va con {@code required = false} en cada endpoint: si
+     * Spring lo exigia, una request sin header ni llegaba aca y la API respondia
+     * 500 en vez de "sesion vencida". Sin header y con un token que no sirve
+     * son lo mismo para la app: hay que volver a iniciar sesion.
+     */
     private String bearerToken(String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) {
             throw new UnauthorizedSessionException("Tu sesión venció. Volvé a iniciar sesión.");
