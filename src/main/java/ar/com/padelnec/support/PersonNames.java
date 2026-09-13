@@ -35,6 +35,14 @@ public final class PersonNames {
         return longer.subList(0, shorter.size()).equals(shorter);
     }
 
+    /**
+     * El nombre listo para buscar: sin mayúsculas, tildes ni espacios de más. Así
+     * "perez" encuentra a "Pérez", que es como se tipea apurado en el mostrador.
+     */
+    public static String searchable(String name) {
+        return String.join(" ", words(name));
+    }
+
     private static List<String> words(String name) {
         if (name == null || name.isBlank()) {
             return List.of();

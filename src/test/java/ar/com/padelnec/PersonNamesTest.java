@@ -23,6 +23,14 @@ class PersonNamesTest {
     }
 
     @Test
+    @DisplayName("Para buscar, 'perez' encuentra a 'Pérez' aunque se tipee apurado")
+    void searchableIgnoresCaseAccentsAndSpacing() {
+        assertThat(PersonNames.searchable("  Juan   Pérez ")).isEqualTo("juan perez");
+        assertThat(PersonNames.searchable("Juan Pérez")).contains(PersonNames.searchable("PEREZ"));
+        assertThat(PersonNames.searchable("   ")).isEmpty();
+    }
+
+    @Test
     @DisplayName("Otro nombre, u otro apellido, es otra persona")
     void differentNamesDoNotMatch() {
         assertThat(PersonNames.samePerson("Pedro", "Juan Pérez")).isFalse();

@@ -10,6 +10,7 @@ import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.ProductRepository;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.BookingService;
+import ar.com.padelnec.service.CustomerService;
 import ar.com.padelnec.service.PaymentService;
 import ar.com.padelnec.service.ProductService;
 import ar.com.padelnec.service.SlotGenerator;
@@ -72,6 +73,7 @@ public class AgendaView extends VerticalLayout {
     private final ProductRepository productRepository;
     private final PhoneNumbers phoneNumbers;
     private final NotificationService notificationService;
+    private final CustomerService customerService;
     private final transient AuthenticationContext authenticationContext;
     private final Clock clock;
 
@@ -90,6 +92,7 @@ public class AgendaView extends VerticalLayout {
                       SlotGenerator slotGenerator, PaymentService paymentService,
                       ProductService productService, ProductRepository productRepository,
                       PhoneNumbers phoneNumbers, NotificationService notificationService,
+                      CustomerService customerService,
                       AuthenticationContext authenticationContext, Clock clock) {
         this.tenantService = tenantService;
         this.bookingService = bookingService;
@@ -101,6 +104,7 @@ public class AgendaView extends VerticalLayout {
         this.productRepository = productRepository;
         this.phoneNumbers = phoneNumbers;
         this.notificationService = notificationService;
+        this.customerService = customerService;
         this.authenticationContext = authenticationContext;
         this.clock = clock;
 
@@ -437,7 +441,7 @@ public class AgendaView extends VerticalLayout {
     }
 
     private void openManualBooking(AgendaRow row, Court court) {
-        new ManualBookingDialog(club, court, row.slot().startsAt(), bookingService,
+        new ManualBookingDialog(club, court, row.slot().startsAt(), bookingService, customerService,
                 notificationService, phoneNumbers, saved -> refresh()).open();
     }
 }
