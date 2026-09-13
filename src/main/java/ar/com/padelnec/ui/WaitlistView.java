@@ -47,7 +47,7 @@ import java.util.Optional;
  * pudo mandar, así que decir "enviado" podía ser mentira.
  *
  * <p>Con {@code ?turno=<segundos epoch>} muestra solo ese horario: es a donde
- * lleva la alerta de un turno cancelado por la web.
+ * lleva la alerta de un turno cancelado con gente anotada.
  */
 @Route(value = "lista-de-espera", layout = MainLayout.class)
 @PageTitle("Lista de espera | Panel del club")

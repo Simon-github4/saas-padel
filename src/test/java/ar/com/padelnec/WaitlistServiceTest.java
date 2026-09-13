@@ -177,7 +177,24 @@ class WaitlistServiceTest {
                 .satisfies(alert -> {
                     assertThat(alert.getType()).isEqualTo(AlertType.WAITLIST_SLOT_FREED);
                     assertThat(alert.getBooking().getId()).isEqualTo(taking.getId());
-                    assertThat(alert.getMessage()).contains("20:00", "Hay 2 anotados");
+                    assertThat(alert.getMessage()).contains("Se canceló por la web", "20:00", "Hay 2 anotados");
+                });
+    }
+
+    @Test
+    @DisplayName("Si el club da de baja desde el panel un turno con anotados, el panel tambien recibe la alerta")
+    void cancellingFromThePanelWithPeopleWaitingAlsoRaisesAnAlert() {
+        Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
+        Booking taking = fillTheOnlyCourt(startTime);
+        waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
+
+        bookingService.cancelByClub(club, taking.getId(), "Se cayo el grupo");
+
+        assertThat(alertRepository.findPending())
+                .singleElement()
+                .satisfies(alert -> {
+                    assertThat(alert.getType()).isEqualTo(AlertType.WAITLIST_SLOT_FREED);
+                    assertThat(alert.getMessage()).contains("El club dio de baja", "20:00", "Hay 1 anotado");
                 });
     }
 

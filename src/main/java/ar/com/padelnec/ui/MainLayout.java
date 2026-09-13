@@ -290,7 +290,7 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         diario.addItem(new SideNavItem("Caja", CajaView.class, iconChip(LumoIcon.ORDERED_LIST)));
         diario.addItem(new SideNavItem("Turnos fijos", RecurringView.class, iconChip(LumoIcon.RELOAD)));
         diario.addItem(new SideNavItem("Jugadores", CustomersView.class, iconChip(LumoIcon.USER)));
-        // Junto a Alertas: la alerta de un turno cancelado por la web lleva aca.
+        // Junto a Alertas: la alerta de un turno cancelado con anotados lleva aca.
         diario.addItem(new SideNavItem("Lista de espera", WaitlistView.class,
                 iconChip(LumoIcon.UNORDERED_LIST)));
         diario.addItem(alertsItem());

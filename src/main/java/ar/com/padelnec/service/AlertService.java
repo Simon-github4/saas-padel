@@ -4,6 +4,7 @@ import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.OperationalAlert;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
+import ar.com.padelnec.domain.enums.CancellationReason;
 import ar.com.padelnec.repository.OperationalAlertRepository;
 import java.time.Clock;
 import java.time.Instant;
@@ -82,19 +83,25 @@ public class AlertService {
     }
 
     /**
-     * Un jugador cancelo por la web un turno con gente esperando ese horario.
+     * Se cancelo un turno con gente esperando ese horario, por la web o desde el panel.
      *
      * <p>El barrido automatico les avisa por WhatsApp o por mail, pero el club
      * no se entera, y con el WhatsApp del club en stand by el unico aviso que
      * sale es el mail. Asi el mostrador revisa la lista de espera y les escribe
      * a mano, con el link para reservar ese turno.
+     *
+     * <p>Quien cancelo sale del motivo que ya quedo en el turno, no de un
+     * parametro aparte: {@code markCancelled} ya lo dejo escrito.
      */
     @Transactional
     public void waitlistSlotFreed(Tenant club, Booking booking, long waiting) {
         ZonedDateTime start = booking.getStartTime().atZone(club.zoneId());
-        raise(AlertType.WAITLIST_SLOT_FREED, booking, ("Se canceló por la web el turno de %s del %s a las %s hs. "
+        String who = booking.getCancellationReason() == CancellationReason.CLUB
+                ? "El club dio de baja"
+                : "Se canceló por la web";
+        raise(AlertType.WAITLIST_SLOT_FREED, booking, ("%s el turno de %s del %s a las %s hs. "
                 + "%s en la lista de espera: avisales por WhatsApp.").formatted(
-                booking.getCourt().getName(), start.format(DAY), start.format(TIME),
+                who, booking.getCourt().getName(), start.format(DAY), start.format(TIME),
                 waiting == 1 ? "Hay 1 anotado" : "Hay " + waiting + " anotados"));
     }
 

@@ -9,6 +9,6 @@ public enum AlertType {
     NOTIFICATION_FAILED,
     /** Un turno fijo no pudo materializarse porque la franja estaba ocupada. */
     RECURRING_CONFLICT,
-    /** Un jugador cancelo por la web un turno con gente anotada en la lista de espera. */
+    /** Se cancelo un turno con gente anotada en la lista de espera: el jugador por la web o el club. */
     WAITLIST_SLOT_FREED
 }

@@ -213,6 +213,21 @@ public class BookingService {
     }
 
     /**
+     * Si habia gente esperando el horario de un turno recien cancelado, el club
+     * se entera en el momento y les puede escribir desde la lista de espera.
+     *
+     * <p>Tanto si cancela el jugador como si lo da de baja el club: quien lo da
+     * de baja en el mostrador no necesariamente se acuerda de que ese horario
+     * tenia anotados, y otro del mostrador puede ser el que les escriba.
+     */
+    private void alertIfSomeoneIsWaiting(Tenant club, Booking booking) {
+        long waiting = waitlistEntryRepository.countOverlapping(booking.getStartTime(), booking.getEndTime());
+        if (waiting > 0) {
+            alertService.waitlistSlotFreed(club, booking, waiting);
+        }
+    }
+
+    /**
      * Quien reserva un horario deja de esperarlo. Sin esto seguia figurando como
      * anotado en el panel, y el club podia escribirle para ofrecerle un turno que
      * ya tenia.
@@ -333,12 +348,7 @@ public class BookingService {
             alertService.refundRequired(booking);
         }
 
-        // Si habia gente esperando ese horario, el club se entera en el momento y
-        // les puede escribir desde la lista de espera del panel.
-        long waiting = waitlistEntryRepository.countOverlapping(booking.getStartTime(), booking.getEndTime());
-        if (waiting > 0) {
-            alertService.waitlistSlotFreed(club, booking, waiting);
-        }
+        alertIfSomeoneIsWaiting(club, booking);
         return new CancellationResult(booking, refundNeeded, club.getWhatsappNumber());
     }
 
@@ -356,6 +366,7 @@ public class BookingService {
         if (booking.hasMoneyIn()) {
             alertService.refundRequired(booking);
         }
+        alertIfSomeoneIsWaiting(club, booking);
         events.publishEvent(BookingEvent.of(club.getId(), booking.getId(),
                 BookingEvent.Kind.CANCELLED_BY_CLUB));
         return booking;
