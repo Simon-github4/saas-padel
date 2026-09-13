@@ -1,5 +1,5 @@
-import { SectionTitle } from '../../components/Ui';
-import { TRIAL_DAYS } from './config';
+import { TRIAL_DAYS, salesWhatsappHref } from './config';
+import { ArrowGlyph, CONTAINER, Reveal, SectionHeading } from './motion';
 
 const FAQS = [
   {
@@ -36,26 +36,53 @@ const FAQS = [
   },
 ];
 
-/** Objeciones frecuentes, con <details> nativo: sin JS de por medio. */
+/**
+ * Objeciones frecuentes, con <details> nativo: sin JS de por medio. La
+ * apertura animada sale de landing.css y sólo la tienen los navegadores que
+ * soportan ::details-content; el resto la abre de golpe, que también sirve.
+ */
 export function FaqSection() {
   return (
-    <section className="py-16 md:py-20">
-      <SectionTitle title="Preguntas de siempre" />
-      <div className="mt-8 space-y-3">
-        {FAQS.map((faq) => (
-          <details key={faq.q} className="group rounded-2xl border border-cal/10 bg-vidrio p-5">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold marker:content-none">
-              {faq.q}
-              <span
-                className="shrink-0 text-lg text-ink-soft transition group-open:rotate-45"
-                aria-hidden
-              >
-                +
-              </span>
-            </summary>
-            <p className="mt-3 text-sm leading-relaxed text-ink-soft">{faq.a}</p>
-          </details>
-        ))}
+    <section className="py-24 md:py-36">
+      <div className={`${CONTAINER} grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:gap-20`}>
+        <div className="lg:sticky lg:top-28 lg:self-start">
+          <SectionHeading
+            eyebrow="Preguntas"
+            title="Las de siempre"
+            lead="Lo que más nos preguntan los dueños antes de arrancar."
+          />
+          <Reveal delay={150}>
+            <a
+              href={salesWhatsappHref()}
+              target="_blank"
+              rel="noreferrer"
+              className="group mt-8 inline-flex items-center gap-2 text-sm font-semibold text-ladrillo-claro"
+            >
+              <span className="underline-offset-4 group-hover:underline">¿Otra duda? Preguntanos</span>
+              <ArrowGlyph className="size-4 transition-transform duration-300 group-hover:translate-x-1" />
+            </a>
+          </Reveal>
+        </div>
+
+        <Reveal delay={100}>
+          <div className="border-t border-cal/10">
+            {FAQS.map((faq) => (
+              <details key={faq.q} className="mk-faq group border-b border-cal/10">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-6 text-base font-semibold transition-colors hover:text-ladrillo-claro md:text-lg [&::-webkit-details-marker]:hidden">
+                  {faq.q}
+                  <span
+                    aria-hidden
+                    className="relative grid size-8 shrink-0 place-items-center rounded-full border border-cal/15 transition duration-300 group-open:rotate-45 group-open:border-ladrillo group-open:bg-ladrillo"
+                  >
+                    <span className="absolute h-px w-3 bg-current" />
+                    <span className="absolute h-3 w-px bg-current" />
+                  </span>
+                </summary>
+                <p className="max-w-xl pb-6 pr-12 leading-relaxed text-ink-soft">{faq.a}</p>
+              </details>
+            ))}
+          </div>
+        </Reveal>
       </div>
     </section>
   );

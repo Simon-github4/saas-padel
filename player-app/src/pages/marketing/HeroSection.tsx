@@ -1,72 +1,100 @@
-import { Link } from 'react-router-dom';
-import { salesWhatsappHref } from './config';
-import { PhoneMockup } from './mockups/PhoneMockup';
+import { useEffect, useState } from 'react';
+import { TRIAL_DAYS, salesWhatsappHref } from './config';
+import { DemoClubCta, WhatsappCta } from './Cta';
+import { CONTAINER, CheckGlyph, CourtLines, delay } from './motion';
+import { LiveAgenda } from './mockups/LiveAgenda';
+
+const PROMISES = [
+  `${TRIAL_DAYS} días gratis`,
+  'La seña va a tu MercadoPago',
+  'El jugador no crea cuenta',
+];
 
 /**
  * Portada de la landing comercial: lo primero que ve un dueño de club.
  *
  * <p>El titular no vende "un sistema": vende dejar de resolver la reserva a
- * mano, que es el dolor real. El mockup de al lado muestra de entrada cómo se
- * ve, en vez de pedirle al lector que se lo imagine.
+ * mano, que es el dolor real. Al lado, la agenda se llena sola mientras se lee
+ * el titular: la promesa funcionando, en vez de pedir que se la imaginen.
+ * Abajo, el piso es una cancha que se dibuja al cargar.
  */
 export function HeroSection() {
+  // Las líneas de la cancha arrancan a dibujarse recién montada la portada.
+  const [drawn, setDrawn] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setDrawn(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
   return (
-    <section
-      id="top"
-      className="relative mx-[calc(50%-50vw)] overflow-hidden pb-16 pt-14 md:pb-24 md:pt-20"
-    >
+    // -mt-16 y pt-16: la portada sube por detrás de la barra, que arriba de todo
+    // es transparente, así el resplandor y la cancha llegan hasta el borde.
+    <section id="top" className="relative isolate -mt-16 overflow-hidden pt-16">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_55%_at_50%_0%,rgba(234,88,12,0.18),transparent_70%)]"
+        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(55%_50%_at_70%_20%,rgba(234,88,12,0.16),transparent_70%),radial-gradient(40%_40%_at_10%_0%,rgba(255,255,255,0.05),transparent_70%)]"
       />
-      <div className="relative mx-auto grid w-full max-w-5xl gap-12 px-4 md:grid-cols-[1.1fr_0.9fr] md:items-center md:gap-8">
-        <div className="text-center md:text-left">
-          <p className="eyebrow text-ladrillo-claro">Para dueños de club</p>
-          <h1 className="mt-4 text-[clamp(2.75rem,9vw,4.5rem)] leading-[0.95] tracking-[0.02em]">
-            Que tu club reserve solo
-          </h1>
-          <p className="mx-auto mt-6 max-w-md text-lg text-ink-soft md:mx-0">
-            Tu link de WhatsApp deja de ser una fila de mensajes a la noche: el
-            jugador ve las canchas libres, elige un horario y reserva. Vos mirás la
-            agenda.
-          </p>
-          <div className="mt-8 flex flex-col items-center gap-3 md:items-start">
-            <a
-              href={salesWhatsappHref()}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-full bg-ladrillo px-10 py-4 text-sm font-bold uppercase tracking-[0.12em] text-cal transition hover:bg-ladrillo/90 [box-shadow:var(--shadow-glow)]"
-            >
-              Hablemos por WhatsApp
-              <span aria-hidden>→</span>
-            </a>
-            {/* Mismo destino que la estampa sobre el mockup, pero como texto: en
-                mobile la estampa puede pasar desapercibida, y quien todavía no
-                se decide a escribir necesita poder tocar algo ya. */}
-            <Link
-              to="/club/club-necochea"
-              target="_blank"
-              className="text-sm font-semibold text-ink-soft underline-offset-4 transition hover:text-cal hover:underline"
-            >
-              Ver un club real funcionando →
-            </Link>
-          </div>
+      {/* La cancha como piso, en perspectiva: la portada "está parada" sobre ella. */}
+      <div
+        aria-hidden
+        data-shown={drawn || undefined}
+        className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[70%] [mask-image:linear-gradient(to_bottom,transparent,black_35%,black_70%,transparent)] [perspective:900px]"
+      >
+        <div className="absolute left-1/2 top-[38%] w-[190%] -translate-x-1/2 origin-top [transform:rotateX(64deg)] md:w-[140%] lg:left-[72%] lg:w-[110%]">
+          <CourtLines className="w-full text-cal/[0.1]" />
         </div>
-        <div className="relative">
-          <PhoneMockup />
-          {/* El único link a un club real de toda la landing: mientras el
-              resto vende con mockups, acá el que quiere ver el sistema andando
-              de verdad puede. Va como estampa sobre la esquina de la ficha, no
-              como pie de foto, para que no se lea como una aclaración legal
-              sino como una invitación. Nueva pestaña para no perder la landing. */}
-          <Link
-            to="/club/club-necochea"
-            target="_blank"
-            className="absolute -top-3 right-3 inline-flex -rotate-3 items-center gap-1.5 rounded-full bg-ladrillo px-4 py-2 text-xs font-bold uppercase tracking-[0.1em] text-cal transition [box-shadow:var(--shadow-glow)] hover:-rotate-1 hover:bg-ladrillo/90"
+      </div>
+
+      <div
+        className={`${CONTAINER} grid gap-16 pb-28 pt-14 md:pt-20 lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-14 lg:pb-24`}
+      >
+        <div className="text-center lg:text-left">
+          <p
+            className="eyebrow mk-fade-up flex items-center justify-center gap-3 text-ladrillo-claro lg:justify-start"
+            style={delay(0)}
           >
-            Club real
-            <span aria-hidden>→</span>
-          </Link>
+            <span aria-hidden className="h-px w-6 bg-ladrillo-claro/60" />
+            Para dueños de club
+          </p>
+          <h1 className="mt-6 text-[clamp(3.75rem,15vw,7rem)] leading-[0.9] tracking-[0.01em] lg:text-[clamp(4.5rem,6.8vw,7.25rem)]">
+            <span className="mk-line">
+              <span style={delay(100)}>Que tu club</span>
+            </span>
+            <span className="mk-line">
+              <span style={delay(220)}>
+                reserve <span className="text-ladrillo">solo</span>
+              </span>
+            </span>
+          </h1>
+          <p
+            className="mk-fade-up mx-auto mt-7 max-w-md text-lg leading-relaxed text-ink-soft text-pretty lg:mx-0"
+            style={delay(420)}
+          >
+            Tu WhatsApp deja de ser una fila de mensajes a la noche: el jugador abre
+            tu link, ve las canchas libres y reserva. Vos mirás la agenda.
+          </p>
+          <div
+            className="mk-fade-up mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:justify-center lg:justify-start"
+            style={delay(560)}
+          >
+            <WhatsappCta href={salesWhatsappHref()}>Hablemos</WhatsappCta>
+            <DemoClubCta>Ver un club real</DemoClubCta>
+          </div>
+          <ul
+            className="mk-fade-up mt-9 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-ink-soft lg:justify-start"
+            style={delay(700)}
+          >
+            {PROMISES.map((promise) => (
+              <li key={promise} className="flex items-center gap-2">
+                <CheckGlyph className="size-3.5 text-ladrillo-claro" />
+                {promise}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="mk-fade-up" style={delay(500)}>
+          <LiveAgenda />
         </div>
       </div>
     </section>

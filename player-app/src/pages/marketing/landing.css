@@ -1,0 +1,324 @@
+/*
+ * Movimiento de la landing comercial.
+ *
+ * Va aparte de index.css porque nada de esto existe en la app del jugador: el
+ * que reserva quiere la grilla quieta, el dueño que evalua el producto necesita
+ * verlo andar. Todas las clases llevan el prefijo mk- para no cruzarse con las
+ * de la app.
+ *
+ * Ojo: esta hoja no esta en ninguna @layer, asi que le gana a las utilidades
+ * de Tailwind. Por eso las animaciones tocan `transform`, que Tailwind v4 no
+ * usa (sus translate/rotate/scale van en propiedades sueltas), y `opacity` solo
+ * en elementos que no la reciben por clase.
+ */
+
+.mk {
+  --mk-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ---- Aparicion al entrar en pantalla (ver Reveal en motion.tsx) ---- */
+
+.mk-reveal {
+  opacity: 0;
+  transform: translateY(1.75rem);
+  transition:
+    opacity 700ms var(--mk-ease),
+    transform 1000ms var(--mk-ease);
+  transition-delay: var(--mk-delay, 0ms);
+}
+.mk-reveal[data-shown] {
+  opacity: 1;
+  transform: none;
+}
+
+/* ---- Portada: el titular sube linea por linea, detras de una mascara ---- */
+
+.mk-line {
+  display: block;
+  overflow: hidden;
+  /* Aire para que la mascara no muerda el tope de las mayusculas. */
+  padding-block: 0.08em;
+  margin-block: -0.08em;
+}
+.mk-line > span {
+  display: inline-block;
+  animation: mk-rise 1100ms var(--mk-ease) backwards;
+  animation-delay: var(--mk-delay, 0ms);
+}
+@keyframes mk-rise {
+  from {
+    transform: translateY(110%);
+  }
+}
+
+.mk-fade-up {
+  animation: mk-fade-up 900ms var(--mk-ease) backwards;
+  animation-delay: var(--mk-delay, 0ms);
+}
+@keyframes mk-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(1rem);
+  }
+}
+
+/* ---- Lineas de cancha que se dibujan (pathLength=1 en cada trazo) ---- */
+
+.mk-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+[data-shown] .mk-draw {
+  animation: mk-draw 2200ms var(--mk-ease) forwards;
+  animation-delay: var(--mk-delay, 0ms);
+}
+@keyframes mk-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ---- Mensajes que pasan de largo ---- */
+
+.mk-marquee {
+  mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
+}
+.mk-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: mk-marquee 70s linear infinite;
+}
+.mk-marquee:hover .mk-marquee-track {
+  animation-play-state: paused;
+}
+@keyframes mk-marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* ---- Agenda y demo: el turno que entra ---- */
+
+.mk-pop {
+  animation:
+    mk-pop 560ms var(--mk-ease) both,
+    mk-flash 1200ms ease-out 200ms;
+}
+@keyframes mk-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes mk-flash {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-ladrillo) 60%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}
+
+.mk-toast {
+  animation: mk-toast 600ms var(--mk-ease) both;
+}
+@keyframes mk-toast {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+}
+
+.mk-tick {
+  display: inline-block;
+  animation: mk-tick 500ms var(--mk-ease);
+}
+@keyframes mk-tick {
+  from {
+    opacity: 0.2;
+    transform: translateY(40%);
+  }
+}
+
+.mk-fade-in {
+  animation: mk-fade-in 500ms ease-out both;
+  animation-delay: var(--mk-delay, 0ms);
+}
+@keyframes mk-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Punto que late: "recibiendo reservas", "eligiendo". */
+.mk-ping {
+  position: relative;
+}
+.mk-ping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: mk-ping 1800ms var(--mk-ease) infinite;
+}
+@keyframes mk-ping {
+  75%,
+  100% {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+.mk-breathe {
+  animation: mk-breathe 1400ms ease-in-out infinite;
+}
+@keyframes mk-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.mk-shake {
+  animation: mk-shake 420ms ease-in-out both;
+  animation-delay: var(--mk-delay, 0ms);
+}
+@keyframes mk-shake {
+  20%,
+  60% {
+    transform: translateX(-5px);
+  }
+  40%,
+  80% {
+    transform: translateX(5px);
+  }
+}
+
+/* Tilde de "reservado", que se dibuja. */
+.mk-check {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: mk-draw 700ms var(--mk-ease) 250ms forwards;
+}
+
+/* ---- Barras y lineas que crecen al aparecer ---- */
+
+.mk-grow-y {
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform 1000ms var(--mk-ease);
+  transition-delay: var(--mk-delay, 0ms);
+}
+.mk-grow-x {
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 1600ms var(--mk-ease) 300ms;
+}
+.mk-grow-y-line {
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 1600ms var(--mk-ease) 300ms;
+}
+[data-shown] .mk-grow-y,
+[data-shown] .mk-grow-x,
+[data-shown] .mk-grow-y-line {
+  transform: none;
+}
+
+/* ---- Preguntas: <details> nativo que se abre con altura animada ----
+   Donde el navegador no soporta ::details-content se abre de golpe, como
+   siempre: la animacion es un extra, no una dependencia. */
+
+.mk-faq {
+  interpolate-size: allow-keywords;
+}
+.mk-faq::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition:
+    block-size 450ms var(--mk-ease),
+    content-visibility 450ms allow-discrete;
+}
+.mk-faq[open]::details-content {
+  block-size: auto;
+}
+
+/* ---- Calculadora del precio ---- */
+
+.mk-range {
+  appearance: none;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--color-ladrillo) var(--mk-fill, 50%),
+    color-mix(in srgb, var(--color-cal) 12%, transparent) var(--mk-fill, 50%)
+  );
+  cursor: pointer;
+}
+.mk-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 999px;
+  background: var(--color-cal);
+  border: 4px solid var(--color-ladrillo);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  transition: transform 150ms ease;
+}
+.mk-range::-moz-range-thumb {
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 999px;
+  background: var(--color-cal);
+  border: 4px solid var(--color-ladrillo);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+.mk-range:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+/* ---- Movimiento reducido: todo aparece en su lugar, nada se mueve solo ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-reveal,
+  .mk-grow-y,
+  .mk-grow-x,
+  .mk-grow-y-line {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .mk-line > span,
+  .mk-fade-up,
+  .mk-pop,
+  .mk-toast,
+  .mk-tick,
+  .mk-fade-in,
+  .mk-shake,
+  .mk-breathe,
+  .mk-ping::after {
+    animation: none;
+  }
+  .mk-draw,
+  .mk-check {
+    stroke-dashoffset: 0;
+    animation: none;
+  }
+  [data-shown] .mk-draw {
+    animation: none;
+  }
+  .mk-marquee {
+    overflow-x: auto;
+  }
+  .mk-marquee-track {
+    animation: none;
+  }
+}

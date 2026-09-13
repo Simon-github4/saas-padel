@@ -1,15 +1,16 @@
 import { useEffect } from 'react';
-import { BrandSection } from './marketing/BrandSection';
 import { ClosingSection } from './marketing/ClosingSection';
 import { BRAND } from './marketing/config';
+import { DemoSection } from './marketing/DemoSection';
 import { FaqSection } from './marketing/FaqSection';
 import { FeaturesSection } from './marketing/FeaturesSection';
 import { HeroSection } from './marketing/HeroSection';
 import { MarketingFooter, MarketingNav } from './marketing/MarketingNav';
+import { MessagesMarquee } from './marketing/MessagesMarquee';
 import { NetworkSection } from './marketing/NetworkSection';
-import { PanelSection } from './marketing/PanelSection';
 import { PricingSection } from './marketing/PricingSection';
 import { StepsSection } from './marketing/StepsSection';
+import './marketing/landing.css';
 
 /**
  * Landing comercial: vende el sistema al dueño de club que entra a la raíz.
@@ -18,6 +19,10 @@ import { StepsSection } from './marketing/StepsSection';
  * /club/{slug} por WhatsApp. Quien sí cae en "/" es, sobre todo, el dueño de
  * club evaluando el producto — por eso esta página tiene su propio título de
  * pestaña, distinto del de la SPA, y lo restaura al salir.
+ *
+ * <p>El orden cuenta una historia: la promesa andando (portada), el dolor de
+ * hoy (los mensajes), probarlo con las propias manos (demo), el detalle
+ * (funciones), cómo se empieza, cuánto sale y las dudas.
  */
 export function Landing() {
   useEffect(() => {
@@ -29,19 +34,19 @@ export function Landing() {
   }, []);
 
   return (
-    <div className="min-h-dvh overflow-x-clip bg-pista">
+    <div className="mk min-h-dvh overflow-x-clip bg-pista">
       <MarketingNav />
-      <HeroSection />
-      <div className="mx-auto w-full max-w-5xl px-4">
+      <main>
+        <HeroSection />
+        <MessagesMarquee />
+        <DemoSection />
         <FeaturesSection />
-        <PanelSection />
-        <BrandSection />
         <NetworkSection />
         <StepsSection />
         <PricingSection />
         <FaqSection />
-      </div>
-      <ClosingSection />
+        <ClosingSection />
+      </main>
       <MarketingFooter />
     </div>
   );
