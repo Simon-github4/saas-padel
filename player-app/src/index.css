@@ -160,7 +160,7 @@ button:not([aria-label]) {
 }
 
 /* El marcador se enciende: las fichas de horario entran escalonadas una sola
-   vez, al aparecer la grilla. Es la unica animacion de la pagina. */
+   vez, al aparecer la grilla. */
 @keyframes ficha-in {
   from {
     opacity: 0;
@@ -172,11 +172,142 @@ button:not([aria-label]) {
   animation: ficha-in 260ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
+/* Portada del club: la foto se acerca despacio una sola vez y el texto sube
+   escalonado al abrir el link. Nada queda moviendose despues: el jugador
+   vino a reservar, no a mirar. */
+@keyframes portada-foto {
+  from {
+    transform: scale(1.12);
+  }
+}
+
+.portada-foto {
+  animation: portada-foto 14s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes portada-sube {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+.portada-sube {
+  animation: portada-sube 900ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: var(--portada-delay, 0ms);
+}
+
+/* Portada "marcador": la pelota cae y pica, y las fichas de horario del
+   tablero entran dando vuelta como las paletas de un cartel. Una sola vez. */
+@keyframes portada-pica {
+  0% {
+    opacity: 0;
+    transform: translateY(-80px) scale(0.92);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(0) scale(1.05, 0.93);
+  }
+  62% {
+    transform: translateY(-18px) scale(0.99, 1.01);
+  }
+  78% {
+    transform: translateY(0) scale(1.02, 0.98);
+  }
+  89% {
+    transform: translateY(-4px);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+.portada-pica {
+  animation: portada-pica 1100ms cubic-bezier(0.3, 0.7, 0.4, 1) 250ms backwards;
+}
+
+@keyframes portada-flip {
+  from {
+    opacity: 0;
+    transform: perspective(400px) rotateX(-85deg);
+  }
+}
+
+.portada-flip {
+  transform-origin: top;
+  animation: portada-flip 650ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: var(--portada-delay, 0ms);
+}
+
+/* Portada "cancha partida": la foto se destapa desde la red hacia afuera
+   (hacia arriba en el telefono, hacia la izquierda en desktop), la red se
+   dibuja y la ficha del centro cae en su lugar. */
+@keyframes split-revela-arriba {
+  from {
+    clip-path: inset(100% 0 0 0);
+  }
+}
+
+@keyframes split-revela-costado {
+  from {
+    clip-path: inset(0 0 0 100%);
+  }
+}
+
+.split-foto {
+  animation: split-revela-arriba 1100ms cubic-bezier(0.65, 0, 0.35, 1) backwards;
+}
+
+@keyframes split-red-h {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes split-red-v {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+.split-red-h {
+  animation: split-red-h 800ms cubic-bezier(0.22, 1, 0.36, 1) 500ms backwards;
+}
+
+.split-red-v {
+  animation: split-red-v 800ms cubic-bezier(0.22, 1, 0.36, 1) 500ms backwards;
+}
+
+@keyframes split-ficha {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+}
+
+.split-ficha {
+  animation: split-ficha 650ms cubic-bezier(0.34, 1.56, 0.64, 1) 900ms backwards;
+}
+
+@media (min-width: 768px) {
+  .split-foto {
+    animation-name: split-revela-costado;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
   }
-  .ficha-in {
+  .ficha-in,
+  .portada-foto,
+  .portada-sube,
+  .portada-pica,
+  .portada-flip,
+  .split-foto,
+  .split-red-h,
+  .split-red-v,
+  .split-ficha {
     animation: none;
   }
   *,

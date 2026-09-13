@@ -43,7 +43,8 @@ export function HowToGetThereSection({
   }
 
   return (
-    <section className="mt-10">
+    // El id lo usa el acceso "Cómo llegar" de la portada cancha partida.
+    <section id="como-llegar" className="mt-10 scroll-mt-24">
       <h2 className="flex items-center gap-3 text-2xl">
         <span className="grid size-7 shrink-0 place-items-center rounded-full bg-cal/[0.06] text-ladrillo-claro">
           <PinGlyph />

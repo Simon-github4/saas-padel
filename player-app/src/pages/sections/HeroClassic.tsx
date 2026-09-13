@@ -1,8 +1,15 @@
+import type { CSSProperties } from 'react';
+import type { Slot } from '../../api/client';
+import { clockTime, money } from '../../format';
+
 /** Texto del botón cuando el club no cargó uno propio. Compartido por los tres diseños de portada. */
 export const DEFAULT_CTA = 'Ver horarios';
 
 /** Oscurecido de la foto cuando el club no lo definio. Igual al del panel. */
 const DEFAULT_OVERLAY = 55;
+
+/** Cuántos horarios de hoy entran en la portada antes de mandar a la grilla. */
+const QUICK_SLOTS = 4;
 
 /**
  * Cuerpo del título según su largo.
@@ -23,6 +30,10 @@ export function titleSize(headline: string): string {
   return 'text-[clamp(3rem,16vw,7rem)]';
 }
 
+function delay(ms: number): CSSProperties {
+  return { '--portada-delay': `${ms}ms` } as CSSProperties;
+}
+
 /**
  * Portada del club: ocupa casi toda la pantalla, porque es lo único que el
  * jugador ve al abrir el link de WhatsApp y de ahí decide si sigue.
@@ -30,6 +41,11 @@ export function titleSize(headline: string): string {
  * <p>El club la configura desde el panel: título, texto del botón y cuánto se
  * oscurece la foto. Ese último ajuste no es cosmético — sobre una foto clara el
  * título queda ilegible y es lo único que el club puede corregir sin cambiarla.
+ *
+ * <p>Abajo del título van los primeros horarios libres de hoy. Quien abre el
+ * link a la tarde casi siempre quiere jugar esa noche: tocar uno lleva directo
+ * a sus datos, sin pasar por el calendario ni por la grilla. Si el jugador ya
+ * está mirando otro día, el bloque no aparece, porque no hay "hoy" que ofrecer.
  */
 export function HeroClassic({
   name,
@@ -40,6 +56,11 @@ export function HeroClassic({
   heroOverlay,
   address,
   courtCount,
+  todaySlots,
+  timeZone,
+  playersPerCourt,
+  onPickSlot,
+  onSeeToday,
 }: {
   name: string;
   tagline: string | null;
@@ -49,15 +70,13 @@ export function HeroClassic({
   heroOverlay: number;
   address: string | null;
   courtCount: number;
+  /** Horarios con cancha libre de hoy; null si la página no está en hoy. */
+  todaySlots?: Slot[] | null;
+  timeZone?: string;
+  playersPerCourt?: number;
+  onPickSlot?: (slot: Slot) => void;
+  onSeeToday?: () => void;
 }) {
-  const facts: { label: string; value: string }[] = [];
-  if (address) {
-    facts.push({ label: 'Dónde', value: address });
-  }
-  if (courtCount > 0) {
-    facts.push({ label: 'Canchas', value: String(courtCount) });
-  }
-
   const headline = heroHeadline ?? name;
   const cta = heroCtaLabel ?? DEFAULT_CTA;
   // El panel entrega 0-100, pero acá se acota igual: un valor fuera de rango, o
@@ -66,6 +85,8 @@ export function HeroClassic({
   const veil = Number.isFinite(heroOverlay)
     ? Math.min(100, Math.max(0, heroOverlay)) / 100
     : DEFAULT_OVERLAY / 100;
+
+  const courtsLabel = courtCount > 0 ? `${courtCount} ${courtCount === 1 ? 'cancha' : 'canchas'}` : null;
 
   return (
     // svh y no vh: en el navegador del teléfono, vh cuenta la barra de
@@ -81,11 +102,11 @@ export function HeroClassic({
           {/* Cada club sube una foto distinta —de día, de noche, con su propia
               luz—, y una desaturación pareja las hace leer como una sola
               familia visual en vez de una foto de stock con un filtro
-              cualquiera arriba. */}
+              cualquiera arriba. Al abrir se acerca despacio, una sola vez. */}
           <img
             src={heroImageUrl}
             alt=""
-            className="absolute inset-0 h-full w-full object-cover [filter:grayscale(35%)_contrast(1.05)_brightness(0.9)]"
+            className="portada-foto absolute inset-0 h-full w-full object-cover [filter:grayscale(35%)_contrast(1.05)_brightness(0.9)]"
             loading="eager"
             fetchPriority="high"
           />
@@ -105,46 +126,173 @@ export function HeroClassic({
         <div className="absolute inset-0 bg-[radial-gradient(75%_60%_at_50%_35%,var(--color-ladrillo),transparent_70%)] opacity-25" />
       )}
 
-      <div className="relative mx-auto w-full max-w-lg px-5 pb-10 pt-24 text-center md:max-w-2xl">
+      <div className="relative mx-auto w-full max-w-lg px-5 pb-10 pt-20 text-center md:max-w-2xl md:pt-12">
+        {(address || courtsLabel) && (
+          <p
+            className="portada-sube mx-auto inline-flex max-w-full items-center gap-2.5 rounded-full border border-cal/15 bg-pista/40 px-4 py-2 text-xs font-semibold text-cal backdrop-blur-md"
+            style={delay(0)}
+          >
+            {address && (
+              <span className="flex min-w-0 items-center gap-1.5">
+                <PinGlyph />
+                <span className="truncate">{address}</span>
+              </span>
+            )}
+            {address && courtsLabel && <span aria-hidden className="h-3 w-px shrink-0 bg-cal/25" />}
+            {courtsLabel && <span className="shrink-0 tabular-nums">{courtsLabel}</span>}
+          </p>
+        )}
+
         <h1
-          className={`hero-title ${titleSize(headline)} [text-shadow:0_2px_12px_rgba(0,0,0,0.45)]`}
+          className={`hero-title portada-sube mt-6 ${titleSize(headline)} [text-shadow:0_2px_12px_rgba(0,0,0,0.45)]`}
+          style={delay(120)}
         >
           {headline}
         </h1>
         {tagline && (
-          <p className="mx-auto mt-4 flex max-w-md items-center justify-center gap-3">
+          <p
+            className="portada-sube mx-auto mt-4 flex max-w-md items-center justify-center gap-3"
+            style={delay(240)}
+          >
             <span className="h-px w-6 shrink-0 bg-cal/25" aria-hidden />
             <span className="eyebrow text-cal/75">{tagline}</span>
             <span className="h-px w-6 shrink-0 bg-cal/25" aria-hidden />
           </p>
         )}
 
-        {facts.length > 0 && (
-          <dl
-            className={`mx-auto mt-10 grid max-w-md ${
-              facts.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-            } divide-x divide-cal/20 text-center`}
-          >
-            {facts.map((fact) => (
-              <div key={fact.label} className="px-2">
-                <dt className="eyebrow text-cal/55">{fact.label}</dt>
-                <dd className="mt-2 text-sm font-semibold leading-snug text-cal tabular-nums">
-                  {fact.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
+        {todaySlots && onPickSlot && timeZone && playersPerCourt ? (
+          <TodaySlots
+            slots={todaySlots}
+            timeZone={timeZone}
+            playersPerCourt={playersPerCourt}
+            onPick={onPickSlot}
+            onSeeToday={onSeeToday}
+          />
+        ) : (
+          <div className="mt-8" />
         )}
 
-        <a
-          href="#reserva"
-          className="mt-10 inline-flex items-center gap-2 rounded-full bg-ladrillo px-10 py-4 text-sm font-bold uppercase tracking-[0.12em] text-cal transition hover:bg-ladrillo/90 [box-shadow:var(--shadow-glow)]"
-        >
-          {cta}
-          <span aria-hidden>→</span>
-        </a>
-        <p className="eyebrow mt-5 text-cal/50">Sin registro · Confirmación al instante</p>
+        <div className="portada-sube" style={delay(520)}>
+          <a
+            href="#reserva"
+            className="group mt-6 inline-flex items-center gap-2 rounded-full bg-ladrillo px-10 py-4 text-sm font-bold uppercase tracking-[0.12em] text-cal transition duration-300 hover:-translate-y-0.5 hover:bg-ladrillo/90 [box-shadow:var(--shadow-glow)]"
+          >
+            {cta}
+            <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1">
+              →
+            </span>
+          </a>
+          <p className="eyebrow mt-5 text-cal/50">Sin registro · Confirmación al instante</p>
+        </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Los primeros horarios libres de hoy, como fichas que se tocan. Cada una
+ * lleva lo que pone cada jugador, que es lo que se pregunta antes de decidir.
+ */
+function TodaySlots({
+  slots,
+  timeZone,
+  playersPerCourt,
+  onPick,
+  onSeeToday,
+}: {
+  slots: Slot[];
+  timeZone: string;
+  playersPerCourt: number;
+  onPick: (slot: Slot) => void;
+  onSeeToday?: () => void;
+}) {
+  const shown = slots.slice(0, QUICK_SLOTS);
+  const rest = slots.length - shown.length;
+
+  if (slots.length === 0) {
+    return (
+      <div className="portada-sube mt-8" style={delay(360)}>
+        <p className="text-sm text-cal/75">Hoy no quedan horarios libres.</p>
+        <a
+          href="#reserva"
+          className="mt-1 inline-block text-sm font-semibold text-ladrillo-claro underline-offset-4 hover:underline"
+        >
+          Mirá otros días
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-8">
+      {/* El resto de los horarios va en el mismo renglón que la cuenta y no
+          debajo de las fichas: ahí empujaba el botón fuera de la pantalla en
+          una notebook. */}
+      <div
+        className="portada-sube flex flex-wrap items-center justify-center gap-x-3 gap-y-1"
+        style={delay(360)}
+      >
+        <p className="eyebrow flex items-center gap-2 text-cal/75">
+          <span className="relative flex size-2">
+            <span className="absolute inset-0 animate-ping rounded-full bg-ladrillo-claro opacity-70" />
+            <span className="relative size-2 rounded-full bg-ladrillo-claro" />
+          </span>
+          {slots.length === 1 ? 'Queda 1 horario libre hoy' : `Quedan ${slots.length} horarios libres hoy`}
+        </p>
+        {rest > 0 && onSeeToday && (
+          <button
+            type="button"
+            onClick={onSeeToday}
+            className="text-xs font-semibold text-ladrillo-claro underline-offset-4 hover:underline"
+          >
+            Ver todos →
+          </button>
+        )}
+      </div>
+      <ul className="mx-auto mt-4 grid max-w-md grid-cols-2 gap-2 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center">
+        {shown.map((slot, index) => {
+          const cheapest = Math.min(...slot.available.map((court) => court.price));
+          const time = clockTime(slot.startsAt, timeZone);
+          return (
+            <li key={slot.startsAt} className="portada-sube" style={delay(420 + index * 60)}>
+              <button
+                type="button"
+                onClick={() => onPick(slot)}
+                aria-label={`Reservar hoy a las ${time}, ${money(cheapest / playersPerCourt)} por persona${slot.promo ? ', en promo' : ''}`}
+                className="group relative flex w-full flex-col items-start rounded-2xl border border-cal/15 bg-pista/45 px-4 py-3 text-left backdrop-blur-md transition duration-300 hover:-translate-y-0.5 hover:border-ladrillo hover:bg-ladrillo sm:w-32"
+              >
+                {slot.promo && (
+                  <span className="absolute right-3 top-3 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-ladrillo-claro transition-colors group-hover:text-cal">
+                    Promo
+                  </span>
+                )}
+                <span className="display text-2xl leading-none tabular-nums text-cal">{time}</span>
+                <span className="mt-1 text-xs font-semibold tabular-nums text-cal/70 transition-colors group-hover:text-cal">
+                  {money(cheapest / playersPerCourt)} c/u
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function PinGlyph() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className="size-3.5 shrink-0 text-ladrillo-claro"
+    >
+      <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 1 1 13 0c0 5.4-6.5 11-6.5 11Z" />
+      <circle cx="12" cy="10" r="2.3" />
+    </svg>
   );
 }

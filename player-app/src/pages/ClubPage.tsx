@@ -254,6 +254,19 @@ export function ClubPage() {
   const club = data!.club;
   const whatsapp = whatsappLink(club.whatsappNumber);
   const lastBookable = addDays(todayIso(), club.bookingHorizonDays);
+  // Los horarios libres de hoy para la portada. Solo si la página está parada
+  // en hoy: si el jugador eligió otro día, estos datos son de ese día.
+  const todaySlots =
+    data!.date === todayIso() ? data!.slots.filter((slot) => slot.available.length > 0) : null;
+
+  // El efecto de arriba lleva la vista a la reserva cuando cambia el paso. Desde
+  // la portada se puede llegar al mismo paso en el que ya está (otro horario
+  // estando en "Tus datos"), y ahí hay que moverla a mano.
+  const scrollToReserva = (nextStep: 1 | 2 | 3) => {
+    if (nextStep === step) {
+      reserva.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   return (
     <Screen
@@ -269,6 +282,20 @@ export function ClubPage() {
         heroVariant={club.heroVariant}
         address={club.address}
         courtCount={data!.courts.length}
+        todaySlots={todaySlots}
+        timeZone={club.timeZone}
+        playersPerCourt={club.playersPerCourt}
+        onPickSlot={(slot) => {
+          track('slot_click', { slotAt: slot.startsAt, detail: 'portada' });
+          setSelected(slot);
+          setSlotNotice(null);
+          scrollToReserva(3);
+          setStep(3);
+        }}
+        onSeeToday={() => {
+          scrollToReserva(2);
+          handleDaySelect(todayIso());
+        }}
       />
 
       {/*

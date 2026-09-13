@@ -4,9 +4,10 @@ import { Link } from 'react-router-dom';
 /**
  * Piezas visuales compartidas, para que las pantallas se ocupen del flujo.
  *
- * <p>La página es casi toda negra: una sola pieza clara (el precio). El ladrillo
- * es el acento del club — CTA de la portada, pagar la seña, promociones,
- * precios y foco — y el verde solo aparece en WhatsApp.
+ * <p>La página es casi toda negra: la única superficie pintada entera con el
+ * color del club es la cancha del precio. El ladrillo es el acento del club —
+ * CTA de la portada, pagar la seña, promociones, precios y foco — y el verde
+ * solo aparece en WhatsApp.
  */
 
 export function Screen({
