@@ -330,7 +330,65 @@ class PlayerAuthApiIntegrationTest {
         assertThat(me.get("phoneNumber").asText()).endsWith("2262415000");
     }
 
+    @Test
+    @DisplayName("Mis turnos lista las anotaciones en la lista de espera y deja bajarse; otra cuenta no puede")
+    void waitlistEntriesShowUpAndCanBeLeft() {
+        String owner = registerAndConfirm(EMAIL, PASSWORD).get("token").asText();
+        String stranger = registerAndConfirm("otra@example.com", PASSWORD).get("token").asText();
+        bookAt("club-a", "El que llego primero", "2262415000");
+        JsonNode full = firstFullSlot("club-a");
+
+        client.post().uri("/api/public/club-a/waitlist")
+                .header("Authorization", "Bearer " + owner)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("startTime", full.get("startsAt").asText(),
+                        "fullName", "Juana", "phoneNumber", "2262415111"))
+                .exchange()
+                .expectStatus().isCreated();
+
+        JsonNode mine = waitlistOf(owner);
+        assertThat(mine).hasSize(1);
+        assertThat(mine.get(0).get("clubSlug").asText()).isEqualTo("club-a");
+        String entryId = mine.get(0).get("entryId").asText();
+        assertThat(waitlistOf(stranger)).isEmpty();
+
+        client.delete().uri("/api/public/player/waitlist/" + entryId)
+                .header("Authorization", "Bearer " + stranger)
+                .exchange()
+                .expectStatus().isNotFound();
+        assertThat(waitlistOf(owner)).hasSize(1);
+
+        client.delete().uri("/api/public/player/waitlist/" + entryId)
+                .header("Authorization", "Bearer " + owner)
+                .exchange()
+                .expectStatus().isNoContent();
+        assertThat(waitlistOf(owner)).isEmpty();
+    }
+
     // ------------------------------------------------------------ utilidades
+
+    private JsonNode waitlistOf(String token) {
+        return client.get().uri("/api/public/player/waitlist")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+    }
+
+    private JsonNode firstFullSlot(String slug) {
+        JsonNode grid = client.get().uri("/api/public/" + slug + "/availability?date=" + matchDay)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+        for (JsonNode slot : grid.get("slots")) {
+            if (slot.get("available").isEmpty()) {
+                return slot;
+            }
+        }
+        throw new AssertionError("No hay ningun turno lleno en " + slug);
+    }
 
     /** Solo arranca el alta: manda el codigo/link, todavia no crea la cuenta. */
     private void register(String email, String password) {

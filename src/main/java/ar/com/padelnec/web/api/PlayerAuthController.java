@@ -6,6 +6,7 @@ import ar.com.padelnec.domain.PlayerSession;
 import ar.com.padelnec.service.BookingClaimService;
 import ar.com.padelnec.service.PlayerAuthService;
 import ar.com.padelnec.service.PlayerAuthService.IssuedSession;
+import ar.com.padelnec.service.WaitlistService;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.BookingHistoryItem;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.ConfigResponse;
@@ -20,6 +21,7 @@ import ar.com.padelnec.web.dto.PlayerAuthDtos.RegisterRequest;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.ResetPasswordRequest;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.SessionResponse;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.UpdateProfileRequest;
+import ar.com.padelnec.web.dto.PlayerAuthDtos.WaitlistItem;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -28,7 +30,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -53,6 +57,7 @@ public class PlayerAuthController {
 
     private final PlayerAuthService playerAuthService;
     private final BookingClaimService bookingClaimService;
+    private final WaitlistService waitlistService;
     private final LoginRateLimiter loginRateLimiter;
     private final BookingRateLimiter bookingRateLimiter;
     private final AppProperties properties;
@@ -173,6 +178,24 @@ public class PlayerAuthController {
         return playerAuthService.history(bearerToken(authorization)).stream()
                 .map(BookingHistoryItem::of)
                 .toList();
+    }
+
+    /** Horarios en los que el jugador está anotado, en todos los clubes. */
+    @GetMapping("/waitlist")
+    public List<WaitlistItem> waitlist(@RequestHeader("Authorization") String authorization) {
+        UUID accountId = playerAuthService.resolveSession(bearerToken(authorization)).getId();
+        return waitlistService.forAccount(accountId).stream()
+                .map(WaitlistItem::of)
+                .toList();
+    }
+
+    /** Se baja de la lista de espera de un horario. */
+    @DeleteMapping("/waitlist/{entryId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void leaveWaitlist(@RequestHeader("Authorization") String authorization,
+                              @PathVariable UUID entryId) {
+        UUID accountId = playerAuthService.resolveSession(bearerToken(authorization)).getId();
+        waitlistService.leave(accountId, entryId);
     }
 
     private SessionResponse toResponse(IssuedSession issued) {

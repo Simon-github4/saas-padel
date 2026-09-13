@@ -1,6 +1,7 @@
 package ar.com.padelnec.web.dto;
 
 import ar.com.padelnec.repository.BookingRepository.PlayerBookingHistoryRow;
+import ar.com.padelnec.repository.WaitlistEntryRepository;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -133,6 +134,22 @@ public final class PlayerAuthDtos {
                     row.getTotalPrice(),
                     row.getPaidAmount(),
                     row.getManagementToken());
+        }
+    }
+
+    /** Una anotacion del jugador en la lista de espera, para "Mis turnos". */
+    public record WaitlistItem(
+            UUID entryId,
+            String clubName,
+            String clubSlug,
+            /** Zona del club: el horario se lee en la hora del club, no en la del celular. */
+            String timeZone,
+            Instant startsAt,
+            Instant endsAt) {
+
+        public static WaitlistItem of(WaitlistEntryRepository.PlayerWaitlistRow row) {
+            return new WaitlistItem(row.getEntryId(), row.getClubName(), row.getClubSlug(),
+                    row.getTimeZone(), row.getStartsAt(), row.getEndsAt());
         }
     }
 }

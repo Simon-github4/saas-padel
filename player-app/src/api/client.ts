@@ -180,6 +180,17 @@ export interface PlayerConfig {
 }
 
 /** Un turno del historial global, con el link para verlo y gestionarlo. */
+/** Un horario lleno en el que el jugador está anotado para que le avisen si se libera. */
+export interface WaitlistItem {
+  entryId: string;
+  clubName: string;
+  clubSlug: string;
+  /** Zona del club: el horario se muestra en la hora del club, no en la del celular. */
+  timeZone: string;
+  startsAt: string;
+  endsAt: string;
+}
+
 export interface BookingHistoryItem {
   bookingId: string;
   clubName: string;
@@ -340,6 +351,13 @@ export const playerApi = {
   logout: (token: string) => request<void>('/player/logout', { method: 'POST', token }),
 
   bookingHistory: (token: string) => request<BookingHistoryItem[]>('/player/bookings', { token }),
+
+  /** Horarios en los que está anotado en la lista de espera, en todos los clubes. */
+  waitlist: (token: string) => request<WaitlistItem[]>('/player/waitlist', { token }),
+
+  /** Se baja de la lista de espera de un horario. */
+  leaveWaitlist: (token: string, entryId: string) =>
+    request<void>(`/player/waitlist/${entryId}`, { method: 'DELETE', token }),
 
   /**
    * Guarda en la cuenta los turnos que este navegador reservó sin ella.

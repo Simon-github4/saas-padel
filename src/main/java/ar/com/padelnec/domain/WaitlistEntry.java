@@ -7,6 +7,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.UUID;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -49,6 +50,17 @@ public class WaitlistEntry extends TenantScopedEntity {
      */
     @Column(length = 255)
     private String email;
+
+    /**
+     * Cuenta de quien se anoto. Es lo que deja al jugador ver sus anotaciones en
+     * "Mis turnos" y darse de baja.
+     *
+     * <p>UUID pelado y no una relacion, por lo mismo que
+     * {@link Booking#getPlayerAccountId()}: la cuenta no pertenece a ningun club
+     * y esta entidad si.
+     */
+    @Column(name = "player_account_id")
+    private UUID playerAccountId;
 
     public void markNotified(Instant now) {
         this.notified = true;

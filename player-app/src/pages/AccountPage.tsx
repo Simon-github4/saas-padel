@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { usePlayerAuth } from '../auth/AuthContext';
-import { ApiError, playerApi, type BookingHistoryItem } from '../api/client';
+import { ApiError, playerApi, type BookingHistoryItem, type WaitlistItem } from '../api/client';
 import { clockTime, formatHours, longDate, money } from '../format';
 import { readGuestBookings, type GuestBooking } from '../guestBookings';
 import { Alert, Button, Card, Chip, Loading, Screen, SectionTitle, StatusBadge, TopBar } from '../components/Ui';
@@ -155,6 +155,8 @@ export function AccountPage() {
         </>
       )}
 
+      <WaitlistSection token={session.token} onSessionExpired={clearExpiredSession} />
+
       {guestBookings.length > 0 && (
         <section className="mt-8">
           <SectionTitle
@@ -176,6 +178,109 @@ export function AccountPage() {
         </section>
       )}
     </Screen>
+  );
+}
+
+/**
+ * Horarios llenos en los que el jugador está anotado, con la opción de bajarse.
+ *
+ * <p>Antes no había forma de salir de la lista: anotarse era para siempre, y el
+ * aviso llegaba igual aunque ya no le sirviera el horario. Si no está anotado en
+ * nada, la sección no aparece: no hay nada que hacer acá.
+ */
+function WaitlistSection({ token, onSessionExpired }: { token: string; onSessionExpired: () => void }) {
+  const [entries, setEntries] = useState<WaitlistItem[]>([]);
+  const [leaving, setLeaving] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    playerApi
+      .waitlist(token)
+      .then((items) => {
+        if (!cancelled) {
+          setEntries(items);
+        }
+      })
+      .catch((err) => {
+        if (err instanceof ApiError && err.requiresLogin) {
+          onSessionExpired();
+        }
+        // Si falla por otra cosa, la sección simplemente no aparece: el
+        // historial de turnos de arriba ya muestra su propio error.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, onSessionExpired]);
+
+  async function leave(entryId: string) {
+    setError(null);
+    setLeaving(entryId);
+    try {
+      await playerApi.leaveWaitlist(token, entryId);
+      setEntries((current) => current.filter((entry) => entry.entryId !== entryId));
+    } catch (err) {
+      if (err instanceof ApiError && err.requiresLogin) {
+        onSessionExpired();
+        return;
+      }
+      if (err instanceof ApiError && err.status === 404) {
+        // Ya no estaba (reservó ese horario, o el turno ya pasó): lo mismo que se pedía.
+        setEntries((current) => current.filter((entry) => entry.entryId !== entryId));
+        return;
+      }
+      setError(err instanceof ApiError ? err.message : 'No pudimos sacarte de la lista. Probá de nuevo.');
+    } finally {
+      setLeaving(null);
+    }
+  }
+
+  if (entries.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mt-8">
+      <SectionTitle
+        title="Listas de espera"
+        subtitle="Te avisamos si se libera una cancha en estos horarios."
+      />
+      {error && (
+        <div className="mt-4">
+          <Alert>{error}</Alert>
+        </div>
+      )}
+      <ul className="mt-4 space-y-3">
+        {entries.map((entry) => (
+          <li key={entry.entryId}>
+            <Card>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <Link
+                    to={`/club/${entry.clubSlug}`}
+                    className="font-semibold underline-offset-4 hover:underline"
+                  >
+                    {entry.clubName}
+                  </Link>
+                  <p className="mt-1 text-sm text-ink-soft first-letter:uppercase">
+                    {longDate(entry.startsAt, entry.timeZone)} · {clockTime(entry.startsAt, entry.timeZone)} hs
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  className="w-auto shrink-0 px-4"
+                  onClick={() => void leave(entry.entryId)}
+                  disabled={leaving === entry.entryId}
+                >
+                  {leaving === entry.entryId ? 'Saliendo…' : 'Salir'}
+                </Button>
+              </div>
+            </Card>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

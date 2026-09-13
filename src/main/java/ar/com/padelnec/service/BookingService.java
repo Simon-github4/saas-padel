@@ -156,6 +156,7 @@ public class BookingService {
         }
 
         Booking saved = persist(booking);
+        leaveWaitlistOnceBooked(saved);
 
         if (skipConfirmation) {
             events.publishEvent(BookingEvent.of(club.getId(), saved.getId(),
@@ -206,7 +207,19 @@ public class BookingService {
         booking.setShareToken(Tokens.generate());
         booking.setAdminNotes(notes);
 
-        return persist(booking);
+        Booking saved = persist(booking);
+        leaveWaitlistOnceBooked(saved);
+        return saved;
+    }
+
+    /**
+     * Quien reserva un horario deja de esperarlo. Sin esto seguia figurando como
+     * anotado en el panel, y el club podia escribirle para ofrecerle un turno que
+     * ya tenia.
+     */
+    private void leaveWaitlistOnceBooked(Booking booking) {
+        waitlistEntryRepository.deleteForCustomerOverlapping(
+                booking.getCustomer().getId(), booking.getStartTime(), booking.getEndTime());
     }
 
     // ------------------------------------------------- confirmacion y baja

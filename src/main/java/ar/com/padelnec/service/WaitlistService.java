@@ -6,11 +6,14 @@ import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.WaitlistEntry;
 import ar.com.padelnec.repository.WaitlistEntryRepository;
 import ar.com.padelnec.web.BusinessRuleException;
+import ar.com.padelnec.web.ResourceNotFoundException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -59,11 +62,26 @@ public class WaitlistService {
 
         Customer customer = customerService.findOrCreate(phone, fullName, account.getId());
 
+        Optional<WaitlistEntry> previous =
+                waitlistEntryRepository.findByCustomerAndStartsAt(customer, slot.slot().startsAt());
+        if (previous.isPresent()) {
+            if (!previous.get().isNotified()) {
+                throw new BusinessRuleException("Ya estás anotado para ese horario");
+            }
+            // Ya le avisaron y no llego a reservar: antes esto chocaba con "ya
+            // estas anotado" y se quedaba sin el proximo aviso. Se borra la vieja
+            // y se anota de nuevo, al final de la fila: el lugar que tenia ya lo
+            // uso cuando le avisaron.
+            waitlistEntryRepository.delete(previous.get());
+            waitlistEntryRepository.flush();
+        }
+
         WaitlistEntry entry = new WaitlistEntry();
         entry.setCustomer(customer);
         entry.setStartsAt(slot.slot().startsAt());
         entry.setEndsAt(slot.slot().endsAt());
         entry.setEmail(account.getEmail());
+        entry.setPlayerAccountId(account.getId());
 
         try {
             return waitlistEntryRepository.saveAndFlush(entry);
@@ -101,6 +119,20 @@ public class WaitlistService {
                             entries);
                 })
                 .toList();
+    }
+
+    /** Las anotaciones del jugador en todos los clubes, de horarios que todavia no empezaron. */
+    @Transactional(readOnly = true)
+    public List<WaitlistEntryRepository.PlayerWaitlistRow> forAccount(UUID accountId) {
+        return waitlistEntryRepository.findUpcomingForAccount(accountId, clock.instant());
+    }
+
+    /** El jugador se baja de la lista desde "Mis turnos". */
+    @Transactional
+    public void leave(UUID accountId, UUID entryId) {
+        if (waitlistEntryRepository.deleteForAccount(entryId, accountId) == 0) {
+            throw new ResourceNotFoundException("Esa anotación ya no está en la lista de espera");
+        }
     }
 
     private boolean isDuplicate(Throwable error) {

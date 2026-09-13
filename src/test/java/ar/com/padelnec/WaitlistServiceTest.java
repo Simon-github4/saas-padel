@@ -13,12 +13,14 @@ import ar.com.padelnec.domain.enums.AlertType;
 import ar.com.padelnec.repository.OperationalAlertRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.repository.WaitlistEntryRepository;
+import ar.com.padelnec.scheduler.WaitlistRetentionJob;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.BookingService.NewBooking;
 import ar.com.padelnec.service.BookingService.PaymentChoice;
 import ar.com.padelnec.service.WaitlistService;
 import ar.com.padelnec.service.WaitlistService.SlotWaitlist;
 import ar.com.padelnec.web.BusinessRuleException;
+import ar.com.padelnec.web.ResourceNotFoundException;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.Instant;
@@ -37,6 +39,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Anotarse en la lista de espera de un horario lleno.
@@ -68,6 +72,7 @@ class WaitlistServiceTest {
     @Autowired private BookingService bookingService;
     @Autowired private PlayerAccountRepository playerAccountRepository;
     @Autowired private OperationalAlertRepository alertRepository;
+    @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private ClubFixture fixture;
     @Autowired private Clock clock;
 
@@ -211,6 +216,86 @@ class WaitlistServiceTest {
         // A las 19:00 el de las 18:30 ya empezo: no hay a quien avisarle nada.
         ((MutableClock) clock).set(TODAY.atTime(19, 0).atZone(ZONE).toInstant());
         assertThat(waitlistService.upcomingBySlot()).extracting(SlotWaitlist::startsAt).containsExactly(late);
+    }
+
+    // ------------------------------------------------------------- limpieza
+
+    @Test
+    @DisplayName("Quien reserva el horario que esperaba sale de la lista de espera")
+    void bookingTheSlotTakesThePlayerOffTheWaitlist() {
+        Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
+        Booking taking = fillTheOnlyCourt(startTime);
+        waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
+        bookingService.cancelByClub(club, taking.getId(), "Se cayo el grupo");
+
+        bookingService.create(club, new NewBooking(court.getId(), startTime,
+                "Jugador anotado", "2262415111", PaymentChoice.PAY_AT_CLUB));
+
+        assertThat(waitlistService.upcomingBySlot()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Si ya le avisaron y no llego a reservar, puede volver a anotarse, al final de la fila")
+    void aNotifiedPlayerCanJoinAgainAtTheBackOfTheLine() {
+        Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
+        fillTheOnlyCourt(startTime);
+        WaitlistEntry first = waitlistService.join(club, startTime, "2262415111", "Primero", player);
+        waitlistService.join(club, startTime, "2262415222", "Segundo", player("otro@test.com"));
+        first.markNotified(clock.instant());
+        waitlistEntryRepository.saveAndFlush(first);
+
+        WaitlistEntry again = waitlistService.join(club, startTime, "2262415111", "Primero", player);
+
+        assertThat(again.isNotified()).isFalse();
+        assertThat(again.getId()).isNotEqualTo(first.getId());
+        assertThat(waitlistService.upcomingBySlot().getFirst().entries())
+                .extracting(entry -> entry.getCustomer().getFullName())
+                .containsExactly("Segundo", "Primero");
+    }
+
+    @Test
+    @DisplayName("El borrado nocturno se lleva las anotaciones de turnos que ya terminaron, no las que vienen")
+    void nightlyCleanupDropsOnlyEndedSlots() {
+        Instant early = TODAY.atTime(8, 0).atZone(ZONE).toInstant();
+        Instant late = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
+        fillTheOnlyCourt(early);
+        fillTheOnlyCourt(late);
+        waitlistService.join(club, early, "2262415111", "Temprano", player);
+        waitlistService.join(club, late, "2262415222", "Tarde", player("otro@test.com"));
+
+        // El turno de las 08:00 dura 90 minutos: a las 10:00 ya termino.
+        ((MutableClock) clock).set(TODAY.atTime(10, 0).atZone(ZONE).toInstant());
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                new WaitlistRetentionJob(waitlistEntryRepository, clock).deleteEndedEntries());
+
+        assertThat(waitlistEntryRepository.findAll())
+                .extracting(WaitlistEntry::getStartsAt)
+                .containsExactly(late);
+    }
+
+    @Test
+    @DisplayName("El jugador ve sus anotaciones y se puede bajar; con otra cuenta no se borra nada")
+    void playersSeeAndLeaveTheirOwnEntries() {
+        Instant startTime = TODAY.atTime(20, 0).atZone(ZONE).toInstant();
+        fillTheOnlyCourt(startTime);
+        WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
+        PlayerAccount stranger = player("extrano@test.com");
+
+        assertThat(waitlistService.forAccount(player.getId()))
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.getEntryId()).isEqualTo(entry.getId());
+                    assertThat(row.getClubSlug()).isEqualTo("club-necochea");
+                    assertThat(row.getStartsAt()).isEqualTo(startTime);
+                });
+        assertThat(waitlistService.forAccount(stranger.getId())).isEmpty();
+
+        assertThatThrownBy(() -> waitlistService.leave(stranger.getId(), entry.getId()))
+                .isInstanceOf(ResourceNotFoundException.class);
+        assertThat(waitlistEntryRepository.findById(entry.getId())).isPresent();
+
+        waitlistService.leave(player.getId(), entry.getId());
+        assertThat(waitlistEntryRepository.findById(entry.getId())).isEmpty();
     }
 
     private Booking fillTheOnlyCourt(Instant startTime) {

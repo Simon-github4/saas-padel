@@ -1,10 +1,13 @@
 package ar.com.padelnec.repository;
 
+import ar.com.padelnec.domain.Customer;
 import ar.com.padelnec.domain.WaitlistEntry;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -49,4 +52,66 @@ public interface WaitlistEntryRepository extends JpaRepository<WaitlistEntry, UU
               AND w.endsAt > :start
             """)
     long countOverlapping(@Param("start") Instant start, @Param("end") Instant end);
+
+    Optional<WaitlistEntry> findByCustomerAndStartsAt(Customer customer, Instant startsAt);
+
+    /**
+     * Saca de la lista a un jugador que acaba de reservar ese horario: ya no
+     * espera nada, y en el panel seguia figurando como anotado.
+     */
+    @Modifying
+    @Query("""
+            DELETE FROM WaitlistEntry w
+            WHERE w.customer.id = :customerId
+              AND w.startsAt < :end
+              AND w.endsAt > :start
+            """)
+    int deleteForCustomerOverlapping(@Param("customerId") UUID customerId,
+                                     @Param("start") Instant start, @Param("end") Instant end);
+
+    /**
+     * Anotaciones de un jugador en todos los clubes, de horarios que todavia no
+     * empezaron. Nativa por lo mismo que {@code BookingRepository#findHistoryByAccount}:
+     * cruzar clubes solo se puede esquivando el filtro por club de Hibernate.
+     */
+    @Query(value = """
+            SELECT w.id AS entryId, t.name AS clubName, t.slug AS clubSlug,
+                   t.time_zone AS timeZone, w.starts_at AS startsAt, w.ends_at AS endsAt
+            FROM waitlist_entry w
+            JOIN tenant t ON t.id = w.club_id
+            WHERE w.player_account_id = :accountId
+              AND w.starts_at > :now
+            ORDER BY w.starts_at ASC
+            """, nativeQuery = true)
+    List<PlayerWaitlistRow> findUpcomingForAccount(@Param("accountId") UUID accountId,
+                                                   @Param("now") Instant now);
+
+    /** Proyeccion de {@link #findUpcomingForAccount}. */
+    interface PlayerWaitlistRow {
+        UUID getEntryId();
+
+        String getClubName();
+
+        String getClubSlug();
+
+        String getTimeZone();
+
+        Instant getStartsAt();
+
+        Instant getEndsAt();
+    }
+
+    /**
+     * Baja pedida por el jugador. La condicion por cuenta es la autorizacion: con
+     * el id de una anotacion ajena no borra nada.
+     */
+    @Modifying
+    @Query(value = "DELETE FROM waitlist_entry WHERE id = :entryId AND player_account_id = :accountId",
+            nativeQuery = true)
+    int deleteForAccount(@Param("entryId") UUID entryId, @Param("accountId") UUID accountId);
+
+    /** Anotaciones de turnos que ya terminaron, en todos los clubes: ya no sirven para nada. */
+    @Modifying
+    @Query(value = "DELETE FROM waitlist_entry WHERE ends_at < :now", nativeQuery = true)
+    int deleteEndedBefore(@Param("now") Instant now);
 }
