@@ -71,7 +71,7 @@ export function MarketingNav() {
             href="/admin"
             className="hidden text-xs font-semibold uppercase tracking-[0.12em] text-ink-soft transition hover:text-cal lg:inline"
           >
-            Entrar al panel
+            Soy club
           </a>
           <a
             href={salesWhatsappHref()}
@@ -128,7 +128,7 @@ export function MarketingNav() {
               href="/admin"
               className="py-3 text-xs font-semibold uppercase tracking-[0.12em] text-ink-soft transition hover:text-cal"
             >
-              Entrar al panel
+              Soy club
             </a>
           </div>
         </nav>
@@ -185,7 +185,7 @@ export function MarketingFooter() {
         </Link>
         {/* Pagina completa, no Link: /admin es el panel Vaadin del backend. */}
         <a href="/admin" className="text-ink-mute transition hover:text-ink-soft">
-          Entrar al panel
+          Soy club
         </a>
         <Link to="/terminos" className="text-ink-mute transition hover:text-ink-soft">
           Términos de uso
