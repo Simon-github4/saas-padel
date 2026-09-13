@@ -43,7 +43,7 @@ export function WaitlistForm({
     return (
       <div className="mt-3 space-y-2">
         <Alert tone="info">Para anotarte necesitás una cuenta, así te avisamos si se libera.</Alert>
-        <div className="flex gap-2">
+        <div className="grid gap-2">
           <Button variant="secondary" onClick={() => navigate(`/login?returnTo=${encoded}`)}>
             Iniciar sesión
           </Button>
