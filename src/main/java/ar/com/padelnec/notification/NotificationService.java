@@ -317,7 +317,10 @@ public class NotificationService {
     }
 
     private String firstName(Booking booking) {
-        return firstName(booking.getCustomer().getFullName());
+        // El de quien reservo, no el del jugador dueño del telefono: si alguien
+        // se equivoco de numero, el mensaje le llega al otro y el saludo con un
+        // nombre ajeno es lo que le avisa que no es suyo.
+        return firstName(booking.displayName());
     }
 
     private String firstName(String fullName) {

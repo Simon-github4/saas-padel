@@ -75,7 +75,7 @@ class BookingDetailDialog extends Dialog {
         this.currentUserId = currentUserId;
         this.onChange = onChange;
 
-        setHeaderTitle(booking.getCustomer().getFullName());
+        setHeaderTitle(booking.displayName());
         setWidth("calc(32rem + 30px)");
         rebuild();
     }
@@ -92,6 +92,15 @@ class BookingDetailDialog extends Dialog {
         FormLayout form = new FormLayout();
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1));
 
+        if (booking.isBookedUnderAnotherName()) {
+            // Arriba de todo: es lo primero que el mostrador tiene que saber de
+            // este turno, antes que la plata.
+            Span warning = new Span("Reservó como «%s», pero el teléfono está a nombre de %s. "
+                    .formatted(booking.displayName(), booking.getCustomer().getFullName())
+                    + "Puede ser un número equivocado.");
+            warning.addClassNames(LumoUtility.FontWeight.SEMIBOLD, LumoUtility.TextColor.ERROR);
+            form.addFormItem(warning, "Atención");
+        }
         form.addFormItem(new Span(WHEN.format(booking.getStartTime().atZone(club.zoneId()))), "Turno");
         form.addFormItem(new Span(booking.getCourt().getName()), "Cancha");
         form.addFormItem(statusBadge(), "Estado");
@@ -169,7 +178,7 @@ class BookingDetailDialog extends Dialog {
         String phone = booking.getCustomer().getPhoneNumber();
         Anchor link = new Anchor(phoneNumbers.whatsappLink(phone,
                 "Hola %s, te escribimos de %s por tu turno."
-                        .formatted(booking.getCustomer().getFullName(), club.getName())),
+                        .formatted(booking.displayName(), club.getName())),
                 phoneNumbers.forDisplay(phone));
         link.setTarget("_blank");
         return link;

@@ -262,7 +262,7 @@ public class AgendaView extends VerticalLayout {
         String label = "%s · %s · %s".formatted(
                 booking.getCourt().getName(),
                 HH_MM.format(booking.getStartTime().atZone(club.zoneId())),
-                booking.getCustomer().getFullName());
+                booking.displayName());
         Button row = new Button(label, VaadinIcon.ROTATE_LEFT.create(), event -> openDetail(booking));
         row.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         row.addClassName("agenda-fixed-row");
@@ -335,10 +335,18 @@ public class AgendaView extends VerticalLayout {
 
     private Component bookedCard(Booking booking) {
         Tone tone = toneFor(booking);
-        Button button = new Button(booking.getCustomer().getFullName(), event -> openDetail(booking));
+        // Si se reservo con un nombre que no es el del dueño del telefono, la
+        // tarjeta lo marca: puede ser alguien que se equivoco de numero, y el
+        // mostrador lo tiene que ver antes del partido, no cuando llega otro.
+        boolean otherName = booking.isBookedUnderAnotherName();
+        Button button = new Button((otherName ? "⚠ " : "") + booking.displayName(),
+                event -> openDetail(booking));
         button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         button.addClassName("agenda-card__button");
-        button.getElement().setAttribute("title", booking.getCustomer().getFullName());
+        button.getElement().setAttribute("title", otherName
+                ? "Reservó como %s · el teléfono es de %s".formatted(
+                        booking.displayName(), booking.getCustomer().getFullName())
+                : booking.displayName());
         button.setWidthFull();
         // El color de estado va en la tarjeta entera (franja, tinte de fondo y el
         // propio texto del nombre) y no en una insignia aparte: una insignia le

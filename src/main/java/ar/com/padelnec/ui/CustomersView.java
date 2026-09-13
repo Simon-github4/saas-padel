@@ -3,13 +3,20 @@ package ar.com.padelnec.ui;
 import ar.com.padelnec.domain.Customer;
 import ar.com.padelnec.service.CustomerService;
 import ar.com.padelnec.support.PhoneNumbers;
+import ar.com.padelnec.web.BusinessRuleException;
+import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.button.Button;
+import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.ColumnTextAlign;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
 import com.vaadin.flow.component.orderedlayout.FlexComponent.JustifyContentMode;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -22,6 +29,7 @@ import com.vaadin.flow.router.Route;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Jugadores del club.
@@ -43,6 +51,7 @@ public class CustomersView extends VerticalLayout {
     private final Span count = new Span();
 
     private List<Customer> all = List.of();
+    private Set<String> phonesWithAccount = Set.of();
 
     public CustomersView(CustomerService customerService, PhoneNumbers phoneNumbers) {
         this.customerService = customerService;
@@ -92,14 +101,20 @@ public class CustomersView extends VerticalLayout {
         // columnas de texto sumaban mas que la grilla y aparecia scroll
         // horizontal, con "Bloqueado" fuera de vista. Asi se reparten lo que
         // hay y truncan si hace falta.
-        grid.addColumn(Customer::getFullName)
+        grid.addComponentColumn(this::nameCell)
                 .setHeader("Jugador")
                 .setFlexGrow(3)
-                .setSortable(true);
+                .setComparator(Customer::getFullName);
 
         grid.addComponentColumn(this::whatsappLink)
                 .setHeader("Teléfono")
                 .setFlexGrow(2);
+
+        grid.addComponentColumn(this::accountBadge)
+                .setHeader("Cuenta")
+                .setAutoWidth(true)
+                .setFlexGrow(0)
+                .setTextAlign(ColumnTextAlign.CENTER);
 
         grid.addComponentColumn(this::trustedToggle)
                 .setHeader("De confianza")
@@ -124,6 +139,79 @@ public class CustomersView extends VerticalLayout {
                 .setTextAlign(ColumnTextAlign.CENTER);
 
         grid.setSizeFull();
+    }
+
+    /**
+     * El nombre con un lapiz para corregirlo.
+     *
+     * <p>El nombre ya no lo cambia cualquiera que reserve con ese telefono (ver
+     * {@link CustomerService#findOrCreate}), asi que el club necesita poder
+     * arreglarlo a mano: un nombre que quedo pisado antes de esa regla, o uno
+     * escrito con errores.
+     */
+    private Component nameCell(Customer customer) {
+        Span name = new Span(customer.getFullName());
+        Button edit = new Button(VaadinIcon.PENCIL.create(), event -> openRename(customer));
+        edit.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_SMALL);
+        edit.setAriaLabel("Cambiar el nombre de " + customer.getFullName());
+        edit.getElement().setAttribute("title", "Cambiar nombre");
+
+        HorizontalLayout cell = new HorizontalLayout(name, edit);
+        cell.setPadding(false);
+        cell.setSpacing(false);
+        cell.setAlignItems(Alignment.CENTER);
+        cell.addClassNames(LumoUtility.Gap.XSMALL);
+        return cell;
+    }
+
+    private void openRename(Customer customer) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Nombre del jugador");
+
+        TextField name = new TextField("Nombre");
+        name.setValue(customer.getFullName());
+        name.setWidthFull();
+        name.setMaxLength(120);
+
+        Span hint = new Span("Los turnos ya reservados conservan el nombre con el que se reservaron.");
+        hint.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
+
+        VerticalLayout body = new VerticalLayout(name, hint);
+        body.setPadding(false);
+        dialog.add(body);
+
+        Button save = new Button("Guardar", event -> {
+            try {
+                customerService.rename(customer, name.getValue());
+                dialog.close();
+                refresh();
+                Notification.show("Nombre actualizado");
+            } catch (BusinessRuleException ex) {
+                Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+            }
+        });
+        save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        Button cancel = new Button("Cancelar", event -> dialog.close());
+        dialog.getFooter().add(cancel, save);
+
+        dialog.open();
+        name.focus();
+    }
+
+    /**
+     * Si ese telefono tiene cuenta de jugador. Solo el si o el no, sin el mail:
+     * el mail es de la persona, y cualquiera puede haber reservado en este club
+     * con ese telefono.
+     */
+    private Component accountBadge(Customer customer) {
+        if (!phonesWithAccount.contains(customer.getPhoneNumber())) {
+            return new Span();
+        }
+        Span badge = new Span("Con cuenta");
+        badge.getElement().getThemeList().add("badge success small");
+        badge.getElement().setAttribute("title",
+                "Su nombre solo lo cambia el jugador con su sesión o el club desde acá");
+        return badge;
     }
 
     private Anchor whatsappLink(Customer customer) {
@@ -158,6 +246,8 @@ public class CustomersView extends VerticalLayout {
 
     private void refresh() {
         all = customerService.all();
+        phonesWithAccount = customerService.phonesWithAccount(
+                all.stream().map(Customer::getPhoneNumber).toList());
         // El vacio lo muestra la propia grilla. Antes se agregaba un Paragraph
         // al final de la vista, debajo de una grilla que ocupa todo el alto: el
         // mensaje quedaba fuera de pantalla justo cuando era lo unico que habia

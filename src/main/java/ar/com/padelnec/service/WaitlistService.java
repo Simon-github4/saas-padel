@@ -57,7 +57,7 @@ public class WaitlistService {
                     "Todavía hay canchas libres en ese horario: reservalo directo");
         }
 
-        Customer customer = customerService.findOrCreate(phone, fullName);
+        Customer customer = customerService.findOrCreate(phone, fullName, account.getId());
 
         WaitlistEntry entry = new WaitlistEntry();
         entry.setCustomer(customer);

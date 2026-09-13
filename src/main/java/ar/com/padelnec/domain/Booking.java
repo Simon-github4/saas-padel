@@ -3,6 +3,7 @@ package ar.com.padelnec.domain;
 import ar.com.padelnec.domain.enums.BookingSource;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CancellationReason;
+import ar.com.padelnec.support.PersonNames;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -57,6 +58,21 @@ public class Booking extends TenantScopedEntity {
      */
     @Column(name = "player_account_id")
     private UUID playerAccountId;
+
+    /**
+     * El nombre que escribió quien reservó este turno, tal cual.
+     *
+     * <p>Aparte del nombre del jugador a propósito. El jugador se identifica por
+     * teléfono, y su nombre ya no lo cambia cualquiera que reserve con ese número
+     * (ver {@code CustomerService#findOrCreate}): si alguien se equivoca y pone el
+     * teléfono de otro, el turno igual tiene que decir quién reservó de verdad, y
+     * el panel mostrar la diferencia.
+     *
+     * <p>Nulo en los turnos de antes de este campo y en los que genera un turno
+     * fijo: ahí vale el nombre del jugador.
+     */
+    @Column(name = "booked_name", length = 120)
+    private String bookedName;
 
     @Column(name = "start_time", nullable = false)
     private Instant startTime;
@@ -119,6 +135,21 @@ public class Booking extends TenantScopedEntity {
     @Version
     @Column(nullable = false)
     private long version;
+
+    // ------------------------------------------------------------- nombre
+
+    /** Quién reservó: el nombre que escribió, o el del jugador si el turno no tiene uno propio. */
+    public String displayName() {
+        return bookedName != null ? bookedName : customer.getFullName();
+    }
+
+    /**
+     * Se reservó con un nombre que no es el del jugador dueño del teléfono: lo
+     * más probable es que alguien se haya equivocado de número.
+     */
+    public boolean isBookedUnderAnotherName() {
+        return bookedName != null && !PersonNames.samePerson(bookedName, customer.getFullName());
+    }
 
     // ------------------------------------------------------------- dinero
 

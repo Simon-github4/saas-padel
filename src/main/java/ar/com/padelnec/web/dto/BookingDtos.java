@@ -127,7 +127,7 @@ public final class BookingDtos {
                     booking.getCourt().getName(),
                     booking.getStartTime(),
                     booking.getEndTime(),
-                    booking.getCustomer().getFullName());
+                    booking.displayName());
         }
     }
 }

@@ -100,7 +100,7 @@ class WallClockPersistenceTest {
     void recurringBookingTimesAreStoredAsWritten() {
         RecurringBooking fixed = new RecurringBooking();
         fixed.setCourt(fixture.court("Cancha 1", 1));
-        fixed.setCustomer(customerService.findOrCreate("2262415000", "Grupo del martes"));
+        fixed.setCustomer(customerService.findOrCreate("2262415000", "Grupo del martes", null));
         fixed.setDay(DayOfWeek.TUESDAY);
         fixed.setStartTime(LocalTime.of(20, 0));
         fixed.setDurationMinutes(90);

@@ -217,7 +217,7 @@ public class RecurringView extends VerticalLayout {
         Button save = new Button("Crear y generar turnos", event -> {
             try {
                 RecurringBooking fixed = new RecurringBooking();
-                fixed.setCustomer(customerService.findOrCreate(phone.getValue(), name.getValue()));
+                fixed.setCustomer(customerService.findOrCreate(phone.getValue(), name.getValue(), null));
                 fixed.setCourt(court.getValue());
                 fixed.setDay(day.getValue());
                 fixed.setStartTime(start.getValue());

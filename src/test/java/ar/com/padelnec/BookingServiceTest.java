@@ -7,6 +7,7 @@ import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Customer;
+import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
 import ar.com.padelnec.domain.enums.BookingStatus;
@@ -14,6 +15,7 @@ import ar.com.padelnec.domain.enums.CancellationReason;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CustomerRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
+import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.BookingService.NewBooking;
 import ar.com.padelnec.service.BookingService.PaymentChoice;
@@ -29,6 +31,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -66,6 +69,7 @@ class BookingServiceTest {
     @Autowired private CustomerRepository customerRepository;
     @Autowired private BookingRepository bookingRepository;
     @Autowired private OperationalAlertRepository alertRepository;
+    @Autowired private PlayerAccountRepository playerAccountRepository;
     @Autowired private ClubFixture fixture;
     @Autowired private Clock clock;
 
@@ -185,7 +189,7 @@ class BookingServiceTest {
         club.setMpAccessToken("APP_USR-token-de-prueba");
         club = fixture.save(club);
 
-        Customer regular = customerService.findOrCreate("2262415000", "Grupo del martes");
+        Customer regular = customerService.findOrCreate("2262415000", "Grupo del martes", null);
         customerService.setTrusted(regular, true);
 
         Booking booking = reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
@@ -303,7 +307,7 @@ class BookingServiceTest {
     @Test
     @DisplayName("Un jugador bloqueado por el club no reserva online")
     void blockedCustomersCannotBook() {
-        Customer troublesome = customerService.findOrCreate("2262415000", "Jugador");
+        Customer troublesome = customerService.findOrCreate("2262415000", "Jugador", null);
         customerService.setBlocked(troublesome, true);
 
         assertThatThrownBy(() -> reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB))
@@ -447,7 +451,80 @@ class BookingServiceTest {
                 .isEqualTo("+5492262415000");
     }
 
+    // -------------------------------------------------------------- nombre
+
+    @Test
+    @DisplayName("Un invitado que pone el telefono de otro no le cambia el nombre, pero el turno dice quien reservo")
+    void aGuestWithSomeoneElsesPhoneDoesNotRenameThem() {
+        reserve(court1, LocalTime.of(15, 30), "2262415000", "Juan Pérez");
+
+        Booking wrongNumber = reserve(court1, LocalTime.of(17, 0), "2262415000", "Pedro");
+        Booking sameGuy = reserve(court2, LocalTime.of(15, 30), "2262415000", "juan");
+
+        assertThat(customerService.findByPhone("2262415000").orElseThrow().getFullName())
+                .isEqualTo("Juan Pérez");
+        assertThat(wrongNumber.displayName()).isEqualTo("Pedro");
+        assertThat(wrongNumber.isBookedUnderAnotherName()).isTrue();
+        // El mismo jugador escribiendo su nombre a medias no es "otro nombre".
+        assertThat(sameGuy.isBookedUnderAnotherName()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Con cuenta, el nombre solo lo cambia el dueño de ese telefono con su sesion")
+    void onlyTheAccountOwningThePhoneRenamesThePlayer() {
+        PlayerAccount owner = account("juan@test.com", "+5492262415000");
+        PlayerAccount someoneElse = account("otro@test.com", "+5492262415111");
+        reserve(court1, LocalTime.of(15, 30), "2262415000", "Juan Pérez");
+
+        reserveWithAccount(court1, LocalTime.of(17, 0), "2262415000", "Intruso", someoneElse);
+        reserve(court1, LocalTime.of(18, 30), "2262415000", "Invitado");
+        assertThat(customerService.findByPhone("2262415000").orElseThrow().getFullName())
+                .isEqualTo("Juan Pérez");
+
+        reserveWithAccount(court2, LocalTime.of(15, 30), "2262415000", "Juan Carlos Pérez", owner);
+        assertThat(customerService.findByPhone("2262415000").orElseThrow().getFullName())
+                .isEqualTo("Juan Carlos Pérez");
+    }
+
+    @Test
+    @DisplayName("Un turno cargado por el club tampoco renombra al jugador; lo corrige desde Jugadores")
+    void theClubRenamesFromThePlayersListNotFromABooking() {
+        reserve(court1, LocalTime.of(15, 30), "2262415000", "Juan Pérez");
+
+        Booking manual = bookingService.createManual(club, court2.getId(), slotAt(LocalTime.of(18, 30)),
+                "Otro Nombre", "2262415000", null, null);
+        Customer player = customerService.findByPhone("2262415000").orElseThrow();
+        assertThat(player.getFullName()).isEqualTo("Juan Pérez");
+        assertThat(manual.displayName()).isEqualTo("Otro Nombre");
+
+        customerService.rename(player, "  Juan P.  ");
+        assertThat(customerService.findByPhone("2262415000").orElseThrow().getFullName()).isEqualTo("Juan P.");
+    }
+
+    @Test
+    @DisplayName("Jugadores sabe que telefonos tienen cuenta")
+    void knowsWhichPhonesHaveAnAccount() {
+        account("juan@test.com", "+5492262415000");
+
+        assertThat(customerService.phonesWithAccount(List.of("+5492262415000", "+5492262415111")))
+                .containsExactly("+5492262415000");
+    }
+
     // ------------------------------------------------------------ utilidades
+
+    private PlayerAccount account(String email, String phone) {
+        PlayerAccount account = new PlayerAccount();
+        account.setEmail(email);
+        account.setEmailVerified(true);
+        account.setPhoneNumber(phone);
+        return playerAccountRepository.saveAndFlush(account);
+    }
+
+    private Booking reserveWithAccount(Court court, LocalTime time, String phone, String name,
+                                       PlayerAccount account) {
+        return bookingService.create(club, new NewBooking(court.getId(), slotAt(time), name, phone,
+                PaymentChoice.PAY_AT_CLUB, account.getId()));
+    }
 
     private Booking reserve(Court court, LocalTime time, PaymentChoice choice) {
         return reserve(court, time, "2262415000", "Simon Diaz", choice);

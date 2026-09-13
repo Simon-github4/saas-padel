@@ -105,7 +105,7 @@ class ManualBookingDialog extends Dialog {
         removeAll();
         getFooter().removeAll();
 
-        Span done = new Span("Turno cargado para " + booking.getCustomer().getFullName() + ".");
+        Span done = new Span("Turno cargado para " + booking.displayName() + ".");
         done.addClassNames(LumoUtility.FontWeight.SEMIBOLD);
 
         Anchor sendConfirmation = new Anchor(

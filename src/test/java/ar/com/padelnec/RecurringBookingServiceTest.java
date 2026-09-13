@@ -90,7 +90,7 @@ class RecurringBookingServiceTest {
         TenantContext.set(club.getId());
         court = fixture.court("Cancha 1", 1);
         fixture.allDayPrice(DayOfWeek.TUESDAY, "20000");
-        group = customerService.findOrCreate("2262415000", "Grupo del martes");
+        group = customerService.findOrCreate("2262415000", "Grupo del martes", null);
     }
 
     @AfterEach

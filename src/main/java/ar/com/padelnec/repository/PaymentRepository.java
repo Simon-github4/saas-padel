@@ -48,7 +48,8 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     @Query("""
             SELECT new ar.com.padelnec.repository.CashMovementRow(
                 p.createdAt, p.method, p.amount, p.registeredBy, p.booking.id,
-                p.booking.customer.fullName, p.booking.court.name, p.booking.startTime)
+                COALESCE(p.booking.bookedName, p.booking.customer.fullName), p.booking.court.name,
+                p.booking.startTime)
             FROM Payment p
             WHERE p.status = :status AND p.createdAt >= :from AND p.createdAt < :until
             ORDER BY p.createdAt ASC

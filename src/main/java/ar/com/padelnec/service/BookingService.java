@@ -114,7 +114,8 @@ public class BookingService {
                 .orElseThrow(() -> new BusinessRuleException(
                         "Ese horario todavía no tiene tarifa publicada. Consultá con el club."));
 
-        Customer customer = customerService.findOrCreate(request.phoneNumber(), request.fullName());
+        Customer customer = customerService.findOrCreate(
+                request.phoneNumber(), request.fullName(), request.playerAccountId());
         validateQuota(club, customer, now);
 
         boolean payAtClub = resolvePaymentMode(club, customer, request.paymentChoice());
@@ -126,6 +127,7 @@ public class BookingService {
         Booking booking = new Booking();
         booking.setCourt(court);
         booking.setCustomer(customer);
+        booking.setBookedName(customerService.cleanName(request.fullName()));
         booking.setPlayerAccountId(request.playerAccountId());
         booking.setStartTime(slot.slot().startsAt());
         booking.setEndTime(slot.slot().endsAt());
@@ -186,11 +188,14 @@ public class BookingService {
                     "Ese horario no está disponible (ya está ocupado o el día está suspendido).");
         }
 
-        Customer customer = customerService.findOrCreate(phoneNumber, fullName);
+        // El club tampoco renombra al jugador desde un turno: si el nombre esta mal,
+        // se corrige en Jugadores. El que escribio queda en este turno igual.
+        Customer customer = customerService.findOrCreate(phoneNumber, fullName, null);
 
         Booking booking = new Booking();
         booking.setCourt(court);
         booking.setCustomer(customer);
+        booking.setBookedName(customerService.cleanName(fullName));
         booking.setStartTime(slot.slot().startsAt());
         booking.setEndTime(slot.slot().endsAt());
         booking.setTotalPrice(price);

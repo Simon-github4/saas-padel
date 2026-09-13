@@ -52,7 +52,7 @@ public class AlertService {
     public void refundRequired(Booking booking) {
         raise(AlertType.REFUND_REQUIRED, booking, ("Canceló %s (%s) un turno con $%s ya pagados. "
                 + "Coordiná la devolución por WhatsApp.").formatted(
-                booking.getCustomer().getFullName(),
+                booking.displayName(),
                 booking.getCustomer().getPhoneNumber(),
                 booking.getPaidAmount().toPlainString()));
     }
