@@ -12,10 +12,13 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Linea de venta de un producto durante un turno.
+ * Linea de venta de un producto del buffet, durante un turno o en un pedido suelto.
  *
  * <p>Nombre y precio quedan "congelados" al momento de la venta: si despues el
  * club edita el catalogo, esta linea ya cargada no cambia de valor con retroactividad.
+ *
+ * <p>Es de un turno o de un pedido de buffet, nunca de los dos: lo exige la base
+ * ({@code ck_product_sale_owner}).
  */
 @Entity
 @Table(name = "product_sale")
@@ -23,9 +26,15 @@ import lombok.Setter;
 @Setter
 public class ProductSale extends TenantScopedEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "booking_id", nullable = false)
+    /** Nulo cuando la venta es de un pedido de buffet sin turno. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "booking_id")
     private Booking booking;
+
+    /** Nulo cuando la venta es de un turno. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "buffet_order_id")
+    private BuffetOrder buffetOrder;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "product_id", nullable = false)

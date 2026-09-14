@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Producto de kiosco que el club vende en el mostrador, ej. "Gatorade", "Agua". */
+/** Producto del buffet que el club vende en el mostrador, ej. "Gatorade", "Agua". */
 @Entity
 @Table(name = "product")
 @Getter

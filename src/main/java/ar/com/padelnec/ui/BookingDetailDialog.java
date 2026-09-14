@@ -184,7 +184,7 @@ class BookingDetailDialog extends Dialog {
         return link;
     }
 
-    /** Productos de kiosco vendidos durante el turno: se suman al total, no al pago. */
+    /** Productos del buffet vendidos durante el turno: se suman al total, no al pago. */
     private VerticalLayout products() {
         VerticalLayout layout = new VerticalLayout();
         layout.setPadding(false);

@@ -1,6 +1,7 @@
 package ar.com.padelnec.service;
 
 import ar.com.padelnec.domain.Booking;
+import ar.com.padelnec.domain.BuffetOrder;
 import ar.com.padelnec.domain.Payment;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.BookingStatus;
@@ -9,6 +10,7 @@ import ar.com.padelnec.domain.enums.PaymentStatus;
 import ar.com.padelnec.payment.MercadoPagoGateway;
 import ar.com.padelnec.payment.MercadoPagoGateway.ApprovedPayment;
 import ar.com.padelnec.repository.BookingRepository;
+import ar.com.padelnec.repository.BuffetOrderRepository;
 import ar.com.padelnec.repository.PaymentRepository;
 import ar.com.padelnec.web.BusinessRuleException;
 import java.math.BigDecimal;
@@ -20,7 +22,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Acreditacion de senas y cobros de mostrador. */
+/** Acreditacion de senas y cobros de mostrador, de turnos y de pedidos de buffet. */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -28,6 +30,7 @@ public class PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
+    private final BuffetOrderRepository buffetOrderRepository;
     private final MercadoPagoGateway gateway;
     private final AlertService alertService;
     private final ApplicationEventPublisher events;
@@ -99,18 +102,8 @@ public class PaymentService {
     @Transactional
     public Payment registerManualPayment(Booking booking, BigDecimal amount, PaymentMethod method,
                                          UUID registeredBy) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BusinessRuleException("El monto tiene que ser mayor a cero");
-        }
-        if (method != PaymentMethod.CASH && method != PaymentMethod.TRANSFER) {
-            throw new BusinessRuleException("Ese metodo no se puede cargar a mano");
-        }
-        Payment payment = new Payment();
+        Payment payment = manualMovement(amount, method, registeredBy);
         payment.setBooking(booking);
-        payment.setAmount(amount);
-        payment.setMethod(method);
-        payment.setStatus(PaymentStatus.APPROVED);
-        payment.setRegisteredBy(registeredBy);
         paymentRepository.save(payment);
 
         booking.setPaidAmount(booking.getPaidAmount().add(amount));
@@ -131,25 +124,62 @@ public class PaymentService {
     @Transactional
     public Payment registerRefund(Booking booking, BigDecimal amount, PaymentMethod method,
                                   UUID registeredBy) {
+        Payment payment = manualMovement(amount, method, registeredBy);
+        if (amount.compareTo(booking.getPaidAmount()) > 0) {
+            throw new BusinessRuleException("No podés devolver más de lo que se cobró");
+        }
+        payment.setBooking(booking);
+        payment.setAmount(amount.negate());
+        paymentRepository.save(payment);
+
+        booking.setPaidAmount(booking.getPaidAmount().subtract(amount));
+        bookingRepository.save(booking);
+        return payment;
+    }
+
+    /** Cobro en el mostrador de un pedido de buffet sin turno. Mismo circuito que el de un turno. */
+    @Transactional
+    public Payment registerManualPayment(BuffetOrder order, BigDecimal amount, PaymentMethod method,
+                                         UUID registeredBy) {
+        Payment payment = manualMovement(amount, method, registeredBy);
+        payment.setBuffetOrder(order);
+        paymentRepository.save(payment);
+
+        order.setPaidAmount(order.getPaidAmount().add(amount));
+        buffetOrderRepository.save(order);
+        return payment;
+    }
+
+    /** Devolución de un pedido de buffet, ej. porque se sacó un producto que ya se había cobrado. */
+    @Transactional
+    public Payment registerRefund(BuffetOrder order, BigDecimal amount, PaymentMethod method,
+                                  UUID registeredBy) {
+        Payment payment = manualMovement(amount, method, registeredBy);
+        if (amount.compareTo(order.getPaidAmount()) > 0) {
+            throw new BusinessRuleException("No podés devolver más de lo que se cobró");
+        }
+        payment.setBuffetOrder(order);
+        payment.setAmount(amount.negate());
+        paymentRepository.save(payment);
+
+        order.setPaidAmount(order.getPaidAmount().subtract(amount));
+        buffetOrderRepository.save(order);
+        return payment;
+    }
+
+    /** Un movimiento de mostrador ya validado, todavía sin turno ni pedido. */
+    private Payment manualMovement(BigDecimal amount, PaymentMethod method, UUID registeredBy) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessRuleException("El monto tiene que ser mayor a cero");
         }
         if (method != PaymentMethod.CASH && method != PaymentMethod.TRANSFER) {
             throw new BusinessRuleException("Ese metodo no se puede cargar a mano");
         }
-        if (amount.compareTo(booking.getPaidAmount()) > 0) {
-            throw new BusinessRuleException("No podés devolver más de lo que se cobró");
-        }
         Payment payment = new Payment();
-        payment.setBooking(booking);
-        payment.setAmount(amount.negate());
+        payment.setAmount(amount);
         payment.setMethod(method);
         payment.setStatus(PaymentStatus.APPROVED);
         payment.setRegisteredBy(registeredBy);
-        paymentRepository.save(payment);
-
-        booking.setPaidAmount(booking.getPaidAmount().subtract(amount));
-        bookingRepository.save(booking);
         return payment;
     }
 

@@ -16,10 +16,11 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Movimiento de dinero asociado a una reserva.
+ * Movimiento de dinero asociado a una reserva o a un pedido de buffet.
  *
  * <p>Una reserva puede tener varios: la sena por MercadoPago y el saldo cobrado
- * en el mostrador.
+ * en el mostrador. Es de una reserva o de un pedido, nunca de los dos: lo exige
+ * la base ({@code ck_payment_owner}).
  */
 @Entity
 @Table(name = "payment")
@@ -27,9 +28,15 @@ import lombok.Setter;
 @Setter
 public class Payment extends TenantScopedEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "booking_id", nullable = false)
+    /** Nulo cuando el cobro es de un pedido de buffet sin turno. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "booking_id")
     private Booking booking;
+
+    /** Nulo cuando el cobro es de un turno. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "buffet_order_id")
+    private BuffetOrder buffetOrder;
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;

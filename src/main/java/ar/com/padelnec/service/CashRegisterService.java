@@ -1,14 +1,16 @@
 package ar.com.padelnec.service;
 
 import ar.com.padelnec.domain.Booking;
+import ar.com.padelnec.domain.BuffetOrder;
 import ar.com.padelnec.domain.ClubUser;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.domain.enums.PaymentStatus;
 import ar.com.padelnec.repository.BookingRepository;
+import ar.com.padelnec.repository.BuffetOrderRepository;
+import ar.com.padelnec.repository.BuffetSaleRow;
 import ar.com.padelnec.repository.CashMovementRow;
 import ar.com.padelnec.repository.ClubUserRepository;
-import ar.com.padelnec.repository.KioskSaleRow;
 import ar.com.padelnec.repository.PaymentRepository;
 import ar.com.padelnec.repository.ProductSaleRepository;
 import java.math.BigDecimal;
@@ -52,6 +54,7 @@ public class CashRegisterService {
     private final PaymentRepository paymentRepository;
     private final ProductSaleRepository productSaleRepository;
     private final BookingRepository bookingRepository;
+    private final BuffetOrderRepository buffetOrderRepository;
     private final ClubUserRepository clubUserRepository;
     private final SlotGenerator slotGenerator;
 
@@ -60,11 +63,13 @@ public class CashRegisterService {
      *
      * <p>{@code amount} negativo es una devolucion. {@code registeredByName} es
      * nulo cuando no lo cargo una persona: los pagos de MercadoPago los asienta
-     * el webhook.
+     * el webhook. En un cobro de buffet ({@code buffet}) no hay turno:
+     * {@code courtName} y {@code bookingStartTime} son nulos y
+     * {@code customerName} es a nombre de quien fue el pedido.
      */
     public record Movement(Instant at, PaymentMethod method, BigDecimal amount,
                            String registeredByName, String customerName, String courtName,
-                           Instant bookingStartTime) {
+                           Instant bookingStartTime, boolean buffet) {
 
         public boolean isRefund() {
             return amount.signum() < 0;
@@ -74,7 +79,7 @@ public class CashRegisterService {
     public record MethodTotal(PaymentMethod method, BigDecimal total) {
     }
 
-    public record KioskLine(String productName, int quantity, BigDecimal total) {
+    public record BuffetLine(String productName, int quantity, BigDecimal total) {
     }
 
     /**
@@ -83,10 +88,14 @@ public class CashRegisterService {
      * <p>{@code cash} sale aparte del resto de {@code byMethod} porque es el unico
      * numero que se contrasta contra billetes: la transferencia y MercadoPago hay
      * que buscarlos en un banco, no en el cajon.
+     *
+     * <p>{@code pending} suma lo que deben los turnos del dia y los pedidos de
+     * buffet abiertos ese dia; {@code pendingBookings} y {@code pendingOrders}
+     * cuentan cada uno por separado.
      */
     public record DayCash(LocalDate date, List<Movement> movements, List<MethodTotal> byMethod,
                           BigDecimal total, BigDecimal cash, BigDecimal pending, int pendingBookings,
-                          List<KioskLine> kiosk, BigDecimal kioskTotal) {
+                          int pendingOrders, List<BuffetLine> buffet, BigDecimal buffetTotal) {
     }
 
     @Transactional(readOnly = true)
@@ -114,8 +123,8 @@ public class CashRegisterService {
                 .findFirst()
                 .orElse(BigDecimal.ZERO);
 
-        List<KioskLine> kiosk = kioskLines(from, until);
-        BigDecimal kioskTotal = kiosk.stream().map(KioskLine::total)
+        List<BuffetLine> buffet = buffetLines(from, until);
+        BigDecimal buffetTotal = buffet.stream().map(BuffetLine::total)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<Booking> pendientes = bookingRepository.findAgenda(
@@ -123,11 +132,17 @@ public class CashRegisterService {
                 .filter(booking -> booking.getStatus().occupiesSlot())
                 .filter(booking -> booking.balanceDue().signum() > 0)
                 .toList();
+        List<BuffetOrder> pedidosPendientes = buffetOrderRepository
+                .findAllByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(from, until).stream()
+                .filter(order -> order.balanceDue().signum() > 0)
+                .toList();
         BigDecimal pending = pendientes.stream().map(Booking::balanceDue)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .add(pedidosPendientes.stream().map(BuffetOrder::balanceDue)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add));
 
         return new DayCash(date, movements, byMethod, total, cash, pending, pendientes.size(),
-                kiosk, kioskTotal);
+                pedidosPendientes.size(), buffet, buffetTotal);
     }
 
     // ------------------------------------------------------------ internos
@@ -135,7 +150,8 @@ public class CashRegisterService {
     private Movement toMovement(CashMovementRow row, Map<UUID, String> names) {
         return new Movement(row.createdAt(), row.method(), row.amount(),
                 row.registeredBy() == null ? null : names.get(row.registeredBy()),
-                row.customerFullName(), row.courtName(), row.bookingStartTime());
+                row.customerFullName(), row.courtName(), row.bookingStartTime(),
+                row.buffetOrderId() != null);
     }
 
     /**
@@ -154,18 +170,18 @@ public class CashRegisterService {
                 .toList();
     }
 
-    /** Las lineas de kiosco del dia, agrupadas por producto y de mayor a menor. */
-    private List<KioskLine> kioskLines(Instant from, Instant until) {
-        Map<String, List<KioskSaleRow>> byProduct = productSaleRepository.findSalesBetween(from, until)
+    /** Las lineas del buffet del dia, de turnos y de pedidos, agrupadas por producto y de mayor a menor. */
+    private List<BuffetLine> buffetLines(Instant from, Instant until) {
+        Map<String, List<BuffetSaleRow>> byProduct = productSaleRepository.findSalesBetween(from, until)
                 .stream()
-                .collect(Collectors.groupingBy(KioskSaleRow::productName));
+                .collect(Collectors.groupingBy(BuffetSaleRow::productName));
 
         return byProduct.entrySet().stream()
-                .map(entry -> new KioskLine(entry.getKey(),
-                        entry.getValue().stream().mapToInt(KioskSaleRow::quantity).sum(),
-                        entry.getValue().stream().map(KioskSaleRow::subtotal)
+                .map(entry -> new BuffetLine(entry.getKey(),
+                        entry.getValue().stream().mapToInt(BuffetSaleRow::quantity).sum(),
+                        entry.getValue().stream().map(BuffetSaleRow::subtotal)
                                 .reduce(BigDecimal.ZERO, BigDecimal::add)))
-                .sorted(Comparator.comparing(KioskLine::total).reversed())
+                .sorted(Comparator.comparing(BuffetLine::total).reversed())
                 .toList();
     }
 

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Booking;
+import ar.com.padelnec.domain.BuffetOrder;
 import ar.com.padelnec.domain.ClubUser;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Payment;
@@ -15,9 +16,10 @@ import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.BookingService.NewBooking;
 import ar.com.padelnec.service.BookingService.PaymentChoice;
+import ar.com.padelnec.service.BuffetOrderService;
 import ar.com.padelnec.service.CashRegisterService;
 import ar.com.padelnec.service.CashRegisterService.DayCash;
-import ar.com.padelnec.service.CashRegisterService.KioskLine;
+import ar.com.padelnec.service.CashRegisterService.BuffetLine;
 import ar.com.padelnec.service.CashRegisterService.MethodTotal;
 import ar.com.padelnec.service.CashRegisterService.Movement;
 import ar.com.padelnec.service.ClubUserService;
@@ -76,6 +78,7 @@ class CashRegisterServiceTest {
     @Autowired private BookingService bookingService;
     @Autowired private PaymentService paymentService;
     @Autowired private ProductService productService;
+    @Autowired private BuffetOrderService buffetOrderService;
     @Autowired private ClubUserService clubUserService;
     @Autowired private ClubFixture fixture;
     @Autowired private Clock clock;
@@ -181,8 +184,8 @@ class CashRegisterServiceTest {
     }
 
     @Test
-    @DisplayName("El kiosco se lista aparte: es venta, no plata cobrada")
-    void kioskIsListedApartFromTheCash() {
+    @DisplayName("El buffet se lista aparte: es venta, no plata cobrada")
+    void buffetIsListedApartFromTheCash() {
         Booking booking = confirmed(LocalTime.of(12, 30), "Cliente A");
         Product agua = productService.createProduct("Agua", new BigDecimal("1500"));
         ProductSale sale = productService.registerSale(booking, agua, 2, mostrador.getId());
@@ -190,13 +193,46 @@ class CashRegisterServiceTest {
 
         DayCash caja = cashRegisterService.of(club, TUESDAY);
 
-        assertThat(caja.kiosk())
-                .extracting(KioskLine::productName, KioskLine::quantity, KioskLine::total)
+        assertThat(caja.buffet())
+                .extracting(BuffetLine::productName, BuffetLine::quantity, BuffetLine::total)
                 .containsExactly(tuple("Agua", 2, new BigDecimal("3000.00")));
-        assertThat(caja.kioskTotal()).isEqualByComparingTo("3000");
+        assertThat(caja.buffetTotal()).isEqualByComparingTo("3000");
         // La consumicion todavia no se cobro: sube lo que el turno debe, no la caja.
         assertThat(caja.total()).isEqualByComparingTo("0");
         assertThat(caja.pending()).isEqualByComparingTo("23000");
+    }
+
+    @Test
+    @DisplayName("Un pedido de buffet sin turno entra a la caja a su nombre, con su venta y su saldo")
+    void aBuffetOrderWithoutBookingShowsUpInTheCash() {
+        Product cafe = productService.createProduct("Café", new BigDecimal("2000"));
+        BuffetOrder order = buffetOrderService.open("Juan, mira el partido", mostrador.getId());
+        ProductSale sale = productService.registerSale(order, cafe, 3, mostrador.getId());
+        backdate("buffet_order", order.getId(), TUESDAY.atTime(17, 0));
+        backdate("product_sale", sale.getId(), TUESDAY.atTime(17, 5));
+        Payment payment = paymentService.registerManualPayment(
+                buffetOrderService.require(order.getId()), new BigDecimal("4000"), PaymentMethod.CASH,
+                mostrador.getId());
+        backdate("payment", payment.getId(), TUESDAY.atTime(17, 10));
+
+        DayCash caja = cashRegisterService.of(club, TUESDAY);
+
+        assertThat(caja.movements())
+                .singleElement()
+                .satisfies(movement -> {
+                    assertThat(movement.customerName()).isEqualTo("Juan, mira el partido");
+                    assertThat(movement.buffet()).isTrue();
+                    assertThat(movement.courtName()).isNull();
+                    assertThat(movement.amount()).isEqualByComparingTo("4000");
+                });
+        assertThat(caja.cash()).isEqualByComparingTo("4000");
+        assertThat(caja.buffet())
+                .extracting(BuffetLine::productName, BuffetLine::quantity)
+                .containsExactly(tuple("Café", 3));
+        // Quedan 2000 del pedido, y no hay turnos con saldo.
+        assertThat(caja.pending()).isEqualByComparingTo("2000");
+        assertThat(caja.pendingOrders()).isEqualTo(1);
+        assertThat(caja.pendingBookings()).isZero();
     }
 
     // ------------------------------------------------------------ utilidades
