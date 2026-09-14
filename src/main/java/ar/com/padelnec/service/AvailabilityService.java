@@ -159,8 +159,9 @@ public class AvailabilityService {
                     pricingService.resolve(club, rules, court, day, slot.startTime());
             // Sin tarifa configurada (ni regla ni general) el turno no se publica:
             // no se vende en cero.
-            price.ifPresent(value -> free.add(
-                    new CourtAvailability(court.getId(), court.getName(), value.totalPrice())));
+            price.ifPresent(value -> free.add(new CourtAvailability(
+                    court.getId(), court.getName(), value.totalPrice(),
+                    court.getWall(), court.getSurface(), court.getRoof())));
         }
         return free;
     }
@@ -184,6 +185,8 @@ public class AvailabilityService {
                 club.getName(),
                 club.getTimeZone(),
                 club.getWhatsappNumber(),
+                club.getInstagramHandle(),
+                club.instagramUrl(),
                 club.isAllowUnpaidBooking(),
                 club.acceptsOnlinePayments(),
                 club.getDepositPercentage(),

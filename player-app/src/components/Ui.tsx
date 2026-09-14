@@ -41,9 +41,17 @@ export function TopBar({
   whatsappHref,
   accountSlot,
   titleTo,
+  searchTo,
+  brandMark = false,
 }: {
   name: string;
   whatsappHref?: string;
+  /**
+   * Lupa hacia la búsqueda en todos los clubes. En la página de un club es la
+   * salida del jugador que no encuentra horario ahí: sin esto, la única estaba
+   * en el pie, al final de todo.
+   */
+  searchTo?: string;
   /** Botón de "Mis turnos" / entrar, armado afuera: este componente no sabe de sesiones. */
   accountSlot?: ReactNode;
   /**
@@ -54,6 +62,11 @@ export function TopBar({
    * estás no hace nada, y lo que el jugador aprende de eso es a no tocarlo.
    */
   titleTo?: string;
+  /**
+   * El punto ladrillo del logo antes del título, como en la landing. Solo cuando
+   * el título es la marca y no el nombre de un club.
+   */
+  brandMark?: boolean;
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-cal/10 bg-pista/90 backdrop-blur">
@@ -61,15 +74,31 @@ export function TopBar({
         {titleTo ? (
           <Link
             to={titleTo}
-            className="display cursor-pointer truncate text-left text-xl tracking-[0.14em] transition hover:text-ink-soft"
+            className="display group flex min-w-0 cursor-pointer items-center gap-2.5 text-left text-xl tracking-[0.14em] transition hover:text-ink-soft"
           >
-            {name}
+            {brandMark && (
+              <span
+                aria-hidden
+                className="size-2.5 shrink-0 rounded-full bg-ladrillo transition-transform duration-300 group-hover:scale-125"
+              />
+            )}
+            <span className="truncate">{name}</span>
           </Link>
         ) : (
           <p className="display truncate text-xl tracking-[0.14em]">{name}</p>
         )}
         <div className="flex shrink-0 items-center gap-2">
           {accountSlot}
+          {searchTo && (
+            <Link
+              to={searchTo}
+              aria-label="Buscar cancha en todos los clubes"
+              title="Buscar cancha en todos los clubes"
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-cal/10 text-ink-soft transition hover:border-cal/25 hover:text-cal"
+            >
+              <SearchGlyph className="size-4" />
+            </Link>
+          )}
           {whatsappHref && (
             <a
               href={whatsappHref}
@@ -84,6 +113,23 @@ export function TopBar({
         </div>
       </div>
     </header>
+  );
+}
+
+export function SearchGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      aria-hidden
+      className={className}
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.5-3.5" />
+    </svg>
   );
 }
 
@@ -428,6 +474,31 @@ export function WhatsappGlyph({ className }: { className?: string }) {
 }
 
 /**
+ * Marca de Instagram: el cuadrado redondeado con la lente y el punto del flash.
+ *
+ * <p>Con trazo y no relleno, igual que la lupa de la barra: al lado del texto
+ * del usuario tiene que acompañar, no pesar más que el nombre.
+ */
+export function InstagramGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <rect x="2.5" y="2.5" width="19" height="19" rx="5.5" />
+      <circle cx="12" cy="12" r="4.25" />
+      <path d="M17.5 6.5h.01" />
+    </svg>
+  );
+}
+
+/**
  * Cierre de la página.
  *
  * <p>Antes terminaba de golpe después de "Cómo llegar". Es un remate callado a
@@ -444,11 +515,37 @@ export function WhatsappGlyph({ className }: { className?: string }) {
  * por dónde. La raíz no sirve para eso -- es la landing comercial para dueños
  * de club, no el inicio del jugador.
  */
-export function SiteFooter({ name, address }: { name: string; address: string | null }) {
+export function SiteFooter({
+  name,
+  address,
+  instagram,
+}: {
+  name: string;
+  address: string | null;
+  /**
+   * Instagram del club, si lo cargó. Va en el pie y no en la barra de arriba: la
+   * barra ya lleva cuenta, búsqueda y WhatsApp, y en un celular un cuarto botón
+   * le come el nombre del club. El pie es donde se buscan las redes.
+   */
+  instagram?: { handle: string; url: string } | null;
+}) {
   return (
     <footer className="mt-14 border-t border-cal/10 pt-8 text-center">
       <p className="display text-2xl tracking-[0.14em]">{name}</p>
       {address && <p className="mt-2 text-sm text-ink-soft">{address}</p>}
+      {instagram && (
+        <div className="mt-5">
+          <a
+            href={instagram.url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Instagram de ${name}: @${instagram.handle}`}
+            className="inline-flex items-center gap-2 rounded-full border border-cal/10 px-4 py-2 text-sm font-semibold text-cal transition hover:border-cal/25"
+          >
+            <InstagramGlyph className="size-4" />@{instagram.handle}
+          </a>
+        </div>
+      )}
       <Link
         to="/buscar"
         className="eyebrow mt-6 inline-block text-ink-soft underline-offset-4 transition hover:text-cal hover:underline"

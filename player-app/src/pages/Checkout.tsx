@@ -7,11 +7,15 @@ import {
   type BookingCreated,
   type Club,
   type CourtAvailability,
+  type CourtRoof,
+  type CourtSurface,
+  type CourtWall,
   type PaymentChoice,
   type Slot,
 } from '../api/client';
 import { track, trackNow } from '../analytics';
 import { usePlayerAuth } from '../auth/AuthContext';
+import { ROOF_LABEL, SURFACE_LABEL, WALL_LABEL, courtMatches } from '../courtFeatures';
 import { clockTime, durationMinutes, longDate, money, perPerson, shareBooking } from '../format';
 import { rememberGuestBooking } from '../guestBookings';
 import { Alert, Button, Card, Field, SummaryCard, WhatsappLink } from '../components/Ui';
@@ -27,17 +31,30 @@ export function Checkout({
   slug,
   club,
   slot,
+  preferredWall = null,
+  preferredSurface = null,
+  preferredRoof = null,
   onBack,
   onSlotTaken,
 }: {
   slug: string;
   club: Club;
   slot: Slot;
+  /** Paredes, piso y techo que el jugador pidió en la búsqueda, si vino de ahí. */
+  preferredWall?: CourtWall | null;
+  preferredSurface?: CourtSurface | null;
+  preferredRoof?: CourtRoof | null;
   onBack: () => void;
   onSlotTaken: () => void;
 }) {
   const { session, updateLocalProfile } = usePlayerAuth();
-  const [court, setCourt] = useState<CourtAvailability>(slot.available[0]);
+  // Arranca en una cancha como la que se buscó: si pidió techada o pared, que no
+  // le toque otra por ser la primera de la lista. Sin preferencia, la primera libre.
+  const [court, setCourt] = useState<CourtAvailability>(
+    () =>
+      slot.available.find((option) => courtMatches(option, preferredWall, preferredSurface, preferredRoof)) ??
+      slot.available[0],
+  );
   // Con sesión iniciada el teléfono ya es de quien reserva: no se vuelve a pedir,
   // y el nombre se precarga con el que quedó guardado en la cuenta.
   const [fullName, setFullName] = useState(session?.displayName ?? '');
@@ -135,7 +152,7 @@ export function Checkout({
     { label: 'Hora', value: `${clockTime(slot.startsAt, club.timeZone)} hs` },
     {
       label: 'Cancha',
-      value: slot.available.length > 1 ? court.courtName : 'La que esté libre',
+      value: `${slot.available.length > 1 ? court.courtName : 'La que esté libre'} · ${courtFeatures(court)}`,
     },
     { label: 'Duración', value: `${durationMinutes(slot.startsAt, slot.endsAt)} min` },
     {
@@ -175,7 +192,12 @@ export function Checkout({
                       : 'border-cal/10 bg-vidrio hover:border-cal/25'
                   }`}
                 >
-                  <span className="font-semibold">{option.courtName}</span>
+                  <span className="min-w-0">
+                    <span className="block font-semibold">{option.courtName}</span>
+                    <span className={`block text-xs ${isChosen ? 'text-pista/60' : 'text-ink-soft'}`}>
+                      {ROOF_LABEL[option.roof]} · {WALL_LABEL[option.wall]} · {SURFACE_LABEL[option.surface]}
+                    </span>
+                  </span>
                   <span className="tabular-nums">
                     {perPerson(option.price, club.playersPerCourt)}
                     <span className={`text-xs ${isChosen ? 'text-neutral-500' : 'text-ink-soft'}`}>
@@ -367,4 +389,13 @@ function Booked({
       )}
     </div>
   );
+}
+
+/** "Techada · Blindex", o "Al aire libre · Pared · Sin alfombra": el piso solo cuando no es el de siempre. */
+function courtFeatures(court: CourtAvailability): string {
+  const parts = [ROOF_LABEL[court.roof], WALL_LABEL[court.wall]];
+  if (court.surface === 'NO_CARPET') {
+    parts.push(SURFACE_LABEL[court.surface]);
+  }
+  return parts.join(' · ');
 }

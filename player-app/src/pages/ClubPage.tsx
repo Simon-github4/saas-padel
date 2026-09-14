@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { track } from '../analytics';
 import { api, ApiError, type Availability, type Slot } from '../api/client';
+import { roofFromParam, surfaceFromParam, wallFromParam } from '../courtFeatures';
 import { addDays, clockTime, longDate, perPerson, todayIso, whatsappLink } from '../format';
 import { setPageMeta, setStructuredData } from '../seo';
 import {
@@ -11,6 +12,7 @@ import {
   FloatingWhatsapp,
   Loading,
   Screen,
+  SearchGlyph,
   SectionTitle,
   SiteFooter,
   StepIndicator,
@@ -38,6 +40,10 @@ export function ClubPage() {
   const [search] = useSearchParams();
   const linkedDate = validDate(search.get('fecha'));
   const linkedTime = search.get('hora');
+  // Paredes, piso y techo pedidos en la búsqueda: la reserva arranca en una cancha así.
+  const linkedWall = wallFromParam(search.get('paredes'));
+  const linkedSurface = surfaceFromParam(search.get('piso'));
+  const linkedRoof = roofFromParam(search.get('techo'));
   // La vuelta del login desde "Avisame si se libera" manda ?fecha=&espera=:
   // el jugador cae en la grilla de ese día con el formulario de ese horario
   // abierto, en vez de tener que buscarlo de nuevo. Sin fecha no significa nada.
@@ -160,6 +166,11 @@ export function ClubPage() {
         longitude: club.longitude,
       };
     }
+    // sameAs le dice a Google que ese perfil es del mismo club, y puede
+    // mostrarlo junto al resultado de búsqueda.
+    if (club.instagramUrl) {
+      jsonLd.sameAs = [club.instagramUrl];
+    }
     return setStructuredData(jsonLd);
   }, [data?.club, slug]);
 
@@ -270,7 +281,14 @@ export function ClubPage() {
 
   return (
     <Screen
-      top={<TopBar name={club.name} whatsappHref={whatsapp} accountSlot={<AccountButton />} />}
+      top={
+        <TopBar
+          name={club.name}
+          whatsappHref={whatsapp}
+          accountSlot={<AccountButton />}
+          searchTo={searchHref(date)}
+        />
+      }
     >
       <HeroSection
         name={club.name}
@@ -381,9 +399,16 @@ export function ClubPage() {
               <div className="space-y-4">
                 <SectionTitle title="Tus datos" />
                 <Checkout
+                  // Con key: elegir otro horario desde la portada estando ya en
+                  // este paso tiene que rearmar la cancha elegida, no arrastrar
+                  // la del horario anterior.
+                  key={selected.startsAt}
                   slug={slug}
                   club={club}
                   slot={selected}
+                  preferredWall={linkedWall}
+                  preferredSurface={linkedSurface}
+                  preferredRoof={linkedRoof}
                   onBack={() => setStep(2)}
                   onSlotTaken={() => {
                     // Rojo y no gris como el del link vencido: acá el jugador
@@ -412,6 +437,28 @@ export function ClubPage() {
               </div>
             )}
           </section>
+
+          {/* La otra salida hacia la búsqueda, además de la lupa de la barra:
+              al pie de la reserva, que es donde el jugador se da cuenta de que
+              acá no hay lo que busca. Lleva el día que estaba mirando. */}
+          <Link
+            to={searchHref(date)}
+            className="group mt-10 flex items-center gap-4 rounded-2xl border border-cal/10 bg-vidrio p-4 transition hover:border-cal/25 hover:bg-vidrio-alto sm:p-5"
+          >
+            <span className="grid size-11 shrink-0 place-items-center rounded-full bg-ladrillo/15 text-ladrillo-claro">
+              <SearchGlyph className="size-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-semibold">¿Buscás en otros clubes?</span>
+              <span className="block text-sm text-ink-soft">
+                Mirá los horarios libres {date === todayIso() ? 'de hoy' : `del ${longDate(date)}`} en
+                todos los clubes.
+              </span>
+            </span>
+            <span aria-hidden className="text-lg text-ink-soft transition-transform group-hover:translate-x-1 group-hover:text-cal">
+              →
+            </span>
+          </Link>
         </div>
       </div>
 
@@ -426,7 +473,15 @@ export function ClubPage() {
         longitude={club.longitude}
       />
 
-      <SiteFooter name={club.name} address={club.address} />
+      <SiteFooter
+        name={club.name}
+        address={club.address}
+        instagram={
+          club.instagramHandle && club.instagramUrl
+            ? { handle: club.instagramHandle, url: club.instagramUrl }
+            : null
+        }
+      />
 
       <FloatingWhatsapp href={whatsapp} />
     </Screen>
@@ -486,6 +541,13 @@ function HourGrid({
         <div className="space-y-3">
           <Alert tone="info">No quedan turnos libres para este día.</Alert>
           {canGoNextDay && <Button onClick={onNextDay}>Ver el día siguiente</Button>}
+          <Link
+            to={searchHref(data.date)}
+            className="flex w-full items-center justify-center gap-2 rounded-full border border-cal/10 bg-vidrio px-5 py-3.5 text-sm font-bold uppercase tracking-[0.12em] text-cal transition hover:border-cal/25 hover:bg-vidrio-alto"
+          >
+            <SearchGlyph className="size-4" />
+            Buscar este día en otros clubes
+          </Link>
         </div>
       )}
 
@@ -661,4 +723,9 @@ type SlotNotice = { tone: 'info' | 'error'; message: string };
 /** Una fecha del link solo se acepta si tiene la forma que produce la busqueda. */
 function validDate(value: string | null): string | null {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+/** La búsqueda en todos los clubes, parada en el día que el jugador estaba mirando. */
+function searchHref(date: string): string {
+  return `/buscar?fecha=${date}`;
 }

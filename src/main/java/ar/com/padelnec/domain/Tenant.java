@@ -3,6 +3,7 @@ package ar.com.padelnec.domain;
 import ar.com.padelnec.domain.enums.HeroVariant;
 import ar.com.padelnec.domain.enums.ThemeMode;
 import ar.com.padelnec.support.EncryptedStringConverter;
+import ar.com.padelnec.support.InstagramHandles;
 import jakarta.persistence.Column;
 import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
@@ -104,6 +105,14 @@ public class Tenant extends BaseEntity {
     @Column(length = 160)
     private String tagline;
 
+    /**
+     * Usuario de Instagram del club, pelado: sin @, sin link y en minusculas. Lo
+     * deja asi {@code InstagramHandles#normalize} al guardar. Nulo si el club no
+     * tiene o no lo cargo. Ver {@link #instagramUrl()}.
+     */
+    @Column(name = "instagram_handle", length = 30)
+    private String instagramHandle;
+
     @Column(length = 200)
     private String address;
 
@@ -182,6 +191,13 @@ public class Tenant extends BaseEntity {
 
     public ZoneId zoneId() {
         return ZoneId.of(timeZone);
+    }
+
+    /** Link al perfil de Instagram del club, o null si no cargo uno. */
+    public String instagramUrl() {
+        return instagramHandle == null || instagramHandle.isBlank()
+                ? null
+                : InstagramHandles.profileUrl(instagramHandle);
     }
 
     /**

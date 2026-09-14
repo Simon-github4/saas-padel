@@ -7,6 +7,9 @@ import ar.com.padelnec.domain.PricingRule;
 import ar.com.padelnec.domain.Product;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.TenantHeroImage;
+import ar.com.padelnec.domain.enums.CourtRoof;
+import ar.com.padelnec.domain.enums.CourtSurface;
+import ar.com.padelnec.domain.enums.CourtWall;
 import ar.com.padelnec.domain.enums.HeroVariant;
 import ar.com.padelnec.domain.enums.ThemeMode;
 import ar.com.padelnec.repository.ClubAmenityRepository;
@@ -21,8 +24,10 @@ import ar.com.padelnec.service.ProductService;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.support.GoogleMapsLinkResolver;
 import ar.com.padelnec.support.ImageSignature;
+import ar.com.padelnec.support.InstagramHandles;
 import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.ItemLabelGenerator;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
@@ -67,6 +72,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 /**
@@ -185,6 +191,12 @@ public class SettingsView extends VerticalLayout {
         TextField tagline = new TextField("Frase bajo el nombre");
         tagline.setValue(club.getTagline() == null ? "" : club.getTagline());
         tagline.setHelperText("Ej. \"Reservá tu cancha\"");
+
+        TextField instagram = new TextField("Instagram");
+        instagram.setValue(club.getInstagramHandle() == null ? "" : "@" + club.getInstagramHandle());
+        instagram.setPlaceholder("@tuclub");
+        instagram.setClearButtonVisible(true);
+        instagram.setHelperText("El usuario o el link del perfil. Aparece en la página de reservas");
 
         TextField heroImage = new TextField("Foto de portada (URL)");
         heroImage.setValue(club.getHeroImageUrl() == null ? "" : club.getHeroImageUrl());
@@ -313,7 +325,17 @@ public class SettingsView extends VerticalLayout {
                         .addThemeVariants(NotificationVariant.LUMO_ERROR);
                 return;
             }
+            // Se valida antes de tocar nada, igual que los colores: un usuario mal
+            // escrito no puede dejar guardado el resto del perfil a medias.
+            String instagramRaw = blankToNull(instagram.getValue());
+            Optional<String> instagramHandle = InstagramHandles.normalize(instagramRaw);
+            if (instagramRaw != null && instagramHandle.isEmpty()) {
+                Notification.show("Eso no parece un usuario de Instagram: escribí @tuclub o pegá el link del perfil")
+                        .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                return;
+            }
             club.setTagline(blankToNull(tagline.getValue()));
+            club.setInstagramHandle(instagramHandle.orElse(null));
             club.setHeroImageUrl(blankToNull(heroImage.getValue()));
             club.setHeroHeadline(blankToNull(heroHeadline.getValue()));
             club.setHeroCtaLabel(blankToNull(heroCta.getValue()));
@@ -329,6 +351,9 @@ public class SettingsView extends VerticalLayout {
             club.setLongitude(longitude.getValue());
             club.setGoogleMapsUrl(blankToNull(googleMapsUrl.getValue()));
             club = tenantRepository.save(club);
+            // Se muestra como quedo guardado, no como se pego: si pegaron el link,
+            // ven que el sistema entendio el usuario correcto.
+            instagram.setValue(club.getInstagramHandle() == null ? "" : "@" + club.getInstagramHandle());
             Notification.show("Perfil guardado");
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -336,7 +361,7 @@ public class SettingsView extends VerticalLayout {
         // Cuatro grupos, en el orden en que el dueno los piensa: como se llama
         // el club, como se ve su portada, con que paleta, y donde queda.
         return tabContent(
-                section("Identidad", tagline),
+                section("Identidad", tagline, instagram),
                 section("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline, heroOverlay, heroCta),
                 section("Apariencia", 3, theme, primaryColorField, secondaryColorField),
                 section("Ubicación", address, city, mapsLinkField(latitude, longitude, googleMapsUrl)),
@@ -787,6 +812,30 @@ public class SettingsView extends VerticalLayout {
                 .setAutoWidth(true).setFlexGrow(0)
                 .setTextAlign(ColumnTextAlign.END)
                 .setPartNameGenerator(court -> "tabular");
+        // Paredes, piso y techo se editan en la misma fila, como "Activa": el jugador filtra
+        // la busqueda por esto, asi que una cancha mal cargada no le aparece a quien
+        // la esta buscando.
+        courtGrid.addComponentColumn(court -> courtFeatureSelect(
+                        CourtWall.values(), court.getWall(), CourtWall::label, value -> {
+                            court.setWall(value);
+                            courtRepository.save(court);
+                            Notification.show("%s: %s".formatted(court.getName(), value.label()));
+                        }))
+                .setHeader("Paredes").setAutoWidth(true).setFlexGrow(0);
+        courtGrid.addComponentColumn(court -> courtFeatureSelect(
+                        CourtSurface.values(), court.getSurface(), CourtSurface::label, value -> {
+                            court.setSurface(value);
+                            courtRepository.save(court);
+                            Notification.show("%s: %s".formatted(court.getName(), value.label()));
+                        }))
+                .setHeader("Piso").setAutoWidth(true).setFlexGrow(0);
+        courtGrid.addComponentColumn(court -> courtFeatureSelect(
+                        CourtRoof.values(), court.getRoof(), CourtRoof::label, value -> {
+                            court.setRoof(value);
+                            courtRepository.save(court);
+                            Notification.show("%s: %s".formatted(court.getName(), value.label()));
+                        }))
+                .setHeader("Techo").setAutoWidth(true).setFlexGrow(0);
         courtGrid.addComponentColumn(court -> {
             Checkbox active = new Checkbox(court.isActive());
             active.addValueChangeListener(event -> {
@@ -806,6 +855,21 @@ public class SettingsView extends VerticalLayout {
         IntegerField newOrder = new IntegerField();
         newOrder.setPlaceholder("Orden");
         newOrder.setWidth("7em");
+        Select<CourtWall> newWall = new Select<>();
+        newWall.setItems(CourtWall.values());
+        newWall.setItemLabelGenerator(CourtWall::label);
+        newWall.setValue(CourtWall.GLASS);
+        newWall.setWidth("9em");
+        Select<CourtSurface> newSurface = new Select<>();
+        newSurface.setItems(CourtSurface.values());
+        newSurface.setItemLabelGenerator(CourtSurface::label);
+        newSurface.setValue(CourtSurface.CARPET);
+        newSurface.setWidth("10em");
+        Select<CourtRoof> newRoof = new Select<>();
+        newRoof.setItems(CourtRoof.values());
+        newRoof.setItemLabelGenerator(CourtRoof::label);
+        newRoof.setValue(CourtRoof.OUTDOOR);
+        newRoof.setWidth("10em");
 
         Button add = new Button("Agregar cancha", event -> {
             if (newName.getValue() == null || newName.getValue().isBlank()) {
@@ -815,15 +879,21 @@ public class SettingsView extends VerticalLayout {
             Court court = new Court();
             court.setName(newName.getValue().trim());
             court.setDisplayOrder(newOrder.getValue() == null ? 0 : newOrder.getValue());
+            court.setWall(newWall.getValue());
+            court.setSurface(newSurface.getValue());
+            court.setRoof(newRoof.getValue());
             courtRepository.save(court);
             newName.clear();
             newOrder.clear();
+            newWall.setValue(CourtWall.GLASS);
+            newSurface.setValue(CourtSurface.CARPET);
+            newRoof.setValue(CourtRoof.OUTDOOR);
             refreshCourts();
         });
         add.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
         refreshCourts();
-        HorizontalLayout toolbar = new HorizontalLayout(newName, newOrder, add);
+        HorizontalLayout toolbar = new HorizontalLayout(newName, newOrder, newWall, newSurface, newRoof, add);
         toolbar.setAlignItems(Alignment.END);
         toolbar.setPadding(false);
         toolbar.addClassNames(LumoUtility.Gap.SMALL);
@@ -832,6 +902,24 @@ public class SettingsView extends VerticalLayout {
 
     private void refreshCourts() {
         courtGrid.setItems(courtRepository.findAllByOrderByDisplayOrderAscNameAsc());
+    }
+
+    /** Selector chico para una caracteristica de la cancha, que guarda al cambiar. */
+    private static <T> Select<T> courtFeatureSelect(T[] values, T current,
+                                                    ItemLabelGenerator<T> label,
+                                                    Consumer<T> onChange) {
+        Select<T> select = new Select<>();
+        select.setItems(values);
+        select.setItemLabelGenerator(label);
+        select.setValue(current);
+        select.setEmptySelectionAllowed(false);
+        select.setWidth("9em");
+        select.addValueChangeListener(event -> {
+            if (event.isFromClient() && event.getValue() != null) {
+                onChange.accept(event.getValue());
+            }
+        });
+        return select;
     }
 
     // ------------------------------------------------------------ productos

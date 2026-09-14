@@ -2,16 +2,22 @@ package ar.com.padelnec.service;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.domain.enums.CourtRoof;
+import ar.com.padelnec.domain.enums.CourtSurface;
+import ar.com.padelnec.domain.enums.CourtWall;
 import ar.com.padelnec.repository.TenantRepository;
 import ar.com.padelnec.web.BusinessRuleException;
+import ar.com.padelnec.web.dto.AvailabilityResponse.CourtAvailability;
 import ar.com.padelnec.web.dto.AvailabilityResponse.SlotView;
 import ar.com.padelnec.web.dto.CourtSearchResponse;
 import ar.com.padelnec.web.dto.CourtSearchResponse.ClubOption;
 import ar.com.padelnec.web.dto.CourtSearchResponse.Match;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -51,12 +57,34 @@ public class CourtSearchService {
     private final AvailabilityService availabilityService;
 
     /**
-     * Turnos libres del dia entre {@code from} y {@code to}, en los clubes indicados.
+     * Que tiene que tener la cancha para que el turno cuente. Un campo nulo es "me da
+     * igual": el jugador que no eligio paredes ve blindex y pared.
+     */
+    public record CourtFilter(CourtWall wall, CourtSurface surface, CourtRoof roof) {
+
+        public static final CourtFilter ANY = new CourtFilter(null, null, null);
+
+        boolean accepts(CourtAvailability court) {
+            return (wall == null || wall == court.wall())
+                    && (surface == null || surface == court.surface())
+                    && (roof == null || roof == court.roof());
+        }
+    }
+
+    /** Turnos libres del dia entre {@code from} y {@code to}, sin mirar como es la cancha. */
+    public CourtSearchResponse search(LocalDate date, LocalTime from, LocalTime to,
+                                      Set<String> slugs) {
+        return search(date, from, to, slugs, CourtFilter.ANY);
+    }
+
+    /**
+     * Turnos libres del dia entre {@code from} y {@code to}, en los clubes indicados y
+     * solo en las canchas que pasan el filtro.
      *
      * @param slugs clubes a mirar; vacio significa todos.
      */
     public CourtSearchResponse search(LocalDate date, LocalTime from, LocalTime to,
-                                      Set<String> slugs) {
+                                      Set<String> slugs, CourtFilter filter) {
         if (from.isAfter(to)) {
             throw new BusinessRuleException("La hora de inicio no puede ser posterior a la de fin.");
         }
@@ -72,7 +100,7 @@ public class CourtSearchService {
                 continue;
             }
             try {
-                matches.addAll(matchesOf(club, date, from, to));
+                matches.addAll(matchesOf(club, date, from, to, filter));
             } catch (RuntimeException ex) {
                 // Un club con un problema no puede dejar sin resultados a los demas:
                 // el jugador que busca "donde sea" prefiere ver los otros cuatro.
@@ -87,13 +115,22 @@ public class CourtSearchService {
         return new CourtSearchResponse(date, options(active), matches);
     }
 
-    private List<Match> matchesOf(Tenant club, LocalDate date, LocalTime from, LocalTime to) {
+    private List<Match> matchesOf(Tenant club, LocalDate date, LocalTime from, LocalTime to,
+                                  CourtFilter filter) {
         List<SlotView> slots = TenantContext.callAs(club.getId(),
                 () -> availabilityService.freeSlotsFor(club, date));
 
         List<Match> found = new ArrayList<>();
         for (SlotView slot : slots) {
-            if (!slot.hasAvailability() || !withinRange(slot.startTime(), from, to)) {
+            if (!withinRange(slot.startTime(), from, to)) {
+                continue;
+            }
+            // Se filtra por cancha y no por horario: si de tres canchas libres solo una
+            // es de blindex, el turno sigue apareciendo, con una cancha y a su precio.
+            List<CourtAvailability> courts = slot.available().stream()
+                    .filter(filter::accepts)
+                    .toList();
+            if (courts.isEmpty()) {
                 continue;
             }
             found.add(new Match(
@@ -103,10 +140,16 @@ public class CourtSearchService {
                     slot.startTime(),
                     slot.endTime(),
                     slot.startsAt(),
-                    slot.cheapestPrice(),
+                    courts.stream().map(CourtAvailability::price).min(BigDecimal::compareTo).orElseThrow(),
                     club.getPlayersPerCourt(),
-                    slot.available().size(),
-                    slot.promo()));
+                    courts.size(),
+                    slot.promo(),
+                    courts.stream().map(CourtAvailability::wall)
+                            .collect(Collectors.toCollection(() -> EnumSet.noneOf(CourtWall.class))),
+                    courts.stream().map(CourtAvailability::surface)
+                            .collect(Collectors.toCollection(() -> EnumSet.noneOf(CourtSurface.class))),
+                    courts.stream().map(CourtAvailability::roof)
+                            .collect(Collectors.toCollection(() -> EnumSet.noneOf(CourtRoof.class)))));
         }
         return found;
     }

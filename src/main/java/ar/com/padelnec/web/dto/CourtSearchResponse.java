@@ -1,11 +1,15 @@
 package ar.com.padelnec.web.dto;
 
+import ar.com.padelnec.domain.enums.CourtRoof;
+import ar.com.padelnec.domain.enums.CourtSurface;
+import ar.com.padelnec.domain.enums.CourtWall;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Turnos libres de varios clubes para un dia y una franja horaria.
@@ -43,6 +47,12 @@ public record CourtSearchResponse(
             BigDecimal cheapestPrice,
             int playersPerCourt,
             int freeCourts,
-            boolean promo) {
+            boolean promo,
+            /** Paredes de las canchas libres (ya filtradas), sin repetir: "blindex y pared". */
+            Set<CourtWall> walls,
+            /** Pisos de las canchas libres (ya filtradas), sin repetir. */
+            Set<CourtSurface> surfaces,
+            /** Techada, al aire libre o las dos, entre las canchas libres (ya filtradas). */
+            Set<CourtRoof> roofs) {
     }
 }

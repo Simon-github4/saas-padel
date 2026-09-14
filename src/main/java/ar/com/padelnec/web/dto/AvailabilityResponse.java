@@ -1,5 +1,8 @@
 package ar.com.padelnec.web.dto;
 
+import ar.com.padelnec.domain.enums.CourtRoof;
+import ar.com.padelnec.domain.enums.CourtSurface;
+import ar.com.padelnec.domain.enums.CourtWall;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -26,6 +29,10 @@ public record AvailabilityResponse(
             String name,
             String timeZone,
             String whatsappNumber,
+            /** Usuario de Instagram sin @, para mostrarlo; null si el club no cargo uno. */
+            String instagramHandle,
+            /** Link al perfil, ya armado: la app no tiene que saber como es la URL. */
+            String instagramUrl,
             boolean allowUnpaidBooking,
             boolean acceptsOnlinePayments,
             BigDecimal depositPercentage,
@@ -77,6 +84,11 @@ public record AvailabilityResponse(
         }
     }
 
-    public record CourtAvailability(UUID courtId, String courtName, BigDecimal price) {
+    /**
+     * Una cancha libre en un horario. Lleva paredes, piso y techo para que el
+     * jugador sepa en cual va a jugar antes de elegirla, y para que la busqueda filtre.
+     */
+    public record CourtAvailability(UUID courtId, String courtName, BigDecimal price,
+                                    CourtWall wall, CourtSurface surface, CourtRoof roof) {
     }
 }

@@ -2,6 +2,9 @@ package ar.com.padelnec;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Court;
+import ar.com.padelnec.domain.enums.CourtRoof;
+import ar.com.padelnec.domain.enums.CourtSurface;
+import ar.com.padelnec.domain.enums.CourtWall;
 import ar.com.padelnec.domain.PricingRule;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.repository.BlackoutRepository;
@@ -101,9 +104,22 @@ public class ClubFixture {
 
     @Transactional
     public Court court(String name, int order) {
+        return court(name, order, CourtWall.GLASS, CourtSurface.CARPET);
+    }
+
+    @Transactional
+    public Court court(String name, int order, CourtWall wall, CourtSurface surface) {
+        return court(name, order, wall, surface, CourtRoof.OUTDOOR);
+    }
+
+    @Transactional
+    public Court court(String name, int order, CourtWall wall, CourtSurface surface, CourtRoof roof) {
         Court court = new Court();
         court.setName(name);
         court.setDisplayOrder(order);
+        court.setWall(wall);
+        court.setSurface(surface);
+        court.setRoof(roof);
         return courtRepository.saveAndFlush(court);
     }
 

@@ -2,6 +2,9 @@ package ar.com.padelnec.web.api;
 
 import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.domain.enums.CourtRoof;
+import ar.com.padelnec.domain.enums.CourtSurface;
+import ar.com.padelnec.domain.enums.CourtWall;
 import ar.com.padelnec.notification.NotificationService;
 import ar.com.padelnec.repository.TenantHeroImageRepository;
 import ar.com.padelnec.service.AvailabilityService;
@@ -91,13 +94,19 @@ public class PublicBookingController {
             @DateTimeFormat(pattern = "HH:mm") LocalTime from,
             @RequestParam(required = false)
             @DateTimeFormat(pattern = "HH:mm") LocalTime to,
-            @RequestParam(required = false) String clubs) {
+            @RequestParam(required = false) String clubs,
+            // Paredes, piso y techo de la cancha; sin mandarlos, cualquiera. Un valor
+            // que no existe responde 400 en vez de devolver todo como si no hubiera filtro.
+            @RequestParam(required = false) CourtWall wall,
+            @RequestParam(required = false) CourtSurface surface,
+            @RequestParam(required = false) CourtRoof roof) {
         LocalDate day = date != null ? date : LocalDate.now(clock);
         return courtSearchService.search(
                 day,
                 from != null ? from : LocalTime.MIN,
                 to != null ? to : LocalTime.of(23, 59),
-                slugsOf(clubs));
+                slugsOf(clubs),
+                new CourtSearchService.CourtFilter(wall, surface, roof));
     }
 
     /** Los clubes llegan como lista separada por comas; vacio significa todos. */

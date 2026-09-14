@@ -9,10 +9,20 @@
 
 export type PaymentChoice = 'DEPOSIT_ONLINE' | 'PAY_AT_CLUB';
 
+/** Paredes de la cancha: GLASS es blindex. */
+export type CourtWall = 'GLASS' | 'WALL';
+/** Piso de la cancha: con alfombra de césped sintético o sin ella. */
+export type CourtSurface = 'CARPET' | 'NO_CARPET';
+/** Techo de la cancha: techada o al aire libre. */
+export type CourtRoof = 'COVERED' | 'OUTDOOR';
+
 export interface CourtAvailability {
   courtId: string;
   courtName: string;
   price: number;
+  wall: CourtWall;
+  surface: CourtSurface;
+  roof: CourtRoof;
 }
 
 export interface Slot {
@@ -35,6 +45,10 @@ export interface Club {
   name: string;
   timeZone: string;
   whatsappNumber: string;
+  /** Usuario de Instagram sin @. Null si el club no cargó uno. */
+  instagramHandle: string | null;
+  /** Link al perfil, ya armado por el backend. */
+  instagramUrl: string | null;
   allowUnpaidBooking: boolean;
   acceptsOnlinePayments: boolean;
   depositPercentage: number;
@@ -98,6 +112,12 @@ export interface SearchMatch {
   playersPerCourt: number;
   freeCourts: number;
   promo: boolean;
+  /** Paredes de las canchas libres, sin repetir (ya filtradas si se pidió). */
+  walls: CourtWall[];
+  /** Pisos de las canchas libres, sin repetir. */
+  surfaces: CourtSurface[];
+  /** Techada, al aire libre o las dos, entre las canchas libres. */
+  roofs: CourtRoof[];
 }
 
 export interface SearchResult {
@@ -258,7 +278,15 @@ export const api = {
    * Turnos libres en varios clubes a la vez. Sin slug, porque es la pantalla de
    * quien todavía no eligió dónde jugar.
    */
-  search: (params: { date: string; from: string; to: string; clubs: string[] }) => {
+  search: (params: {
+    date: string;
+    from: string;
+    to: string;
+    clubs: string[];
+    wall: CourtWall | null;
+    surface: CourtSurface | null;
+    roof: CourtRoof | null;
+  }) => {
     const query = new URLSearchParams({
       date: params.date,
       from: params.from,
@@ -266,6 +294,15 @@ export const api = {
     });
     if (params.clubs.length > 0) {
       query.set('clubs', params.clubs.join(','));
+    }
+    if (params.wall) {
+      query.set('wall', params.wall);
+    }
+    if (params.surface) {
+      query.set('surface', params.surface);
+    }
+    if (params.roof) {
+      query.set('roof', params.roof);
     }
     return request<SearchResult>(`/search?${query.toString()}`);
   },

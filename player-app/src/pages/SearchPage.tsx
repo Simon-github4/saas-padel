@@ -1,11 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { track } from '../analytics';
 import { ApiError, api } from '../api/client';
-import type { SearchMatch, SearchResult } from '../api/client';
+import type { ClubOption, CourtRoof, CourtSurface, CourtWall, SearchMatch, SearchResult } from '../api/client';
 import { AccountButton } from '../components/AccountButton';
 import { MonthCalendar } from '../components/MonthCalendar';
-import { Alert, Badge, Button, Card, Chip, Loading, Screen, SectionTitle, TopBar } from '../components/Ui';
+import { Alert, Badge, Button, Card, Screen, TopBar } from '../components/Ui';
+import {
+  ROOF_LABEL,
+  SURFACE_LABEL,
+  WALL_LABEL,
+  featuresSummary,
+  roofFromParam,
+  roofParam,
+  surfaceFromParam,
+  surfaceParam,
+  wallFromParam,
+  wallParam,
+} from '../courtFeatures';
 import { addDays, longDate, perPerson, todayIso } from '../format';
 import { setPageMeta } from '../seo';
 import { BRAND } from './marketing/config';
@@ -14,14 +26,17 @@ import { BRAND } from './marketing/config';
 const FIRST_HOUR = 0;
 const LAST_HALF = '23:30';
 
-const FRANJAS: { label: string; from: string; to: string }[] = [
-  { label: 'Todo el día', from: '00:00', to: LAST_HALF },
-  { label: 'Mañana', from: '06:00', to: '12:00' },
-  { label: 'Tarde', from: '12:00', to: '18:00' },
-  { label: 'Noche', from: '18:00', to: LAST_HALF },
+const FRANJAS: { label: string; hint: string; from: string; to: string }[] = [
+  { label: 'Todo el día', hint: 'Cualquier hora', from: '00:00', to: LAST_HALF },
+  { label: 'Mañana', hint: '06 a 12', from: '06:00', to: '12:00' },
+  { label: 'Tarde', hint: '12 a 18', from: '12:00', to: '18:00' },
+  { label: 'Noche', hint: '18 en adelante', from: '18:00', to: LAST_HALF },
 ];
 
 const TIMES = buildTimes();
+
+/** Cuántos días muestra la tira antes de tener que abrir el calendario. */
+const STRIP_DAYS = 14;
 
 /**
  * Búsqueda de canchas en varios clubes a la vez.
@@ -30,12 +45,16 @@ const TIMES = buildTimes();
  * "hoy a la noche, donde sea". La grilla por club no sirve para eso, porque exige
  * saber de antemano a cuál entrar.
  *
- * <p>Los resultados van en una sola lista por horario y no agrupados por club: a
- * quien le da igual el lugar, el club es un dato más del turno, no el índice por el
- * que busca.
+ * <p>Los resultados van seccionados por localidad y, adentro de cada una, en una
+ * sola lista por horario y no agrupados por club. La localidad sí es un corte
+ * real para quien juega: nadie cruza de ciudad por un turno. Por eso las ciudades
+ * pegadas cuentan como una sola zona (Necochea y Quequén, ver ZONAS). El club,
+ * en cambio, sigue siendo un dato más del turno, no el índice por el que se busca.
  *
  * <p>Los filtros viven en la URL para que una búsqueda se pueda compartir por
- * WhatsApp y para que volver desde un club no la pierda.
+ * WhatsApp y para que volver desde un club no la pierda. La localidad se filtra
+ * acá y no en el backend: la búsqueda ya trae todos los clubes, y así las
+ * cuentas de cada localidad salen de la misma respuesta.
  */
 export function SearchPage() {
   const [params, setParams] = useSearchParams();
@@ -43,6 +62,10 @@ export function SearchPage() {
   const date = params.get('fecha') || todayIso();
   const from = params.get('desde') || '00:00';
   const to = params.get('hasta') || LAST_HALF;
+  const localidad = params.get('localidad') || '';
+  const wall = wallFromParam(params.get('paredes'));
+  const surface = surfaceFromParam(params.get('piso'));
+  const roof = roofFromParam(params.get('techo'));
   const selectedClubs = useMemo(
     () => (params.get('clubes') || '').split(',').filter(Boolean),
     [params],
@@ -66,7 +89,7 @@ export function SearchPage() {
     setLoading(true);
     setError(null);
     try {
-      const result = await api.search({ date, from, to, clubs: selectedClubs });
+      const result = await api.search({ date, from, to, clubs: selectedClubs, wall, surface, roof });
       setData(result);
       // Con los filtros y el total: una búsqueda que vuelve con cero turnos es
       // demanda que hoy se pierde, y es el dato que dice qué club falta sumar.
@@ -76,13 +99,15 @@ export function SearchPage() {
         to,
         clubs: selectedClubs.join(','),
         results: result.matches.length,
+        // Qué cancha se pidió: dice cuánta gente busca techada, blindex, pared o sin alfombra.
+        detail: [roof, wall, surface].filter(Boolean).join(',') || undefined,
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'No se pudo buscar. Probá de nuevo.');
     } finally {
       setLoading(false);
     }
-  }, [date, from, to, selectedClubs]);
+  }, [date, from, to, selectedClubs, wall, surface, roof]);
 
   useEffect(() => {
     void load();
@@ -103,11 +128,9 @@ export function SearchPage() {
     [params, setParams],
   );
 
-  // Mover un extremo del rango arrastra al otro si lo cruzó: un "desde" posterior
-  // al "hasta" no describe ninguna franja, y el backend lo rechazaría.
-  const setFrom = (value: string) =>
-    update({ desde: value, hasta: value > to ? value : to });
-  const setTo = (value: string) => update({ hasta: value, desde: value < from ? value : from });
+  // Estable entre renders: el rango exacto la usa en un efecto con espera, y una
+  // función nueva en cada render reiniciaría esa espera.
+  const setRange = useCallback((desde: string, hasta: string) => update({ desde, hasta }), [update]);
 
   const toggleClub = (slug: string) => {
     const next = selectedClubs.includes(slug)
@@ -124,41 +147,72 @@ export function SearchPage() {
   const franjaActiva = FRANJAS.find((f) => f.from === from && f.to === to);
   const todoElDia = from === '00:00' && to === LAST_HALF;
 
+  const localities = useMemo(() => buildLocalities(clubs, data?.matches ?? []), [clubs, data]);
+  const activeLocality = localities.find((item) => item.key === localidad) ?? null;
+  const visibleClubs = activeLocality
+    ? clubs.filter((club) => localityOf(club.city).key === activeLocality.key)
+    : clubs;
+  const sections = useMemo(
+    () => buildSections(data?.matches ?? [], activeLocality?.key ?? null),
+    [data, activeLocality],
+  );
+  const visibleMatches = sections.reduce((sum, section) => sum + section.matches.length, 0);
+
+  // Cambiar de localidad descarta los clubes elegidos de otra: dejarlos
+  // filtrando daría una lista vacía sin motivo a la vista.
+  const pickLocality = (key: string) => {
+    const keep = key
+      ? selectedClubs.filter((slug) => {
+          const club = clubs.find((item) => item.slug === slug);
+          return club && localityOf(club.city).key === key;
+        })
+      : selectedClubs;
+    update({ localidad: key, clubes: keep.join(',') });
+  };
+
   return (
     <Screen
       top={
-        <TopBar
-          name="Reservá tu cancha"
-          accountSlot={<AccountButton />}
-        />
+        // La marca arriba a la izquierda, con link a la landing: quien llega a
+        // /buscar por un link compartido tiene que poder ver qué es TurnoPadel
+        // sin bajar hasta el pie.
+        <TopBar name={BRAND} titleTo="/" brandMark accountSlot={<AccountButton />} />
       }
     >
-      <div className="pt-8 text-center">
-        <h1 className="text-4xl tracking-[0.1em]">¿Cuándo querés jugar?</h1>
+      <div className="pt-10 text-center">
+        <p className="eyebrow flex items-center justify-center gap-3 text-ladrillo-claro">
+          <span aria-hidden className="h-px w-6 bg-ladrillo-claro/60" />
+          Todos los clubes
+          <span aria-hidden className="h-px w-6 bg-ladrillo-claro/60" />
+        </p>
+        <h1 className="mt-4 text-[clamp(2.5rem,11vw,3.5rem)] tracking-[0.06em]">¿Cuándo querés jugar?</h1>
         <p className="mx-auto mt-3 max-w-sm text-ink-soft">
           Buscá en todos los clubes a la vez y quedate con el horario que te sirva.
         </p>
       </div>
 
       {/* ------------------------------------------------------- filtros */}
-      <Card className="mt-7 space-y-6">
+      <Card className="mt-8 space-y-7">
         <div className="space-y-3">
-          <p className="eyebrow text-ink-soft">Día</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Chip active={date === todayIso()} onClick={() => update({ fecha: todayIso() })}>
-              Hoy
-            </Chip>
-            <Chip
-              active={date === addDays(todayIso(), 1)}
-              onClick={() => update({ fecha: addDays(todayIso(), 1) })}
+          <div className="flex items-baseline justify-between gap-3">
+            <p className="eyebrow text-ink-soft">Día</p>
+            <button
+              type="button"
+              onClick={() => setPickingDay(!pickingDay)}
+              aria-expanded={pickingDay}
+              className="-my-3 text-xs font-semibold text-ladrillo-claro underline-offset-4 hover:underline"
             >
-              Mañana
-            </Chip>
-            <Chip active={pickingDay} onClick={() => setPickingDay(!pickingDay)}>
-              {pickingDay ? 'Cerrar calendario' : 'Otro día'}
-            </Chip>
+              {pickingDay ? 'Cerrar calendario' : 'Ver calendario'}
+            </button>
           </div>
-          <p className="text-sm text-ink-soft">{longDate(date)}</p>
+          <DayStrip
+            selected={date}
+            days={Math.min(STRIP_DAYS, horizon + 1)}
+            onSelect={(day) => {
+              update({ fecha: day });
+              setPickingDay(false);
+            }}
+          />
           {pickingDay && (
             <MonthCalendar
               selected={date}
@@ -171,43 +225,57 @@ export function SearchPage() {
           )}
         </div>
 
-        <div className="space-y-3">
-          <p className="eyebrow text-ink-soft">Horario</p>
-          <div className="flex flex-wrap gap-2">
-            {FRANJAS.map((franja) => (
-              <Chip
-                key={franja.label}
-                active={franjaActiva?.label === franja.label}
-                onClick={() => update({ desde: franja.from, hasta: franja.to })}
-              >
-                {franja.label}
-              </Chip>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <TimeSelect label="Desde" value={from} onChange={setFrom} />
-            <TimeSelect label="Hasta" value={to} onChange={setTo} />
-          </div>
-          <p className="text-xs text-ink-soft">
-            Es la hora a la que empieza el turno, no a la que termina.
-          </p>
-        </div>
+        <TimeFilter
+          franjaActiva={franjaActiva?.label ?? null}
+          from={from}
+          to={to}
+          onFranja={(franja) => update({ desde: franja.from, hasta: franja.to })}
+          onRange={setRange}
+        />
+
+        <CourtFilter
+          wall={wall}
+          surface={surface}
+          roof={roof}
+          onWall={(value) => update({ paredes: value ? wallParam(value) : '' })}
+          onSurface={(value) => update({ piso: value ? surfaceParam(value) : '' })}
+          onRoof={(value) => update({ techo: value ? roofParam(value) : '' })}
+        />
 
         {clubs.length > 0 && (
-          <div className="space-y-3">
-            <p className="eyebrow text-ink-soft">Clubes</p>
+          <div className="space-y-4">
+            <p className="eyebrow text-ink-soft">Dónde</p>
+            {localities.length > 1 && (
+              <div className="flex flex-wrap gap-2">
+                <LocalityChip
+                  active={!activeLocality}
+                  label="Todas"
+                  count={data?.matches.length ?? 0}
+                  onClick={() => pickLocality('')}
+                />
+                {localities.map((item) => (
+                  <LocalityChip
+                    key={item.key}
+                    active={activeLocality?.key === item.key}
+                    label={item.name}
+                    count={item.matches}
+                    onClick={() => pickLocality(item.key)}
+                  />
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
-              <Chip active={selectedClubs.length === 0} onClick={() => update({ clubes: '' })}>
-                Todos
-              </Chip>
-              {clubs.map((club) => (
-                <Chip
+              <ClubChip active={selectedClubs.length === 0} onClick={() => update({ clubes: '' })}>
+                {activeLocality ? `Todos en ${activeLocality.name}` : 'Todos los clubes'}
+              </ClubChip>
+              {visibleClubs.map((club) => (
+                <ClubChip
                   key={club.slug}
                   active={selectedClubs.includes(club.slug)}
                   onClick={() => toggleClub(club.slug)}
                 >
                   {club.name}
-                </Chip>
+                </ClubChip>
               ))}
             </div>
           </div>
@@ -215,7 +283,7 @@ export function SearchPage() {
       </Card>
 
       {/* ---------------------------------------------------- resultados */}
-      <section className="mt-9">
+      <section className="mt-12" aria-busy={loading}>
         {error && (
           <div className="space-y-3">
             <Alert>{error}</Alert>
@@ -225,100 +293,58 @@ export function SearchPage() {
           </div>
         )}
 
-        {!error && loading && <Loading label="Buscando canchas…" />}
+        {!error && !data && loading && <ResultsSkeleton />}
 
-        {!error && !loading && data && (
-          <>
-            {/* Sin resultados el titulo sobra: el cartel de abajo ya lo dice, y
-                "0 horarios libres" arriba lo repite con peor cara. */}
-            {data.matches.length > 0 && (
-              <SectionTitle title={resultsTitle(data.matches)} subtitle="Tocá uno para reservarlo" />
-            )}
-
-            {data.matches.length === 0 ? (
-              <div className="space-y-3">
-                <Alert tone="info">No quedan canchas libres con esos filtros.</Alert>
-                {!todoElDia && (
-                  <Button
-                    variant="secondary"
-                    onClick={() => update({ desde: '00:00', hasta: LAST_HALF })}
-                  >
-                    Buscar en todo el día
-                  </Button>
-                )}
-                <Button variant="secondary" onClick={() => update({ fecha: addDays(date, 1) })}>
-                  Probar el día siguiente
-                </Button>
-              </div>
+        {!error && data && (
+          // Al cambiar un filtro, la lista vieja queda atenuada mientras llega la
+          // nueva, en vez de desaparecer y dejar la página saltando.
+          <div className={`transition-opacity duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+            {visibleMatches === 0 ? (
+              <EmptyResults
+                date={date}
+                todoElDia={todoElDia}
+                otherLocalities={activeLocality ? (data.matches.length > 0) : false}
+                courtFiltered={wall !== null || surface !== null || roof !== null}
+                onAllDay={() => update({ desde: '00:00', hasta: LAST_HALF })}
+                onNextDay={() => update({ fecha: addDays(date, 1) })}
+                onAllLocalities={() => pickLocality('')}
+                onAnyCourt={() => update({ paredes: '', piso: '', techo: '' })}
+              />
             ) : (
-              <ul className="mt-5 space-y-3">
-                {data.matches.map((match, index) => (
-                  <li key={`${match.clubSlug}-${match.startsAt}`}>
-                    <Link
-                      to={`/club/${match.clubSlug}?fecha=${data.date}&hora=${match.startTime}`}
-                      onClick={() =>
-                        track('search_result_click', {
-                          clubSlug: match.clubSlug,
-                          slotAt: match.startsAt,
-                          // En qué lugar de la lista estaba lo que eligió.
-                          detail: String(index + 1),
-                        })
-                      }
-                      style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
-                      className={`ficha-in flex items-center gap-4 rounded-2xl border p-4 transition ${
-                        match.promo
-                          ? 'border-ladrillo/40 bg-ladrillo/[0.06] hover:border-ladrillo/70'
-                          : 'border-cal/10 bg-vidrio hover:border-cal/25 hover:bg-vidrio-alto'
-                      }`}
-                    >
-                      <div className="shrink-0 text-center">
-                        <span className="display block text-3xl tabular-nums">
-                          {match.startTime}
-                        </span>
-                        <span className="text-xs text-ink-soft tabular-nums">{match.endTime}</span>
-                      </div>
+              <>
+                {/* Con una sola zona, la cuenta total repetía la de su encabezado. */}
+                {sections.length > 1 ? (
+                  <div className="mb-6 flex items-baseline justify-between gap-3">
+                    <h2 className="text-2xl">{resultsTitle(sections.flatMap((section) => section.matches))}</h2>
+                    <p className="shrink-0 text-xs text-ink-soft">Tocá uno para reservarlo</p>
+                  </div>
+                ) : (
+                  <p className="mb-3 text-right text-xs text-ink-soft">Tocá uno para reservarlo</p>
+                )}
 
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-bold">{match.clubName}</p>
-                        {match.city && (
-                          <p className="truncate text-sm text-ink-soft">{match.city}</p>
-                        )}
-                        <p className="eyebrow mt-1.5 text-ink-soft">
-                          {match.freeCourts === 1
-                            ? '1 cancha libre'
-                            : `${match.freeCourts} canchas libres`}
-                        </p>
-                      </div>
-
-                      <div className="shrink-0 text-right">
-                        {match.promo && <Badge tone="promo">Promo</Badge>}
-                        <p
-                          className={`mt-1 text-sm font-bold tabular-nums ${
-                            match.promo ? 'text-ladrillo-claro' : 'text-cal'
-                          }`}
-                        >
-                          {perPerson(match.cheapestPrice, match.playersPerCourt)}
-                        </p>
-                        <p className="text-xs text-ink-soft">c/u</p>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+                <div className="space-y-10">
+                  {sections.map((section) => (
+                    <LocalitySection
+                      key={section.key}
+                      section={section}
+                      date={data.date}
+                      courtQuery={courtQuery(wall, surface, roof)}
+                    />
+                  ))}
+                </div>
+              </>
             )}
-          </>
+          </div>
         )}
       </section>
 
       {/*
-        La única salida hacia la landing. A /buscar se entra por un link
-        compartido o por un marcador, sin pasar por la portada, y sin esto no
-        hay forma de llegar a ella. Va con el texto de a quién le sirve: esa
-        página le vende al dueño del club, no al jugador que está buscando
-        cancha, así que ofrecerla como "inicio" sería mandarlo a una página que
-        no es para él.
+        La otra salida hacia la landing, además de la marca de la barra. A
+        /buscar se entra por un link compartido o por un marcador, sin pasar por
+        la portada. Acá abajo va con el texto de a quién le sirve: esa página le
+        vende sobre todo al dueño del club.
       */}
-      <footer className="mt-14 border-t border-cal/10 pt-8 text-center">
+      <footer className="mt-16 border-t border-cal/10 pt-8 text-center">
         <Link
           to="/"
           className="eyebrow text-ink-soft underline-offset-4 transition hover:text-cal hover:underline"
@@ -330,31 +356,755 @@ export function SearchPage() {
   );
 }
 
-function TimeSelect({
+/**
+ * Los próximos días como pastillas que se deslizan de costado: hoy y mañana
+ * con nombre, el resto con el día de la semana. Para ir más lejos está el
+ * calendario. La elegida se centra sola en la tira.
+ */
+function DayStrip({
+  selected,
+  days,
+  onSelect,
+}: {
+  selected: string;
+  days: number;
+  onSelect: (day: string) => void;
+}) {
+  const strip = useRef<HTMLDivElement>(null);
+  const today = todayIso();
+  const list = Array.from({ length: Math.max(days, 1) }, (_, index) => addDays(today, index));
+
+  useEffect(() => {
+    const container = strip.current;
+    const pill = container?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!container || !pill) {
+      return;
+    }
+    // scrollTo sobre la tira y no scrollIntoView: ese mueve también la página.
+    container.scrollTo({
+      left: pill.offsetLeft - container.clientWidth / 2 + pill.clientWidth / 2,
+      behavior: 'smooth',
+    });
+  }, [selected]);
+
+  return (
+    <div
+      ref={strip}
+      className="-mx-5 flex snap-x gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    >
+      {list.map((day, index) => {
+        const active = day === selected;
+        const label = index === 0 ? 'Hoy' : index === 1 ? 'Mañana' : weekday(day);
+        return (
+          <button
+            key={day}
+            type="button"
+            aria-pressed={active}
+            aria-label={longDate(day)}
+            onClick={() => onSelect(day)}
+            className={`flex w-16 shrink-0 snap-start flex-col items-center rounded-2xl border py-2.5 transition ${
+              active
+                ? 'border-cal bg-cal text-pista'
+                : 'border-cal/10 bg-pista text-cal hover:border-cal/30'
+            }`}
+          >
+            <span className={`text-[0.65rem] font-semibold uppercase tracking-[0.1em] ${active ? 'text-pista/70' : 'text-ink-soft'}`}>
+              {label}
+            </span>
+            <span className="display mt-0.5 text-2xl leading-none tabular-nums">{Number(day.slice(8))}</span>
+          </button>
+        );
+      })}
+      {/* Si el día elegido quedó fuera de la tira (vino del calendario), igual
+          se ve cuál es. */}
+      {!list.includes(selected) && (
+        <span className="flex shrink-0 items-center rounded-2xl border border-cal bg-cal px-4 text-sm font-bold text-pista first-letter:uppercase">
+          {longDate(selected)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Franjas en un selector de cuatro, y el rango exacto plegado debajo: casi todos
+ * buscan "a la noche", y los dos desplegables a la vista eran ruido para ellos.
+ * Si el rango de la URL no es una franja, arranca abierto.
+ */
+function TimeFilter({
+  franjaActiva,
+  from,
+  to,
+  onFranja,
+  onRange,
+}: {
+  franjaActiva: string | null;
+  from: string;
+  to: string;
+  onFranja: (franja: (typeof FRANJAS)[number]) => void;
+  onRange: (from: string, to: string) => void;
+}) {
+  const [exact, setExact] = useState(franjaActiva === null);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="eyebrow text-ink-soft">Horario</p>
+        <button
+          type="button"
+          onClick={() => setExact(!exact)}
+          aria-expanded={exact}
+          className="-my-3 text-xs font-semibold text-ladrillo-claro underline-offset-4 hover:underline"
+        >
+          {exact ? 'Ocultar horario exacto' : 'Elegir horario exacto'}
+        </button>
+      </div>
+      <div role="group" aria-label="Franja horaria" className="grid grid-cols-4 gap-1 rounded-2xl bg-cal/[0.05] p-1">
+        {FRANJAS.map((franja) => {
+          const active = franjaActiva === franja.label;
+          return (
+            <button
+              key={franja.label}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onFranja(franja)}
+              className={`flex flex-col items-center justify-center rounded-xl px-1 py-2 text-center transition ${
+                active ? 'bg-cal text-pista' : 'text-ink-soft hover:bg-cal/[0.06] hover:text-cal'
+              }`}
+            >
+              <span className="text-xs font-bold leading-tight">{franja.label}</span>
+              <span className={`mt-0.5 text-[0.65rem] leading-tight ${active ? 'text-pista/70' : 'text-ink-mute'}`}>
+                {franja.hint}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {exact && <ExactRange from={from} to={to} onRange={onRange} />}
+    </div>
+  );
+}
+
+/** Espera antes de volcar el rango a la URL: arrastrar no dispara una búsqueda por paso. */
+const RANGE_COMMIT_MS = 350;
+
+/** Marcas debajo del riel: cada seis horas y el último turno posible. */
+const RANGE_TICKS = [0, 12, 24, 36, TIMES.length - 1];
+
+function timeIndex(time: string): number {
+  return Math.max(0, TIMES.indexOf(time));
+}
+
+/**
+ * El rango exacto: dos manijas sobre un riel del día, para acercarse rápido, y
+ * botones de media hora a cada lado de la hora, para afinar con el pulgar sin
+ * pelearse con la manija. Reemplaza a los dos desplegables de 48 horas, que en
+ * el teléfono obligaban a bajar una lista larga dos veces.
+ *
+ * <p>Las manijas no se cruzan: "desde" nunca pasa a "hasta". El rango va a la
+ * URL recién cuando se deja de mover, así la búsqueda no corre en cada paso.
+ */
+function ExactRange({
+  from,
+  to,
+  onRange,
+}: {
+  from: string;
+  to: string;
+  onRange: (from: string, to: string) => void;
+}) {
+  const [start, setStart] = useState(timeIndex(from));
+  const [end, setEnd] = useState(timeIndex(to));
+  const last = TIMES.length - 1;
+
+  // Si el rango cambia desde afuera (una franja, volver atrás), las manijas lo siguen.
+  useEffect(() => {
+    setStart(timeIndex(from));
+    setEnd(timeIndex(to));
+  }, [from, to]);
+
+  useEffect(() => {
+    if (TIMES[start] === from && TIMES[end] === to) {
+      return;
+    }
+    const timer = window.setTimeout(() => onRange(TIMES[start], TIMES[end]), RANGE_COMMIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [start, end, from, to, onRange]);
+
+  const moveStart = (value: number) => setStart(Math.min(Math.max(0, value), end));
+  const moveEnd = (value: number) => setEnd(Math.max(Math.min(last, value), start));
+  // Los botones suman sobre el valor del momento y no sobre el del render: dos
+  // toques seguidos antes de que se redibuje tienen que mover dos pasos.
+  const nudgeStart = (delta: number) => setStart((value) => Math.min(Math.max(0, value + delta), end));
+  const nudgeEnd = (delta: number) => setEnd((value) => Math.max(Math.min(last, value + delta), start));
+  const percent = (index: number) => (index / last) * 100;
+
+  return (
+    <div className="rounded-2xl border border-cal/10 bg-pista p-4">
+      <div className="grid grid-cols-2 divide-x divide-cal/10">
+        <TimeStepper
+          label="Desde"
+          value={TIMES[start]}
+          onMinus={() => nudgeStart(-1)}
+          onPlus={() => nudgeStart(1)}
+          canMinus={start > 0}
+          canPlus={start < end}
+        />
+        <TimeStepper
+          label="Hasta"
+          value={TIMES[end]}
+          onMinus={() => nudgeEnd(-1)}
+          onPlus={() => nudgeEnd(1)}
+          canMinus={end > start}
+          canPlus={end < last}
+        />
+      </div>
+
+      <div className="relative mx-3 mt-5 h-7">
+        <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-cal/10" />
+        <div
+          className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-ladrillo"
+          style={{ left: `${percent(start)}%`, right: `${100 - percent(end)}%` }}
+        />
+        <input
+          type="range"
+          min={0}
+          max={last}
+          step={1}
+          value={start}
+          onChange={(event) => moveStart(Number(event.target.value))}
+          aria-label="Desde"
+          aria-valuetext={TIMES[start]}
+          className="rango-doble"
+          // Con las dos manijas juntas al final, la de "desde" tiene que quedar
+          // arriba: si no, la tapa la de "hasta" y no hay forma de agarrarla.
+          style={{ zIndex: start > last - 2 ? 3 : 2 }}
+        />
+        <input
+          type="range"
+          min={0}
+          max={last}
+          step={1}
+          value={end}
+          onChange={(event) => moveEnd(Number(event.target.value))}
+          aria-label="Hasta"
+          aria-valuetext={TIMES[end]}
+          className="rango-doble"
+        />
+      </div>
+      <div aria-hidden className="relative mx-3 mt-1 h-4 text-[0.65rem] tabular-nums text-ink-mute">
+        {RANGE_TICKS.map((index) => (
+          <span key={index} className="absolute -translate-x-1/2" style={{ left: `${percent(index)}%` }}>
+            {TIMES[index]}
+          </span>
+        ))}
+      </div>
+
+      <p className="mt-4 text-center text-xs text-ink-soft">
+        Turnos que <span className="font-semibold text-cal">empiezan</span> entre las{' '}
+        <span className="font-semibold tabular-nums text-cal">{TIMES[start]}</span> y las{' '}
+        <span className="font-semibold tabular-nums text-cal">{TIMES[end]}</span>
+      </p>
+    </div>
+  );
+}
+
+function TimeStepper({
   label,
+  value,
+  onMinus,
+  onPlus,
+  canMinus,
+  canPlus,
+}: {
+  label: string;
+  value: string;
+  onMinus: () => void;
+  onPlus: () => void;
+  canMinus: boolean;
+  canPlus: boolean;
+}) {
+  const stepButton =
+    'grid size-8 shrink-0 place-items-center rounded-full border border-cal/10 text-lg leading-none text-ink-soft transition hover:border-cal/30 hover:text-cal disabled:opacity-30 disabled:hover:border-cal/10 disabled:hover:text-ink-soft sm:size-9';
+  return (
+    <div className="flex flex-col items-center px-2">
+      <span className="eyebrow text-ink-mute">{label}</span>
+      <div className="mt-1.5 flex items-center gap-1.5 sm:gap-3">
+        <button
+          type="button"
+          onClick={onMinus}
+          disabled={!canMinus}
+          aria-label={`${label}: media hora antes`}
+          className={stepButton}
+        >
+          −
+        </button>
+        <span className="display w-[4.5ch] text-center text-[1.75rem] leading-none tabular-nums sm:text-3xl">{value}</span>
+        <button
+          type="button"
+          onClick={onPlus}
+          disabled={!canPlus}
+          aria-label={`${label}: media hora después`}
+          className={stepButton}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Cómo es la cancha: techo, paredes y piso. En Necochea conviven techadas y al
+ * aire libre, blindex y pared, y algunas de las antiguas no tienen alfombra; para
+ * quien juega no es lo mismo. Sin elegir nada, da igual y entran todas.
+ */
+function CourtFilter({
+  wall,
+  surface,
+  roof,
+  onWall,
+  onSurface,
+  onRoof,
+}: {
+  wall: CourtWall | null;
+  surface: CourtSurface | null;
+  roof: CourtRoof | null;
+  onWall: (wall: CourtWall | null) => void;
+  onSurface: (surface: CourtSurface | null) => void;
+  onRoof: (roof: CourtRoof | null) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      <p className="eyebrow text-ink-soft">Cancha</p>
+      {/* Uno debajo del otro: con tres grupos, de a dos por fila el tercero
+          quedaba solo y a lo ancho. */}
+      <div className="grid gap-2">
+        <Segmented
+          label="Techo"
+          options={[
+            { value: null, label: 'Todas' },
+            { value: 'COVERED', label: ROOF_LABEL.COVERED },
+            { value: 'OUTDOOR', label: ROOF_LABEL.OUTDOOR },
+          ]}
+          value={roof}
+          onChange={onRoof}
+        />
+        <Segmented
+          label="Paredes"
+          options={[
+            { value: null, label: 'Todas' },
+            { value: 'GLASS', label: WALL_LABEL.GLASS },
+            { value: 'WALL', label: WALL_LABEL.WALL },
+          ]}
+          value={wall}
+          onChange={onWall}
+        />
+        <Segmented
+          label="Piso"
+          options={[
+            { value: null, label: 'Todos' },
+            { value: 'CARPET', label: SURFACE_LABEL.CARPET },
+            { value: 'NO_CARPET', label: SURFACE_LABEL.NO_CARPET },
+          ]}
+          value={surface}
+          onChange={onSurface}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Tres opciones en una pastilla, con el rótulo adentro a la izquierda. */
+function Segmented<T extends string>({
+  label,
+  options,
   value,
   onChange,
 }: {
   label: string;
-  value: string;
-  onChange: (value: string) => void;
+  options: { value: T | null; label: string }[];
+  value: T | null;
+  onChange: (value: T | null) => void;
 }) {
   return (
-    <label className="block">
-      <span className="eyebrow mb-1.5 block text-ink-soft">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full appearance-none rounded-xl border border-cal/10 bg-vidrio px-3.5 py-3 text-base tabular-nums text-cal transition hover:border-cal/25"
-      >
-        {TIMES.map((time) => (
-          <option key={time} value={time}>
-            {time}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div role="group" aria-label={label} className="flex items-center gap-1 rounded-2xl bg-cal/[0.05] p-1">
+      <span className="eyebrow w-[4.75rem] shrink-0 pl-2 text-ink-mute">{label}</span>
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.label}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(option.value)}
+            className={`min-w-0 flex-1 rounded-xl px-2 py-2 text-xs font-bold leading-tight transition ${
+              active ? 'bg-cal text-pista' : 'text-ink-soft hover:bg-cal/[0.06] hover:text-cal'
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
   );
+}
+
+function LocalityChip({
+  active,
+  label,
+  count,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`flex items-center gap-2 rounded-full border py-2 pl-3.5 pr-2 text-sm font-semibold transition ${
+        active ? 'border-cal bg-cal text-pista' : 'border-cal/10 bg-pista text-cal hover:border-cal/30'
+      }`}
+    >
+      <PinGlyph className={`size-3.5 ${active ? 'text-pista/70' : 'text-ladrillo-claro'}`} />
+      {label}
+      <span
+        className={`grid min-w-6 place-items-center rounded-full px-1.5 py-0.5 text-[0.7rem] tabular-nums ${
+          active ? 'bg-pista/15 text-pista' : 'bg-cal/[0.08] text-ink-soft'
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function ClubChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: string }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`rounded-full border px-3.5 py-2 text-sm transition ${
+        active
+          ? 'border-ladrillo/50 bg-ladrillo/15 font-bold text-ladrillo-claro'
+          : 'border-cal/10 bg-vidrio text-ink-soft hover:border-cal/25 hover:text-cal'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function LocalitySection({
+  section,
+  date,
+  courtQuery,
+}: {
+  section: Section;
+  date: string;
+  courtQuery: string;
+}) {
+  return (
+    <section aria-label={section.name}>
+      <header className="mb-4 flex flex-col gap-1 border-b border-cal/10 pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+        <div className="min-w-0">
+          {section.region && <p className="eyebrow text-ink-mute">{section.region}</p>}
+          <h3 className="mt-1 flex items-center gap-2 text-3xl">
+            <PinGlyph className="size-5 shrink-0 text-ladrillo-claro" />
+            <span>{section.name}</span>
+          </h3>
+        </div>
+        <p className="shrink-0 text-xs text-ink-soft tabular-nums sm:pb-1">{resultsTitle(section.matches)}</p>
+      </header>
+      <ul className="space-y-2.5">
+        {section.matches.map((match, index) => (
+          <li key={`${match.clubSlug}-${match.startsAt}`}>
+            <ResultCard match={match} date={date} index={index} courtQuery={courtQuery} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ResultCard({
+  match,
+  date,
+  index,
+  courtQuery,
+}: {
+  match: SearchMatch;
+  date: string;
+  index: number;
+  /** Paredes y piso pedidos, para que el club preelija una cancha que los cumpla. */
+  courtQuery: string;
+}) {
+  const features = featuresSummary(match.walls, match.surfaces, match.roofs);
+  const place = [match.city ? townOf(match.city) : null, ...features].filter(Boolean).join(' · ');
+  return (
+    <Link
+      to={`/club/${match.clubSlug}?fecha=${date}&hora=${match.startTime}${courtQuery}`}
+      onClick={() =>
+        track('search_result_click', {
+          clubSlug: match.clubSlug,
+          slotAt: match.startsAt,
+          // En qué lugar de la lista de su localidad estaba lo que eligió.
+          detail: String(index + 1),
+        })
+      }
+      style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
+      className={`ficha-in group flex items-stretch overflow-hidden rounded-2xl border transition duration-300 hover:-translate-y-0.5 ${
+        match.promo
+          ? 'border-ladrillo/40 bg-ladrillo/[0.06] hover:border-ladrillo/70'
+          : 'border-cal/10 bg-vidrio hover:border-cal/25 hover:bg-vidrio-alto'
+      }`}
+    >
+      <div className="flex w-20 shrink-0 flex-col items-center justify-center border-r border-cal/10 bg-cal/[0.03] py-3">
+        <span className="display text-3xl leading-none tabular-nums">{match.startTime}</span>
+        <span className="mt-1 text-[0.7rem] text-ink-mute tabular-nums">a {match.endTime}</span>
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col justify-center px-4 py-3">
+        <p className="truncate font-bold">{match.clubName}</p>
+        {/* La ciudad va en la tarjeta porque una zona puede tener más de una, y al
+            lado cómo son las canchas libres: techo, paredes, y si hay sin alfombra. */}
+        {place && <p className="line-clamp-2 text-xs text-ink-mute">{place}</p>}
+        {/* Las canchitas ya dicen "cancha": al lado alcanza con el número, y
+            con la frase entera no entraba en un renglón en el teléfono. */}
+        <p
+          className="mt-1.5 flex items-center gap-2 whitespace-nowrap text-xs text-ink-soft"
+          aria-label={match.freeCourts === 1 ? '1 cancha libre' : `${match.freeCourts} canchas libres`}
+        >
+          <CourtMarks count={match.freeCourts} />
+          {match.freeCourts === 1 ? '1 libre' : `${match.freeCourts} libres`}
+        </p>
+      </div>
+
+      <div className="flex shrink-0 flex-col items-end justify-center gap-1 py-3 pr-4">
+        {match.promo && <Badge tone="promo">Promo</Badge>}
+        <p className={`text-base font-bold tabular-nums ${match.promo ? 'text-ladrillo-claro' : 'text-cal'}`}>
+          {perPerson(match.cheapestPrice, match.playersPerCourt)}
+          <span className="ml-1 text-xs font-normal text-ink-soft">c/u</span>
+        </p>
+      </div>
+
+      <span
+        aria-hidden
+        className="hidden w-10 shrink-0 place-items-center border-l border-cal/10 text-ink-soft transition group-hover:bg-ladrillo group-hover:text-cal sm:grid"
+      >
+        →
+      </span>
+    </Link>
+  );
+}
+
+/** Una canchita por cada cancha libre (hasta cuatro), para leer la cantidad de un vistazo. */
+function CourtMarks({ count }: { count: number }) {
+  const shown = Math.min(count, 4);
+  return (
+    <span aria-hidden className="flex gap-0.5">
+      {Array.from({ length: shown }, (_, index) => (
+        <span key={index} className="relative h-2.5 w-4 rounded-[3px] border border-ladrillo-claro/70">
+          <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-ladrillo-claro/70" />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function EmptyResults({
+  date,
+  todoElDia,
+  otherLocalities,
+  courtFiltered,
+  onAllDay,
+  onNextDay,
+  onAllLocalities,
+  onAnyCourt,
+}: {
+  date: string;
+  todoElDia: boolean;
+  otherLocalities: boolean;
+  courtFiltered: boolean;
+  onAllDay: () => void;
+  onNextDay: () => void;
+  onAllLocalities: () => void;
+  onAnyCourt: () => void;
+}) {
+  return (
+    <div className="rounded-3xl border border-dashed border-cal/15 px-6 py-10 text-center">
+      <span className="mx-auto grid size-14 place-items-center rounded-full bg-cal/[0.06] text-ink-soft">
+        <CourtMarks count={1} />
+      </span>
+      <h2 className="mt-5 text-2xl">No quedan canchas libres</h2>
+      <p className="mx-auto mt-2 max-w-xs text-sm text-ink-soft first-letter:uppercase">
+        {longDate(date)}, con esos filtros.
+      </p>
+      <div className="mx-auto mt-6 max-w-xs space-y-2.5">
+        {otherLocalities && (
+          <Button variant="primary" onClick={onAllLocalities}>
+            Ver en todas las localidades
+          </Button>
+        )}
+        {courtFiltered && (
+          <Button variant={otherLocalities ? 'secondary' : 'primary'} onClick={onAnyCourt}>
+            Cualquier cancha
+          </Button>
+        )}
+        {!todoElDia && (
+          <Button variant="secondary" onClick={onAllDay}>
+            Buscar en todo el día
+          </Button>
+        )}
+        <Button variant="secondary" onClick={onNextDay}>
+          Probar el día siguiente
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ResultsSkeleton() {
+  return (
+    <div className="space-y-2.5" aria-label="Buscando canchas…">
+      {[0, 1, 2, 3].map((index) => (
+        <div
+          key={index}
+          className="h-[4.5rem] animate-pulse rounded-2xl border border-cal/10 bg-vidrio"
+          style={{ animationDelay: `${index * 120}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PinGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 1 1 13 0c0 5.4-6.5 11-6.5 11Z" />
+      <circle cx="12" cy="10" r="2.3" />
+    </svg>
+  );
+}
+
+type Locality = { key: string; name: string; region: string | null };
+type LocalityCount = Locality & { matches: number };
+type Section = Locality & { matches: SearchMatch[] };
+
+const NO_LOCALITY: Locality = { key: 'otras', name: 'Otras localidades', region: null };
+
+/**
+ * Ciudades distintas que para el jugador son un mismo lugar, por el nombre de la
+ * ciudad sin tildes. Necochea y Quequén están pegadas, separadas solo por el río:
+ * partirlas en dos secciones escondía la mitad de las canchas a quien busca "en
+ * Necochea". Una ciudad nueva que se sume a una zona va acá.
+ */
+const ZONAS: Record<string, { key: string; name: string }> = {
+  necochea: { key: 'necochea-quequen', name: 'Necochea y Quequén' },
+  quequen: { key: 'necochea-quequen', name: 'Necochea y Quequén' },
+};
+
+/**
+ * La localidad de un club, a partir de la ciudad que carga en el panel: "Necochea,
+ * Buenos Aires" se muestra "Necochea" con la provincia aparte. La clave va sin
+ * tildes ni espacios porque viaja en la URL (?localidad=necochea-buenos-aires).
+ */
+function localityOf(city: string | null): Locality {
+  const clean = city?.trim();
+  if (!clean) {
+    return NO_LOCALITY;
+  }
+  const [name, ...rest] = clean.split(',').map((part) => part.trim());
+  const region = rest.filter(Boolean).join(', ') || null;
+  const zona = ZONAS[slugify(name)];
+  return zona ? { ...zona, region } : { key: slugify(clean), name, region };
+}
+
+/** Techo, paredes y piso pedidos, listos para colgar del link al club: "&paredes=blindex". */
+function courtQuery(wall: CourtWall | null, surface: CourtSurface | null, roof: CourtRoof | null): string {
+  return (
+    (wall ? `&paredes=${wallParam(wall)}` : '') +
+    (surface ? `&piso=${surfaceParam(surface)}` : '') +
+    (roof ? `&techo=${roofParam(roof)}` : '')
+  );
+}
+
+/** "Quequén, Buenos Aires" → "Quequén". */
+function townOf(city: string): string {
+  return city.split(',')[0].trim();
+}
+
+/** Las localidades con al menos un club, en orden alfabético y "otras" al final. */
+function buildLocalities(clubs: ClubOption[], matches: SearchMatch[]): LocalityCount[] {
+  const byKey = new Map<string, LocalityCount>();
+  for (const club of clubs) {
+    const locality = localityOf(club.city);
+    if (!byKey.has(locality.key)) {
+      byKey.set(locality.key, { ...locality, matches: 0 });
+    }
+  }
+  for (const match of matches) {
+    const entry = byKey.get(localityOf(match.city).key);
+    if (entry) {
+      entry.matches += 1;
+    }
+  }
+  return [...byKey.values()].sort(compareLocalities);
+}
+
+/** Los resultados agrupados por localidad, cada grupo en el orden por horario que manda el backend. */
+function buildSections(matches: SearchMatch[], onlyKey: string | null): Section[] {
+  const byKey = new Map<string, Section>();
+  for (const match of matches) {
+    const locality = localityOf(match.city);
+    if (onlyKey && locality.key !== onlyKey) {
+      continue;
+    }
+    const section = byKey.get(locality.key) ?? { ...locality, matches: [] };
+    section.matches.push(match);
+    byKey.set(locality.key, section);
+  }
+  return [...byKey.values()].sort(compareLocalities);
+}
+
+function compareLocalities(a: Locality, b: Locality): number {
+  if (a.key === NO_LOCALITY.key) {
+    return 1;
+  }
+  if (b.key === NO_LOCALITY.key) {
+    return -1;
+  }
+  return a.name.localeCompare(b.name, 'es');
+}
+
+function slugify(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/** "sáb", "dom": el día de la semana corto, sin el punto de la abreviatura. */
+function weekday(isoDate: string): string {
+  return new Intl.DateTimeFormat('es-AR', { weekday: 'short' })
+    .format(new Date(`${isoDate}T12:00:00`))
+    .replace('.', '');
 }
 
 /**

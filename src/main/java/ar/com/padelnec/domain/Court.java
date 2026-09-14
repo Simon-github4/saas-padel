@@ -1,7 +1,12 @@
 package ar.com.padelnec.domain;
 
+import ar.com.padelnec.domain.enums.CourtRoof;
+import ar.com.padelnec.domain.enums.CourtSurface;
+import ar.com.padelnec.domain.enums.CourtWall;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
@@ -22,4 +27,19 @@ public class Court extends TenantScopedEntity {
     /** Una cancha inactiva desaparece de la grilla pero conserva su historial. */
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
+
+    /** Blindex o pared: el jugador puede filtrar la busqueda por esto. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private CourtWall wall = CourtWall.GLASS;
+
+    /** Con alfombra o sin: tambien filtra la busqueda. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private CourtSurface surface = CourtSurface.CARPET;
+
+    /** Techada o al aire libre: tambien filtra la busqueda. */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private CourtRoof roof = CourtRoof.OUTDOOR;
 }

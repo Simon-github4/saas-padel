@@ -6,6 +6,9 @@ import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.PricingRule;
 import ar.com.padelnec.domain.Product;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.domain.enums.CourtRoof;
+import ar.com.padelnec.domain.enums.CourtSurface;
+import ar.com.padelnec.domain.enums.CourtWall;
 import ar.com.padelnec.domain.enums.HeroVariant;
 import ar.com.padelnec.domain.enums.ThemeMode;
 import ar.com.padelnec.domain.enums.UserRole;
@@ -123,9 +126,12 @@ public class DevDataSeeder {
         club.setGeneralPricePerPerson(new BigDecimal("6000"));
 
         seedClub(repos, club, "dueno@clubnecochea.test", saved -> {
-            Court cancha1 = court(repos, "Cancha 1 (techada)", 1);
-            court(repos, "Cancha 2", 2);
-            court(repos, "Cancha 3", 3);
+            Court cancha1 = court(repos, "Cancha 1 (techada)", 1,
+                    CourtWall.GLASS, CourtSurface.CARPET, CourtRoof.COVERED);
+            // Las dos descubiertas son de las de antes: de pared, y la 3 sin alfombra.
+            // Sirven para probar los filtros de la busqueda.
+            court(repos, "Cancha 2", 2, CourtWall.WALL, CourtSurface.CARPET);
+            court(repos, "Cancha 3", 3, CourtWall.WALL, CourtSurface.NO_CARPET);
 
             amenity(repos, "court", "4 canchas", "3 descubiertas y 1 techada", 1);
             amenity(repos, "timer", "Turnos de 90 minutos", "Horarios fijos, sin esperas", 2);
@@ -219,10 +225,12 @@ public class DevDataSeeder {
         club.setGeneralPricePerPerson(new BigDecimal("7000"));
 
         seedClub(repos, club, "dueno@elmuelle.test", saved -> {
-            court(repos, "Cancha 1", 1);
-            court(repos, "Cancha 2", 2);
-            court(repos, "Cancha 3", 3);
-            Court central = court(repos, "Cancha Central", 4);
+            // "4 canchas techadas", como dice el club.
+            court(repos, "Cancha 1", 1, CourtWall.GLASS, CourtSurface.CARPET, CourtRoof.COVERED);
+            court(repos, "Cancha 2", 2, CourtWall.GLASS, CourtSurface.CARPET, CourtRoof.COVERED);
+            court(repos, "Cancha 3", 3, CourtWall.WALL, CourtSurface.CARPET, CourtRoof.COVERED);
+            Court central = court(repos, "Cancha Central", 4,
+                    CourtWall.GLASS, CourtSurface.CARPET, CourtRoof.COVERED);
 
             amenity(repos, "court", "4 canchas techadas", "Se juega llueva o no", 1);
             amenity(repos, "shower", "Vestuarios con duchas", "Toallas incluidas", 2);
@@ -277,9 +285,21 @@ public class DevDataSeeder {
     }
 
     private Court court(Repos repos, String name, int order) {
+        return court(repos, name, order, CourtWall.GLASS, CourtSurface.CARPET);
+    }
+
+    private Court court(Repos repos, String name, int order, CourtWall wall, CourtSurface surface) {
+        return court(repos, name, order, wall, surface, CourtRoof.OUTDOOR);
+    }
+
+    private Court court(Repos repos, String name, int order, CourtWall wall, CourtSurface surface,
+                        CourtRoof roof) {
         Court court = new Court();
         court.setName(name);
         court.setDisplayOrder(order);
+        court.setWall(wall);
+        court.setSurface(surface);
+        court.setRoof(roof);
         return repos.courts().saveAndFlush(court);
     }
 

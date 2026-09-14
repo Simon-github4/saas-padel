@@ -9,10 +9,14 @@ import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Customer;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.BookingStatus;
+import ar.com.padelnec.domain.enums.CourtRoof;
+import ar.com.padelnec.domain.enums.CourtSurface;
+import ar.com.padelnec.domain.enums.CourtWall;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.CustomerRepository;
 import ar.com.padelnec.service.CourtSearchService;
+import ar.com.padelnec.service.CourtSearchService.CourtFilter;
 import ar.com.padelnec.web.BusinessRuleException;
 import ar.com.padelnec.web.dto.CourtSearchResponse;
 import ar.com.padelnec.web.dto.CourtSearchResponse.Match;
@@ -82,9 +86,12 @@ class CourtSearchServiceTest {
         ((MutableClock) clock).set(Instant.parse(NOW));
         fixture.reset();
 
+        // Una techada de blindex con alfombra y una de las antiguas, al aire libre, de
+        // pared y sin alfombra: la mezcla que hay en Necochea y la que ejercitan los
+        // filtros por cancha.
         necochea = withClub("club-necochea", club -> {
-            fixture.court("Cancha 1", 1);
-            fixture.court("Cancha 2", 2);
+            fixture.court("Cancha 1", 1, CourtWall.GLASS, CourtSurface.CARPET, CourtRoof.COVERED);
+            fixture.court("Cancha 2", 2, CourtWall.WALL, CourtSurface.NO_CARPET);
             fixture.allDayPrice(TODAY.getDayOfWeek(), "20000");
         });
 
@@ -221,7 +228,86 @@ class CourtSearchServiceTest {
         assertThat(slot.clubName()).isEqualTo("Club club-necochea");
     }
 
+    @Test
+    @DisplayName("Sin filtro de cancha, cada turno cuenta todas y dice que paredes y pisos tienen")
+    void listsWallsAndSurfacesOfFreeCourts() {
+        Match slot = firstOf("club-necochea", CourtFilter.ANY);
+
+        assertThat(slot.freeCourts()).isEqualTo(2);
+        assertThat(slot.walls()).containsExactlyInAnyOrder(CourtWall.GLASS, CourtWall.WALL);
+        assertThat(slot.surfaces()).containsExactlyInAnyOrder(CourtSurface.CARPET, CourtSurface.NO_CARPET);
+    }
+
+    @Test
+    @DisplayName("Filtrar por paredes cuenta solo las canchas que las tienen, sin esconder el horario")
+    void filtersCourtsByWall() {
+        Match glass = firstOf("club-necochea", new CourtFilter(CourtWall.GLASS, null, null));
+        assertThat(glass.freeCourts()).isEqualTo(1);
+        assertThat(glass.walls()).containsExactly(CourtWall.GLASS);
+
+        List<Match> wall = courtSearchService.search(TODAY, TODO_EL_DIA_DESDE, TODO_EL_DIA_HASTA,
+                Set.of(), new CourtFilter(CourtWall.WALL, null, null)).matches();
+        // Quequen tiene una sola cancha, de blindex: con "pared" no aporta nada.
+        assertThat(wall).isNotEmpty();
+        assertThat(wall).extracting(Match::clubSlug).containsOnly("club-necochea");
+        assertThat(wall).allSatisfy(match -> assertThat(match.freeCourts()).isEqualTo(1));
+    }
+
+    @Test
+    @DisplayName("Filtrar por techada deja solo las canchas con techo, y el turno dice cuales son")
+    void filtersCourtsByRoof() {
+        Match covered = firstOf("club-necochea", new CourtFilter(null, null, CourtRoof.COVERED));
+        assertThat(covered.freeCourts()).isEqualTo(1);
+        assertThat(covered.roofs()).containsExactly(CourtRoof.COVERED);
+
+        List<Match> matches = courtSearchService.search(TODAY, TODO_EL_DIA_DESDE, TODO_EL_DIA_HASTA,
+                Set.of(), new CourtFilter(null, null, CourtRoof.COVERED)).matches();
+        // La unica cancha de Quequen es al aire libre.
+        assertThat(matches).extracting(Match::clubSlug).containsOnly("club-necochea");
+
+        assertThat(firstOf("club-necochea", CourtFilter.ANY).roofs())
+                .containsExactlyInAnyOrder(CourtRoof.COVERED, CourtRoof.OUTDOOR);
+    }
+
+    @Test
+    @DisplayName("Paredes y piso se combinan: una cancha tiene que cumplir los dos")
+    void combinesWallAndSurface() {
+        List<Match> matches = courtSearchService.search(TODAY, TODO_EL_DIA_DESDE, TODO_EL_DIA_HASTA,
+                Set.of(), new CourtFilter(CourtWall.GLASS, CourtSurface.NO_CARPET, null)).matches();
+
+        // La de blindex tiene alfombra y la sin alfombra es de pared: ninguna cumple.
+        assertThat(matches).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Si la unica cancha que cumple el filtro esta ocupada, el horario desaparece")
+    void hidesSlotWhenMatchingCourtIsTaken() {
+        TenantContext.set(necochea.getId());
+        Customer customer = saveCustomer();
+        Court wallCourt = courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc().stream()
+                .filter(court -> court.getWall() == CourtWall.WALL)
+                .findFirst()
+                .orElseThrow();
+        bookAt(wallCourt, customer, LocalTime.of(20, 0), 90);
+        TenantContext.clear();
+
+        List<LocalTime> starts = courtSearchService.search(TODAY, TODO_EL_DIA_DESDE, TODO_EL_DIA_HASTA,
+                        Set.of("club-necochea"), new CourtFilter(CourtWall.WALL, null, null)).matches().stream()
+                .map(Match::startTime)
+                .toList();
+
+        assertThat(starts).doesNotContain(LocalTime.of(20, 0)).contains(LocalTime.of(21, 30));
+    }
+
     // ------------------------------------------------------------- helpers
+
+    private Match firstOf(String slug, CourtFilter filter) {
+        return courtSearchService.search(TODAY, TODO_EL_DIA_DESDE, TODO_EL_DIA_HASTA, Set.of(), filter)
+                .matches().stream()
+                .filter(match -> match.clubSlug().equals(slug))
+                .findFirst()
+                .orElseThrow();
+    }
 
     private CourtSearchResponse searchAllDay() {
         return courtSearchService.search(TODAY, TODO_EL_DIA_DESDE, TODO_EL_DIA_HASTA, Set.of());

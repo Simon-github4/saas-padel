@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * Traduce los errores a algo que la app pueda mostrarle al jugador.
@@ -58,6 +59,16 @@ public class ApiExceptionHandler {
                 .map(error -> error.getDefaultMessage())
                 .orElse("Revisá los datos del formulario");
         return body(HttpStatus.BAD_REQUEST, message, "INVALID_REQUEST");
+    }
+
+    /**
+     * Un parametro de la URL con un valor que no existe ("?wall=madera", una fecha mal
+     * escrita). Es un pedido mal armado, no una falla nuestra: 400 y sin ensuciar el
+     * log de errores.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> onBadParameter(MethodArgumentTypeMismatchException ex) {
+        return body(HttpStatus.BAD_REQUEST, "Revisá los filtros del pedido.", "INVALID_REQUEST");
     }
 
     @ExceptionHandler(Exception.class)
