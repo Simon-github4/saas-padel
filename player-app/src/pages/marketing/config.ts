@@ -1,7 +1,7 @@
 import { whatsappLink } from '../../format';
 
 /** Editable de un solo lugar: nombre del producto y contacto de venta. */
-export const BRAND = 'Padel Ya';
+export const BRAND = 'TurnoPadel';
 export const SALES_WHATSAPP = '5492262566185';
 export const SALES_EMAIL = 'diazsimon1230@gmail.com';
 export const SALES_MESSAGE =

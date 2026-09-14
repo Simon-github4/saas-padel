@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { Slot } from '../../api/client';
 import { clockTime, longDate, money, todayIso } from '../../format';
-import { DEFAULT_CTA } from './HeroClassic';
+import { DEFAULT_CTA, HERO_SCREEN } from './HeroClassic';
 
 /**
  * Grilla de líneas de cancha: dos degradados repetidos, uno por eje, en vez de
@@ -89,7 +89,7 @@ export function HeroScoreboard({
   }
 
   return (
-    <section className="relative mx-[calc(50%-50vw)] flex min-h-[88svh] flex-col justify-center overflow-hidden bg-[#0a0a0a] py-12 text-white">
+    <section className={`relative mx-[calc(50%-50vw)] flex flex-col justify-center overflow-hidden bg-[#0a0a0a] py-[clamp(1rem,4svh,3rem)] text-white ${HERO_SCREEN}`}>
       <div className="absolute inset-0" style={COURT_GRID} aria-hidden />
       <div
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_40%,var(--color-ladrillo),transparent_70%)] opacity-20"
@@ -97,13 +97,13 @@ export function HeroScoreboard({
       />
 
       <div className="relative mx-auto w-full max-w-lg px-5 text-center md:max-w-2xl">
-        {/* En el teléfono se apila: texto y la pelota abajo, entre dos líneas.
-            Desde md la pelota pasa al costado del título; apilada, la portada
-            quedaba más alta que una notebook y el botón caía bajo el pliegue. */}
-        <div className="flex flex-col md:flex-row md:items-center md:gap-8">
-          <div className="md:order-2 md:flex-1 md:text-left">
+        {/* La pelota va al costado del título y no apilada entre dos líneas,
+            como antes: apilada, la portada medía más que la pantalla en
+            cualquier teléfono y el botón quedaba bajo el pliegue. */}
+        <div className="flex items-center gap-4 text-left md:gap-8">
+          <div className="order-2 min-w-0 flex-1">
             <p
-              className="portada-sube eyebrow flex items-center justify-center gap-2 text-ladrillo-claro md:justify-start"
+              className="portada-sube eyebrow flex items-center gap-2 text-ladrillo-claro"
               style={delay(0)}
             >
               <span className="relative flex size-1.5" aria-hidden>
@@ -114,7 +114,7 @@ export function HeroScoreboard({
             </p>
 
             <h1
-              className="portada-sube hero-title mt-4 text-[clamp(2rem,9vw,3.25rem)] leading-[0.92] tracking-tight"
+              className="portada-sube hero-title mt-[clamp(0.5rem,1.5svh,1rem)] text-[clamp(1.75rem,8vw,3.25rem)] leading-[0.92] tracking-tight"
               style={delay(100)}
             >
               {headline}
@@ -126,16 +126,14 @@ export function HeroScoreboard({
             )}
           </div>
 
-          <div className="mt-7 flex items-center gap-4 md:order-1 md:mt-0">
-            <span className="h-px flex-1 bg-gradient-to-r from-transparent to-white/25 md:hidden" aria-hidden />
+          <div className="order-1 shrink-0">
             <Ball imageUrl={heroImageUrl} />
-            <span className="h-px flex-1 bg-gradient-to-l from-transparent to-white/25 md:hidden" aria-hidden />
           </div>
         </div>
 
         {stats.length > 0 && (
           <div
-            className="portada-sube mt-8 overflow-hidden rounded-2xl border border-white/10 bg-black/60 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur"
+            className="portada-sube mt-[clamp(1rem,3.5svh,2rem)] overflow-hidden rounded-2xl border border-white/10 bg-black/60 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur"
             style={delay(700)}
           >
             <dl
@@ -143,10 +141,10 @@ export function HeroScoreboard({
               style={{ ...LED_DOTS, gridTemplateColumns: `repeat(${stats.length}, minmax(0, 1fr))` }}
             >
               {stats.map((stat) => (
-                <div key={stat.label} className="px-3 py-4 text-center">
+                <div key={stat.label} className="px-3 py-[clamp(0.5rem,1.6svh,1rem)] text-center">
                   <dt className="eyebrow text-white/50">{stat.label}</dt>
                   <dd
-                    className="display mt-1 text-4xl leading-none tabular-nums text-ladrillo-claro md:text-5xl"
+                    className="display mt-1 text-[length:clamp(1.75rem,5svh,3rem)] leading-none tabular-nums text-ladrillo-claro"
                     style={LED_GLOW}
                   >
                     {stat.value}
@@ -169,7 +167,7 @@ export function HeroScoreboard({
 
         {address && (
           <p
-            className="portada-sube mt-5 flex items-center justify-center gap-1.5 text-sm font-semibold text-white/80"
+            className="portada-sube mt-[clamp(0.5rem,2svh,1.25rem)] flex items-center justify-center gap-1.5 text-sm font-semibold text-white/80"
             style={delay(900)}
           >
             <PinGlyph />
@@ -180,14 +178,14 @@ export function HeroScoreboard({
         <div className="portada-sube" style={delay(1000)}>
           <a
             href="#reserva"
-            className="group mt-7 inline-flex w-full items-center justify-center gap-2 rounded-full bg-ladrillo px-10 py-4 text-sm font-bold uppercase tracking-[0.12em] text-white transition duration-300 hover:-translate-y-0.5 hover:bg-ladrillo/90 [box-shadow:var(--shadow-glow)]"
+            className="group mt-[clamp(0.75rem,3svh,1.75rem)] inline-flex w-full items-center justify-center gap-2 rounded-full bg-ladrillo px-10 py-4 text-sm font-bold uppercase tracking-[0.12em] text-white transition duration-300 hover:-translate-y-0.5 hover:bg-ladrillo/90 [box-shadow:var(--shadow-glow)]"
           >
             {cta}
             <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1">
               →
             </span>
           </a>
-          <p className="eyebrow mt-5 text-white/40">Sin registro · Confirmación al instante</p>
+          <p className="eyebrow mt-[clamp(0.5rem,2svh,1.25rem)] text-white/40 muy-bajo:hidden">Sin registro · Confirmación al instante</p>
         </div>
       </div>
     </section>
@@ -200,7 +198,7 @@ export function HeroScoreboard({
  */
 function Ball({ imageUrl }: { imageUrl: string | null }) {
   return (
-    <div className="portada-pica relative size-32 shrink-0 md:size-40" aria-hidden>
+    <div className="portada-pica relative size-[clamp(4.5rem,14svh,10rem)] shrink-0" aria-hidden>
       <div className="size-full overflow-hidden rounded-full border-[3px] border-ladrillo shadow-[0_0_0_7px_color-mix(in_srgb,var(--color-ladrillo)_15%,transparent),0_18px_40px_rgba(0,0,0,0.6)]">
         {imageUrl ? (
           <img src={imageUrl} alt="" className="h-full w-full object-cover" loading="eager" />
@@ -250,7 +248,6 @@ function BoardSlots({
   }
 
   const shown = slots.slice(0, QUICK_SLOTS);
-  const rest = slots.length - shown.length;
 
   return (
     <div className="border-t border-white/10 p-3">
@@ -259,12 +256,12 @@ function BoardSlots({
           const cheapest = Math.min(...slot.available.map((court) => court.price));
           const time = clockTime(slot.startsAt, timeZone);
           return (
-            <li key={slot.startsAt} className="portada-flip" style={delay(850 + index * 90)}>
+            <li key={slot.startsAt} className="portada-flip max-sm:bajo:nth-[n+3]:hidden" style={delay(850 + index * 90)}>
               <button
                 type="button"
                 onClick={() => onPick(slot)}
                 aria-label={`Reservar hoy a las ${time}, ${money(cheapest / playersPerCourt)} por persona${slot.promo ? ', en promo' : ''}`}
-                className="group relative flex w-full flex-col items-center rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2.5 transition duration-300 hover:-translate-y-0.5 hover:border-ladrillo hover:bg-ladrillo"
+                className="group relative flex w-full flex-col items-center rounded-xl border border-white/10 bg-white/[0.04] px-2 py-[clamp(0.375rem,1.2svh,0.625rem)] transition duration-300 hover:-translate-y-0.5 hover:border-ladrillo hover:bg-ladrillo"
               >
                 {/* La raya del medio de una paleta de cartel. */}
                 <span aria-hidden className="absolute inset-x-0 top-1/2 h-px bg-black/40" />
@@ -278,13 +275,17 @@ function BoardSlots({
           );
         })}
       </ul>
-      {rest > 0 && onSeeToday && (
+      {/* Sin la cuenta de cuántos faltan: en un teléfono bajo se ven dos
+          fichas y en el resto cuatro, y el número mentía en uno de los dos. */}
+      {slots.length > 2 && onSeeToday && (
         <button
           type="button"
           onClick={onSeeToday}
-          className="mt-1 w-full text-xs font-semibold uppercase tracking-[0.12em] text-white/60 transition hover:text-white"
+          className={`-mb-2 mt-0.5 w-full text-xs font-semibold uppercase tracking-[0.12em] text-white/60 transition hover:text-white ${
+            slots.length > QUICK_SLOTS ? '' : 'hidden max-sm:bajo:block'
+          }`}
         >
-          {rest === 1 ? 'Ver 1 horario más' : `Ver ${rest} horarios más`} →
+          Ver todos los horarios →
         </button>
       )}
     </div>

@@ -87,7 +87,7 @@ export function DemoSection() {
   }
 
   return (
-    <section id="probalo" className="scroll-mt-16 py-24 md:py-36">
+    <section id="probalo" className="scroll-mt-32 lg:scroll-mt-16 py-24 md:py-36">
       <div className={CONTAINER}>
         <SectionHeading
           eyebrow="Probalo"

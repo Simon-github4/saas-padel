@@ -1,7 +1,7 @@
 import { useRef, type CSSProperties, type PointerEvent } from 'react';
 import type { Slot } from '../../api/client';
 import { clockTime } from '../../format';
-import { DEFAULT_CTA } from './HeroClassic';
+import { DEFAULT_CTA, HERO_SCREEN } from './HeroClassic';
 
 function delay(ms: number): CSSProperties {
   return { '--portada-delay': `${ms}ms` } as CSSProperties;
@@ -82,9 +82,12 @@ export function HeroCourtSplit({
 
   return (
     <section className="relative mx-[calc(50%-50vw)] overflow-hidden bg-[#f6f3ee] text-[#17140f]">
-      <div className="flex min-h-[88svh] flex-col md:min-h-[82svh] md:flex-row">
+      {/* En el teléfono la foto se queda con el alto que sobra después del
+          texto: así la portada mide justo la pantalla, sea un teléfono chico
+          o uno alto. */}
+      <div className={`flex flex-col md:flex-row ${HERO_SCREEN}`}>
         <div
-          className="relative h-80 shrink-0 sm:h-[26rem] md:h-auto md:w-[56%]"
+          className="relative min-h-[24svh] flex-1 md:w-[56%] md:flex-none"
           onPointerMove={follow}
           onPointerLeave={settle}
         >
@@ -120,7 +123,7 @@ export function HeroCourtSplit({
           <TodayCard todaySlots={todaySlots} timeZone={timeZone} courtCount={courtCount} />
         </div>
 
-        <div className="flex flex-1 flex-col justify-center px-6 pb-12 pt-16 text-center md:py-12 md:pl-32 md:pr-16 md:text-left">
+        <div className="flex shrink-0 flex-col justify-center px-6 pb-[clamp(1.25rem,4svh,3rem)] pt-[clamp(2.75rem,7svh,4rem)] text-center md:flex-1 md:py-12 md:pl-32 md:pr-16 md:text-left">
           {availabilityLabel && (
             <p className="portada-sube eyebrow flex items-center justify-center gap-3 text-ladrillo md:justify-start" style={delay(200)}>
               <span className="h-px w-6 bg-current opacity-50" aria-hidden />
@@ -128,14 +131,14 @@ export function HeroCourtSplit({
             </p>
           )}
           <h1
-            className="portada-sube mt-5 text-[clamp(2.75rem,13vw,4rem)] leading-[0.95] md:text-[clamp(3.5rem,5.6vw,5.75rem)]"
+            className="portada-sube mt-[clamp(0.5rem,2svh,1.25rem)] text-[length:min(clamp(2.75rem,13vw,4rem),7.5svh)] leading-[0.95] md:text-[length:min(clamp(3.5rem,5.6vw,5.75rem),11svh)]"
             style={delay(300)}
           >
             {headline}
           </h1>
           {tagline && (
             <p
-              className="portada-sube mx-auto mt-4 max-w-sm text-base leading-relaxed text-[#57524a] md:mx-0 md:text-lg"
+              className="portada-sube mx-auto mt-[clamp(0.5rem,1.8svh,1rem)] max-w-sm text-base leading-relaxed text-[#57524a] md:mx-0 md:text-lg"
               style={delay(400)}
             >
               {tagline}
@@ -143,7 +146,7 @@ export function HeroCourtSplit({
           )}
 
           <div
-            className="portada-sube mt-8 flex flex-col items-center gap-4 md:items-start"
+            className="portada-sube mt-[clamp(1rem,3.5svh,2rem)] flex flex-col items-center gap-[clamp(0.5rem,1.8svh,1rem)] md:items-start"
             style={delay(500)}
           >
             <a
@@ -155,13 +158,13 @@ export function HeroCourtSplit({
                 →
               </span>
             </a>
-            <p className="eyebrow text-[#8a8377]">Sin registro · Confirmación al instante</p>
+            <p className="eyebrow text-[#8a8377] max-md:bajo:hidden">Sin registro · Confirmación al instante</p>
           </div>
 
           {address && (
             <a
               href="#como-llegar"
-              className="portada-sube group mt-8 flex items-center justify-center gap-3 border-t border-[#17140f]/10 pt-5 text-left md:justify-start"
+              className="portada-sube group mt-[clamp(1rem,3.5svh,2rem)] flex items-center justify-center gap-3 border-t border-[#17140f]/10 pt-[clamp(0.75rem,2.5svh,1.25rem)] text-left md:justify-start"
               style={delay(600)}
             >
               <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#17140f]/[0.06] transition-colors group-hover:bg-ladrillo group-hover:text-white">

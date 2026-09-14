@@ -19,7 +19,7 @@ export function FeaturesSection() {
   const [overbookReplay, setOverbookReplay] = useState(0);
 
   return (
-    <section id="funciones" className="scroll-mt-16 py-24 md:py-36">
+    <section id="funciones" className="scroll-mt-32 lg:scroll-mt-16 py-24 md:py-36">
       <div className={CONTAINER}>
         <SectionHeading
           eyebrow="Qué hace por vos"

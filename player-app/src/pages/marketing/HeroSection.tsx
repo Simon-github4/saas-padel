@@ -27,9 +27,14 @@ export function HeroSection() {
   }, []);
 
   return (
-    // -mt-16 y pt-16: la portada sube por detrás de la barra, que arriba de todo
-    // es transparente, así el resplandor y la cancha llegan hasta el borde.
-    <section id="top" className="relative isolate -mt-16 overflow-hidden pt-16">
+    // Margen negativo y padding del mismo alto que la barra: la portada sube por
+    // detrás de ella, que arriba de todo es transparente, así el resplandor y la
+    // cancha llegan hasta el borde. Debajo de lg la barra suma la fila de
+    // "Buscar turno" y "Soy club", y es más alta.
+    <section
+      id="top"
+      className="relative isolate -mt-[7.625rem] overflow-hidden pt-[7.625rem] lg:-mt-16 lg:pt-16"
+    >
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(55%_50%_at_70%_20%,rgba(234,88,12,0.16),transparent_70%),radial-gradient(40%_40%_at_10%_0%,rgba(255,255,255,0.05),transparent_70%)]"

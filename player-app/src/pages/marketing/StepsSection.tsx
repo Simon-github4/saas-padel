@@ -25,7 +25,7 @@ export function StepsSection() {
   const [ref, shown] = useInView<HTMLOListElement>();
 
   return (
-    <section id="empezar" className="scroll-mt-16 border-y border-cal/10 bg-vidrio/40 py-24 md:py-32">
+    <section id="empezar" className="scroll-mt-32 lg:scroll-mt-16 border-y border-cal/10 bg-vidrio/40 py-24 md:py-32">
       <div className={CONTAINER}>
         <SectionHeading eyebrow="Cómo empezamos" title="Sin vueltas, en tres pasos" />
 

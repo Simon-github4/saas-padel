@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { WhatsappGlyph } from '../../components/Ui';
+import { SearchGlyph, WhatsappGlyph } from '../../components/Ui';
 import { BRAND, SALES_EMAIL, salesWhatsappHref } from './config';
 import { CONTAINER } from './motion';
 
@@ -37,16 +37,18 @@ function useActiveAnchor(): string | null {
 }
 
 /**
- * Barra superior de la landing: marca, anclas a las secciones y CTA de venta.
+ * Barra superior de la landing: marca, anclas a las secciones, las dos puertas
+ * de entrada ("Buscar turno" para el jugador, "Soy club" para el dueño que ya es
+ * cliente) y el CTA de venta.
  *
  * <p>Arriba de todo es transparente, para que la portada respire; al bajar se
  * vuelve sólida. La sección visible queda marcada.
  *
- * <p>Debajo de `lg` no entra todo, y lo que sobra no se puede esconder y ya: el
- * dueño que entra desde el celular se quedaba sin las anclas, sin la salida del
- * jugador y sin el acceso a su propio panel -- le quedaba la marca y "Hablemos".
- * Así que ahí lo que sobra pasa a un menú, y "Hablemos" se queda afuera porque
- * es a lo que vino esta página.
+ * <p>"Buscar turno" y "Soy club" están siempre a la vista, en cualquier ancho:
+ * antes eran dos links chicos en gris en desktop y en el teléfono quedaban
+ * adentro del menú, y quien venía a reservar o a entrar a su panel no los
+ * encontraba. Debajo de lg no entran en la fila de la marca, así que van en una
+ * segunda fila de la barra, a lo ancho. Lo que sí pasa al menú son las anclas.
  */
 export function MarketingNav() {
   const [abierto, setAbierto] = useState(false);
@@ -96,7 +98,7 @@ export function MarketingNav() {
           {BRAND}
         </a>
 
-        <nav aria-label="Secciones" className="hidden items-center gap-1 lg:flex">
+        <nav aria-label="Secciones" className="hidden items-center gap-1 xl:flex">
           {ANCHORS.map((anchor) => {
             const current = active === anchor.href;
             return (
@@ -120,24 +122,9 @@ export function MarketingNav() {
           })}
         </nav>
 
-        <div className="flex shrink-0 items-center gap-2 sm:gap-4">
-          <Link
-            to="/buscar"
-            className="hidden text-xs font-semibold uppercase tracking-[0.12em] text-ink-soft transition hover:text-cal lg:inline"
-          >
-            Reservar cancha
-          </Link>
-          {/* Acceso rápido para el dueño que ya es cliente: sin este link tiene
-              que bajar hasta el pie para entrar a su panel.
-              /admin vive en el backend (panel Vaadin), no en esta SPA: tiene que
-              ser una navegacion de pagina completa, no un Link de React Router
-              (que caeria en el catch-all y te devolveria a esta misma landing). */}
-          <a
-            href="/admin"
-            className="hidden text-xs font-semibold uppercase tracking-[0.12em] text-ink-soft transition hover:text-cal lg:inline"
-          >
-            Soy club
-          </a>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <SearchCta className="hidden px-5 py-2.5 text-xs lg:inline-flex" />
+          <ClubCta className="hidden px-5 py-2.5 text-xs lg:inline-flex" />
           <a
             href={salesWhatsappHref()}
             target="_blank"
@@ -154,7 +141,7 @@ export function MarketingNav() {
             aria-expanded={abierto}
             aria-controls="menu-landing"
             aria-label={abierto ? 'Cerrar menú' : 'Abrir menú'}
-            className="relative grid size-10 shrink-0 place-items-center rounded-full border border-cal/10 text-ink-soft transition hover:border-cal/25 hover:text-cal lg:hidden"
+            className="relative grid size-10 shrink-0 place-items-center rounded-full border border-cal/10 text-ink-soft transition hover:border-cal/25 hover:text-cal xl:hidden"
           >
             {/* Dos trazos que se cruzan al abrir: la hamburguesa se vuelve cruz. */}
             <span
@@ -173,6 +160,12 @@ export function MarketingNav() {
         </div>
       </div>
 
+      {/* Las dos puertas en el teléfono y la tablet: una fila propia, a lo ancho. */}
+      <div className={`${CONTAINER} grid grid-cols-2 gap-2 pb-3 lg:hidden`}>
+        <SearchCta className="flex py-3 text-[0.8rem]" onClick={() => setAbierto(false)} />
+        <ClubCta className="flex py-3 text-[0.8rem]" />
+      </div>
+
       {/*
         Se despliega debajo de la barra y dentro del mismo header, que es
         sticky: así queda pegado a la barra al abrirlo desde cualquier punto
@@ -183,7 +176,7 @@ export function MarketingNav() {
       <div
         id="menu-landing"
         inert={!abierto}
-        className={`grid transition-[grid-template-rows] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] lg:hidden ${
+        className={`grid transition-[grid-template-rows] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] xl:hidden ${
           abierto ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
         }`}
       >
@@ -202,26 +195,61 @@ export function MarketingNav() {
                 {anchor.label}
               </a>
             ))}
-            <div className="flex gap-6 py-4">
-              <Link
-                to="/buscar"
-                onClick={() => setAbierto(false)}
-                className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-soft transition hover:text-cal"
-              >
-                Reservar cancha
-              </Link>
-              {/* Pagina completa, no Link: /admin es el panel Vaadin del backend. */}
-              <a
-                href="/admin"
-                className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-soft transition hover:text-cal"
-              >
-                Soy club
-              </a>
-            </div>
           </div>
         </nav>
       </div>
     </header>
+  );
+}
+
+/** "Buscar turno": la pastilla clara, la que más resalta de la barra junto con la de venta. */
+function SearchCta({ className = '', onClick }: { className?: string; onClick?: () => void }) {
+  return (
+    <Link
+      to="/buscar"
+      onClick={onClick}
+      className={`items-center justify-center gap-2 whitespace-nowrap rounded-full bg-cal font-bold uppercase tracking-[0.1em] text-pista transition duration-300 hover:-translate-y-px hover:bg-arena ${className}`}
+    >
+      <SearchGlyph className="size-3.5 shrink-0" />
+      Buscar turno
+    </Link>
+  );
+}
+
+/**
+ * "Soy club": el acceso del dueño que ya es cliente a su panel.
+ *
+ * <p>/admin vive en el backend (panel Vaadin), no en esta SPA: tiene que ser una
+ * navegación de página completa, no un Link de React Router (que caería en el
+ * catch-all y te devolvería a esta misma landing).
+ */
+function ClubCta({ className = '' }: { className?: string }) {
+  return (
+    <a
+      href="/admin"
+      className={`items-center justify-center gap-2 whitespace-nowrap rounded-full border border-cal/25 bg-pista/40 font-bold uppercase tracking-[0.1em] text-cal backdrop-blur transition duration-300 hover:-translate-y-px hover:border-cal/50 hover:bg-cal/10 ${className}`}
+    >
+      <CourtGlyph className="size-3.5 shrink-0" />
+      Soy club
+    </a>
+  );
+}
+
+/** Cancha vista desde arriba, chiquita: el ícono de "club". */
+function CourtGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinejoin="round"
+      aria-hidden
+      className={className}
+    >
+      <rect x="3" y="5" width="18" height="14" rx="1.5" />
+      <path d="M12 5v14M7 9v6M17 9v6M7 12h10" />
+    </svg>
   );
 }
 
@@ -245,7 +273,7 @@ export function MarketingFooter() {
         </div>
         <FooterColumn title="Jugadores">
           <Link to="/buscar" className={`${linkClass} font-semibold text-cal`}>
-            Reservar cancha
+            Buscar turno
           </Link>
         </FooterColumn>
         <FooterColumn title="Clubes">

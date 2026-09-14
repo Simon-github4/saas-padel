@@ -42,7 +42,7 @@ export function PricingSection() {
   const fill = ((playerPrice - PLAYER_MIN) / (PLAYER_MAX - PLAYER_MIN)) * 100;
 
   return (
-    <section id="precio" className="scroll-mt-16 py-24 md:py-36">
+    <section id="precio" className="scroll-mt-32 lg:scroll-mt-16 py-24 md:py-36">
       <div className={CONTAINER}>
         <SectionHeading center eyebrow="Precio" title="Un plan, sin letra chica" />
 

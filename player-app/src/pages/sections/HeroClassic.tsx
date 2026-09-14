@@ -12,6 +12,19 @@ const DEFAULT_OVERLAY = 55;
 const QUICK_SLOTS = 4;
 
 /**
+ * Alto de las tres portadas: justo la pantalla menos la barra de arriba (h-14,
+ * md:h-16, y su borde de 1px). Con svh y no vh: en el teléfono, vh cuenta la
+ * barra de direcciones y la portada quedaba cortada por abajo.
+ *
+ * <p>Antes medían un 88% de la pantalla como mínimo y crecían con el
+ * contenido, así que en un teléfono chico o una notebook el botón quedaba bajo
+ * el pliegue. Ahora el contenido se acomoda al alto (espacios y cuerpos en svh,
+ * variantes bajo: y muy-bajo:) y min-h-fit queda solo de red: en un teléfono
+ * acostado, donde de verdad no entra, la portada crece en vez de recortar.
+ */
+export const HERO_SCREEN = 'h-[calc(100svh-3.5rem-1px)] min-h-fit md:h-[calc(100svh-4rem-1px)]';
+
+/**
  * Cuerpo del título según su largo.
  *
  * <p>Un cuerpo fijo funciona con "Pádel Necochea" y se rompe con "Club Atlético
@@ -19,15 +32,18 @@ const QUICK_SLOTS = 4;
  * estiraba la portada al 103% de la pantalla y dejaba el botón abajo del
  * pliegue. Los nombres largos entran con menos cuerpo; los cortos conservan el
  * tamaño grande, que es el que le da fuerza a la portada.
+ *
+ * <p>Cada cuerpo tiene además un tope por alto de pantalla: en una notebook el
+ * título a 126px se comía la mitad de la portada.
  */
 export function titleSize(headline: string): string {
   if (headline.length > 34) {
-    return 'text-[clamp(2rem,8vw,3.5rem)]';
+    return 'text-[length:min(clamp(2rem,8vw,3.5rem),6svh)]';
   }
   if (headline.length > 20) {
-    return 'text-[clamp(2.5rem,11vw,5rem)]';
+    return 'text-[length:min(clamp(2.5rem,11vw,5rem),8svh)]';
   }
-  return 'text-[clamp(3rem,16vw,7rem)]';
+  return 'text-[length:min(clamp(3rem,16vw,7rem),11svh)]';
 }
 
 function delay(ms: number): CSSProperties {
@@ -89,14 +105,11 @@ export function HeroClassic({
   const courtsLabel = courtCount > 0 ? `${courtCount} ${courtCount === 1 ? 'cancha' : 'canchas'}` : null;
 
   return (
-    // svh y no vh: en el navegador del teléfono, vh cuenta la barra de
-    // direcciones y la portada quedaba cortada por abajo.
-    //
     // mx-[calc(50%-50vw)] en vez de -mx-4: la portada tiene que sangrar hasta
     // el borde de la ventana, no solo hasta el borde de la columna de
     // contenido (que en desktop es angosta, max-w-2xl). Esa cuenta se
     // recalcula sola contra el ancho real de la columna en cada breakpoint.
-    <section className="relative mx-[calc(50%-50vw)] flex min-h-[88svh] flex-col justify-end overflow-hidden">
+    <section className={`relative mx-[calc(50%-50vw)] flex flex-col justify-end overflow-hidden ${HERO_SCREEN}`}>
       {heroImageUrl ? (
         <>
           {/* Cada club sube una foto distinta —de día, de noche, con su propia
@@ -126,7 +139,7 @@ export function HeroClassic({
         <div className="absolute inset-0 bg-[radial-gradient(75%_60%_at_50%_35%,var(--color-ladrillo),transparent_70%)] opacity-25" />
       )}
 
-      <div className="relative mx-auto w-full max-w-lg px-5 pb-10 pt-20 text-center md:max-w-2xl md:pt-12">
+      <div className="relative mx-auto w-full max-w-lg px-5 pb-[clamp(1.25rem,4svh,2.5rem)] pt-8 text-center md:max-w-2xl">
         {(address || courtsLabel) && (
           <p
             className="portada-sube mx-auto inline-flex max-w-full items-center gap-2.5 rounded-full border border-cal/15 bg-pista/40 px-4 py-2 text-xs font-semibold text-cal backdrop-blur-md"
@@ -144,7 +157,7 @@ export function HeroClassic({
         )}
 
         <h1
-          className={`hero-title portada-sube mt-6 ${titleSize(headline)} [text-shadow:0_2px_12px_rgba(0,0,0,0.45)]`}
+          className={`hero-title portada-sube mt-[clamp(0.75rem,2.5svh,1.5rem)] ${titleSize(headline)} [text-shadow:0_2px_12px_rgba(0,0,0,0.45)]`}
           style={delay(120)}
         >
           {headline}
@@ -169,20 +182,20 @@ export function HeroClassic({
             onSeeToday={onSeeToday}
           />
         ) : (
-          <div className="mt-8" />
+          <div className="mt-[clamp(1rem,4svh,2rem)]" />
         )}
 
         <div className="portada-sube" style={delay(520)}>
           <a
             href="#reserva"
-            className="group mt-6 inline-flex items-center gap-2 rounded-full bg-ladrillo px-10 py-4 text-sm font-bold uppercase tracking-[0.12em] text-cal transition duration-300 hover:-translate-y-0.5 hover:bg-ladrillo/90 [box-shadow:var(--shadow-glow)]"
+            className="group mt-[clamp(0.75rem,3svh,1.5rem)] inline-flex items-center gap-2 rounded-full bg-ladrillo px-10 py-4 text-sm font-bold uppercase tracking-[0.12em] text-cal transition duration-300 hover:-translate-y-0.5 hover:bg-ladrillo/90 [box-shadow:var(--shadow-glow)]"
           >
             {cta}
             <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1">
               →
             </span>
           </a>
-          <p className="eyebrow mt-5 text-cal/50">Sin registro · Confirmación al instante</p>
+          <p className="eyebrow mt-[clamp(0.5rem,2svh,1.25rem)] text-cal/50 muy-bajo:hidden">Sin registro · Confirmación al instante</p>
         </div>
       </div>
     </section>
@@ -207,11 +220,10 @@ function TodaySlots({
   onSeeToday?: () => void;
 }) {
   const shown = slots.slice(0, QUICK_SLOTS);
-  const rest = slots.length - shown.length;
 
   if (slots.length === 0) {
     return (
-      <div className="portada-sube mt-8" style={delay(360)}>
+      <div className="portada-sube mt-[clamp(1rem,4svh,2rem)]" style={delay(360)}>
         <p className="text-sm text-cal/75">Hoy no quedan horarios libres.</p>
         <a
           href="#reserva"
@@ -224,7 +236,7 @@ function TodaySlots({
   }
 
   return (
-    <div className="mt-8">
+    <div className="mt-[clamp(1rem,4svh,2rem)]">
       {/* El resto de los horarios va en el mismo renglón que la cuenta y no
           debajo de las fichas: ahí empujaba el botón fuera de la pantalla en
           una notebook. */}
@@ -239,27 +251,32 @@ function TodaySlots({
           </span>
           {slots.length === 1 ? 'Queda 1 horario libre hoy' : `Quedan ${slots.length} horarios libres hoy`}
         </p>
-        {rest > 0 && onSeeToday && (
+        {/* En un teléfono bajo entran dos fichas y no cuatro, así que "Ver
+            todos" aparece desde el tercer horario. El -my-3 le deja al pulgar
+            el área de siempre sin sumarle alto al renglón. */}
+        {slots.length > 2 && onSeeToday && (
           <button
             type="button"
             onClick={onSeeToday}
-            className="text-xs font-semibold text-ladrillo-claro underline-offset-4 hover:underline"
+            className={`-my-3 text-xs font-semibold text-ladrillo-claro underline-offset-4 hover:underline ${
+              slots.length > QUICK_SLOTS ? '' : 'hidden max-sm:bajo:inline'
+            }`}
           >
             Ver todos →
           </button>
         )}
       </div>
-      <ul className="mx-auto mt-4 grid max-w-md grid-cols-2 gap-2 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center">
+      <ul className="mx-auto mt-[clamp(0.5rem,2svh,1rem)] grid max-w-md grid-cols-2 gap-2 sm:flex sm:max-w-none sm:flex-wrap sm:justify-center">
         {shown.map((slot, index) => {
           const cheapest = Math.min(...slot.available.map((court) => court.price));
           const time = clockTime(slot.startsAt, timeZone);
           return (
-            <li key={slot.startsAt} className="portada-sube" style={delay(420 + index * 60)}>
+            <li key={slot.startsAt} className="portada-sube max-sm:bajo:nth-[n+3]:hidden" style={delay(420 + index * 60)}>
               <button
                 type="button"
                 onClick={() => onPick(slot)}
                 aria-label={`Reservar hoy a las ${time}, ${money(cheapest / playersPerCourt)} por persona${slot.promo ? ', en promo' : ''}`}
-                className="group relative flex w-full flex-col items-start rounded-2xl border border-cal/15 bg-pista/45 px-4 py-3 text-left backdrop-blur-md transition duration-300 hover:-translate-y-0.5 hover:border-ladrillo hover:bg-ladrillo sm:w-32"
+                className="group relative flex w-full flex-col items-start rounded-2xl border border-cal/15 bg-pista/45 px-4 py-[clamp(0.5rem,1.4svh,0.75rem)] text-left backdrop-blur-md transition duration-300 hover:-translate-y-0.5 hover:border-ladrillo hover:bg-ladrillo sm:w-32"
               >
                 {slot.promo && (
                   <span className="absolute right-3 top-3 text-[0.6rem] font-bold uppercase tracking-[0.12em] text-ladrillo-claro transition-colors group-hover:text-cal">
