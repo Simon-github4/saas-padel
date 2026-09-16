@@ -167,7 +167,13 @@ public class CourtSearchService {
         return clubs.stream()
                 .sorted(Comparator.comparing(Tenant::getName))
                 .map(club -> new ClubOption(club.getSlug(), club.getName(), club.getCity(),
-                        club.getBookingHorizonDays()))
+                        club.getBookingHorizonDays(), heroImageOf(club)))
                 .toList();
+    }
+
+    /** Una URL en blanco cuenta como sin foto: la tarjeta pone las iniciales en vez de una imagen rota. */
+    private String heroImageOf(Tenant club) {
+        String url = club.getHeroImageUrl();
+        return url == null || url.isBlank() ? null : url;
     }
 }

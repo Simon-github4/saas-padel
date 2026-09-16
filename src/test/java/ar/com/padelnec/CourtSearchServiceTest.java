@@ -2,6 +2,7 @@ package ar.com.padelnec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Booking;
@@ -159,6 +160,23 @@ class CourtSearchServiceTest {
 
         assertThat(result.clubs()).extracting(CourtSearchResponse.ClubOption::slug)
                 .containsExactlyInAnyOrder("club-necochea", "costa-verde");
+    }
+
+    @Test
+    @DisplayName("Cada club trae la foto de portada para su tarjeta, y una URL en blanco cuenta como sin foto")
+    void offersEachClubWithItsHeroImage() {
+        necochea.setHeroImageUrl("/api/public/club-necochea/hero-image");
+        fixture.save(necochea);
+        quequen.setHeroImageUrl("   ");
+        fixture.save(quequen);
+
+        CourtSearchResponse result = searchAllDay();
+
+        assertThat(result.clubs())
+                .extracting(CourtSearchResponse.ClubOption::slug, CourtSearchResponse.ClubOption::heroImageUrl)
+                .containsExactlyInAnyOrder(
+                        tuple("club-necochea", "/api/public/club-necochea/hero-image"),
+                        tuple("costa-verde", null));
     }
 
     @Test

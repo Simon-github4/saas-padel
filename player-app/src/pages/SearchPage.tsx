@@ -19,6 +19,7 @@ import {
   wallParam,
 } from '../courtFeatures';
 import { addDays, longDate, perPerson, todayIso } from '../format';
+import { type ClubResults, clubFeatures, clubInitials, groupByClub, slotMinutes } from '../searchResults';
 import { setPageMeta } from '../seo';
 import { BRAND } from './marketing/config';
 
@@ -46,10 +47,12 @@ const STRIP_DAYS = 14;
  * saber de antemano a cuál entrar.
  *
  * <p>Los resultados van seccionados por localidad y, adentro de cada una, en una
- * sola lista por horario y no agrupados por club. La localidad sí es un corte
- * real para quien juega: nadie cruza de ciudad por un turno. Por eso las ciudades
- * pegadas cuentan como una sola zona (Necochea y Quequén, ver ZONAS). El club,
- * en cambio, sigue siendo un dato más del turno, no el índice por el que se busca.
+ * tarjeta por club con su foto y todos sus horarios libres del rango. La
+ * localidad es un corte real para quien juega: nadie cruza de ciudad por un
+ * turno. Por eso las ciudades pegadas cuentan como una sola zona (Necochea y
+ * Quequén, ver ZONAS). Las tarjetas van en el orden del primer turno de cada
+ * club, así la lista sigue respondiendo primero "cuándo": arriba queda el club
+ * donde se puede jugar más temprano.
  *
  * <p>Los filtros viven en la URL para que una búsqueda se pueda compartir por
  * WhatsApp y para que volver desde un club no la pierda. La localidad se filtra
@@ -174,7 +177,7 @@ export function SearchPage() {
     <Screen
       top={
         // La marca arriba a la izquierda, con link a la landing: quien llega a
-        // /buscar por un link compartido tiene que poder ver qué es TurnoPadel
+        // /buscar por un link compartido tiene que poder ver qué es TurnosPadel
         // sin bajar hasta el pie.
         <TopBar name={BRAND} titleTo="/" brandMark accountSlot={<AccountButton />} />
       }
@@ -316,10 +319,10 @@ export function SearchPage() {
                 {sections.length > 1 ? (
                   <div className="mb-6 flex items-baseline justify-between gap-3">
                     <h2 className="text-2xl">{resultsTitle(sections.flatMap((section) => section.matches))}</h2>
-                    <p className="shrink-0 text-xs text-ink-soft">Tocá uno para reservarlo</p>
+                    <p className="shrink-0 text-xs text-ink-soft">Tocá un horario para reservarlo</p>
                   </div>
                 ) : (
-                  <p className="mb-3 text-right text-xs text-ink-soft">Tocá uno para reservarlo</p>
+                  <p className="mb-3 text-right text-xs text-ink-soft">Tocá un horario para reservarlo</p>
                 )}
 
                 <div className="space-y-10">
@@ -327,6 +330,7 @@ export function SearchPage() {
                     <LocalitySection
                       key={section.key}
                       section={section}
+                      clubs={clubs}
                       date={data.date}
                       courtQuery={courtQuery(wall, surface, roof)}
                     />
@@ -802,13 +806,16 @@ function ClubChip({ active, onClick, children }: { active: boolean; onClick: () 
 
 function LocalitySection({
   section,
+  clubs,
   date,
   courtQuery,
 }: {
   section: Section;
+  clubs: ClubOption[];
   date: string;
   courtQuery: string;
 }) {
+  const groups = groupByClub(section.matches, clubs);
   return (
     <section aria-label={section.name}>
       <header className="mb-4 flex flex-col gap-1 border-b border-cal/10 pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
@@ -819,12 +826,14 @@ function LocalitySection({
             <span>{section.name}</span>
           </h3>
         </div>
-        <p className="shrink-0 text-xs text-ink-soft tabular-nums sm:pb-1">{resultsTitle(section.matches)}</p>
+        <p className="shrink-0 text-xs text-ink-soft tabular-nums sm:pb-1">
+          {groups.length === 1 ? '1 club' : `${groups.length} clubes`} · {resultsTitle(section.matches)}
+        </p>
       </header>
-      <ul className="space-y-2.5">
-        {section.matches.map((match, index) => (
-          <li key={`${match.clubSlug}-${match.startsAt}`}>
-            <ResultCard match={match} date={date} index={index} courtQuery={courtQuery} />
+      <ul className="space-y-4">
+        {groups.map((group, index) => (
+          <li key={group.slug}>
+            <ClubCard club={group} date={date} position={index + 1} courtQuery={courtQuery} />
           </li>
         ))}
       </ul>
@@ -832,20 +841,108 @@ function LocalitySection({
   );
 }
 
-function ResultCard({
+/**
+ * Un club con todos sus horarios libres del rango.
+ *
+ * <p>La cabecera lleva a la página del club sin horario elegido, para quien quiere
+ * mirar antes; cada horario de abajo lleva directo a reservar ese turno. Son links
+ * separados y no uno alrededor de toda la tarjeta, porque un link no puede tener
+ * otros adentro.
+ *
+ * <p>Van todos los horarios a la vista, sin "ver más": en un rango de noche son
+ * cuatro o cinco, y con "todo el día" siguen entrando en pocas filas de fichas.
+ */
+function ClubCard({
+  club,
+  date,
+  position,
+  courtQuery,
+}: {
+  club: ClubResults;
+  date: string;
+  /** Lugar de la tarjeta en su localidad, desde 1: lo registra la analítica. */
+  position: number;
+  /** Paredes y piso pedidos, para que el club preelija una cancha que los cumpla. */
+  courtQuery: string;
+}) {
+  const first = club.matches[0];
+  const { walls, surfaces, roofs } = clubFeatures(club.matches);
+  const minutes = slotMinutes(club.matches);
+  // La ciudad va porque una zona puede tener más de una; después la duración, que
+  // es lo que permite comparar precios entre clubes de 60 y de 90 minutos, y al
+  // final cómo son las canchas. En ese orden: en el teléfono la línea se corta por
+  // el final, y lo que se pierde es lo menos necesario para elegir.
+  const place = [
+    club.city ? townOf(club.city) : null,
+    minutes !== null ? `Turnos de ${minutes} min` : null,
+    ...featuresSummary(walls, surfaces, roofs),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const cheapest = Math.min(...club.matches.map((match) => match.cheapestPrice));
+  const hasPromo = club.matches.some((match) => match.promo);
+
+  return (
+    <article
+      style={{ animationDelay: `${Math.min(position - 1, 8) * 60}ms` }}
+      className="ficha-in overflow-hidden rounded-3xl border border-cal/10 bg-vidrio"
+    >
+      <Link
+        to={`/club/${club.slug}?fecha=${date}${courtQuery}`}
+        onClick={() => track('search_result_click', { clubSlug: club.slug, detail: String(position) })}
+        className="group flex items-center gap-4 p-3 pr-4 transition hover:bg-vidrio-alto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ladrillo"
+      >
+        <ClubPhoto name={club.name} url={club.heroImageUrl} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h4 className="display truncate text-[1.7rem] leading-none tracking-[0.04em]">{club.name}</h4>
+            {hasPromo && <Badge tone="promo">Promo</Badge>}
+          </div>
+          <p className="mt-1.5 text-xs text-ink-soft">
+            Desde{' '}
+            <span className="font-semibold tabular-nums text-cal">{perPerson(cheapest, first.playersPerCourt)}</span>{' '}
+            c/u
+          </p>
+          {place && <p className="mt-0.5 truncate text-xs text-ink-mute">{place}</p>}
+        </div>
+        <span
+          aria-hidden
+          className="grid size-9 shrink-0 place-items-center rounded-full border border-cal/10 text-ink-soft transition group-hover:border-ladrillo group-hover:bg-ladrillo group-hover:text-cal"
+        >
+          →
+        </span>
+      </Link>
+
+      <ul className="grid grid-cols-4 gap-1.5 border-t border-cal/10 p-3 sm:grid-cols-6 md:grid-cols-7">
+        {club.matches.map((match) => (
+          <li key={match.startsAt}>
+            <SlotChip match={match} date={date} position={position} courtQuery={courtQuery} />
+          </li>
+        ))}
+      </ul>
+    </article>
+  );
+}
+
+/**
+ * Un horario libre, listo para tocar: la hora grande, el precio por persona y una
+ * canchita por cada cancha que queda. El precio va en cada ficha y no solo el
+ * "desde" de la cabecera, porque de noche suele ser otro. Al pasar por encima se
+ * da vuelta a blanco, como el día elegido en la tira; las de promo van teñidas.
+ */
+function SlotChip({
   match,
   date,
-  index,
+  position,
   courtQuery,
 }: {
   match: SearchMatch;
   date: string;
-  index: number;
-  /** Paredes y piso pedidos, para que el club preelija una cancha que los cumpla. */
+  position: number;
   courtQuery: string;
 }) {
-  const features = featuresSummary(match.walls, match.surfaces, match.roofs);
-  const place = [match.city ? townOf(match.city) : null, ...features].filter(Boolean).join(' · ');
+  const price = perPerson(match.cheapestPrice, match.playersPerCourt);
+  const free = match.freeCourts === 1 ? '1 cancha libre' : `${match.freeCourts} canchas libres`;
   return (
     <Link
       to={`/club/${match.clubSlug}?fecha=${date}&hora=${match.startTime}${courtQuery}`}
@@ -853,63 +950,77 @@ function ResultCard({
         track('search_result_click', {
           clubSlug: match.clubSlug,
           slotAt: match.startsAt,
-          // En qué lugar de la lista de su localidad estaba lo que eligió.
-          detail: String(index + 1),
+          // En qué lugar de su localidad estaba la tarjeta del club que eligió.
+          detail: String(position),
         })
       }
-      style={{ animationDelay: `${Math.min(index, 12) * 40}ms` }}
-      className={`ficha-in group flex items-stretch overflow-hidden rounded-2xl border transition duration-300 hover:-translate-y-0.5 ${
-        match.promo
-          ? 'border-ladrillo/40 bg-ladrillo/[0.06] hover:border-ladrillo/70'
-          : 'border-cal/10 bg-vidrio hover:border-cal/25 hover:bg-vidrio-alto'
+      aria-label={`${match.startTime} a ${match.endTime}, ${price} por persona${match.promo ? ', en promo' : ''}, ${free}`}
+      className={`group flex flex-col items-center rounded-2xl border px-1 pb-2 pt-2.5 transition duration-200 hover:-translate-y-0.5 hover:border-cal hover:bg-cal hover:text-pista focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ladrillo ${
+        match.promo ? 'border-ladrillo/45 bg-ladrillo/[0.08]' : 'border-cal/10 bg-pista'
       }`}
     >
-      <div className="flex w-20 shrink-0 flex-col items-center justify-center border-r border-cal/10 bg-cal/[0.03] py-3">
-        <span className="display text-3xl leading-none tabular-nums">{match.startTime}</span>
-        <span className="mt-1 text-[0.7rem] text-ink-mute tabular-nums">a {match.endTime}</span>
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-col justify-center px-4 py-3">
-        <p className="truncate font-bold">{match.clubName}</p>
-        {/* La ciudad va en la tarjeta porque una zona puede tener más de una, y al
-            lado cómo son las canchas libres: techo, paredes, y si hay sin alfombra. */}
-        {place && <p className="line-clamp-2 text-xs text-ink-mute">{place}</p>}
-        {/* Las canchitas ya dicen "cancha": al lado alcanza con el número, y
-            con la frase entera no entraba en un renglón en el teléfono. */}
-        <p
-          className="mt-1.5 flex items-center gap-2 whitespace-nowrap text-xs text-ink-soft"
-          aria-label={match.freeCourts === 1 ? '1 cancha libre' : `${match.freeCourts} canchas libres`}
-        >
-          <CourtMarks count={match.freeCourts} />
-          {match.freeCourts === 1 ? '1 libre' : `${match.freeCourts} libres`}
-        </p>
-      </div>
-
-      <div className="flex shrink-0 flex-col items-end justify-center gap-1 py-3 pr-4">
-        {match.promo && <Badge tone="promo">Promo</Badge>}
-        <p className={`text-base font-bold tabular-nums ${match.promo ? 'text-ladrillo-claro' : 'text-cal'}`}>
-          {perPerson(match.cheapestPrice, match.playersPerCourt)}
-          <span className="ml-1 text-xs font-normal text-ink-soft">c/u</span>
-        </p>
-      </div>
-
+      <span className="display text-[1.6rem] leading-none tabular-nums">{match.startTime}</span>
       <span
-        aria-hidden
-        className="hidden w-10 shrink-0 place-items-center border-l border-cal/10 text-ink-soft transition group-hover:bg-ladrillo group-hover:text-cal sm:grid"
+        className={`mt-1 text-[0.68rem] font-semibold tabular-nums group-hover:text-pista/70 ${
+          match.promo ? 'text-ladrillo-claro' : 'text-ink-soft'
+        }`}
       >
-        →
+        {price}
       </span>
+      <CourtMarks count={match.freeCourts} size="sm" className="mt-1.5" />
     </Link>
   );
 }
 
-/** Una canchita por cada cancha libre (hasta cuatro), para leer la cantidad de un vistazo. */
-function CourtMarks({ count }: { count: number }) {
-  const shown = Math.min(count, 4);
+/**
+ * La foto de portada del club, recortada al cuadrado, encima de sus iniciales.
+ * Las iniciales se ven mientras la foto carga y se quedan si no cargó ninguna o
+ * la URL externa dejó de responder: una tarjeta con un cuadrado vacío o el ícono
+ * de imagen rota se lee como un club abandonado.
+ */
+function ClubPhoto({ name, url }: { name: string; url: string | null }) {
+  const [state, setState] = useState<'loading' | 'loaded' | 'broken'>('loading');
   return (
-    <span aria-hidden className="flex gap-0.5">
+    <span
+      aria-hidden
+      className="display relative grid size-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-ladrillo/15 text-[1.75rem] text-ladrillo-claro sm:size-[4.5rem]"
+    >
+      {clubInitials(name)}
+      {url && state !== 'broken' && (
+        <img
+          src={url}
+          alt=""
+          width={72}
+          height={72}
+          loading="lazy"
+          decoding="async"
+          onLoad={() => setState('loaded')}
+          onError={() => setState('broken')}
+          className={`absolute inset-0 size-full object-cover transition-opacity duration-300 ${
+            state === 'loaded' ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+      )}
+    </span>
+  );
+}
+
+/** Una canchita por cada cancha libre (hasta cuatro), para leer la cantidad de un vistazo. */
+function CourtMarks({
+  count,
+  size = 'md',
+  className = '',
+}: {
+  count: number;
+  size?: 'sm' | 'md';
+  className?: string;
+}) {
+  const shown = Math.min(count, 4);
+  const mark = size === 'sm' ? 'h-2 w-3 rounded-[2px]' : 'h-2.5 w-4 rounded-[3px]';
+  return (
+    <span aria-hidden className={`flex gap-0.5 ${className}`}>
       {Array.from({ length: shown }, (_, index) => (
-        <span key={index} className="relative h-2.5 w-4 rounded-[3px] border border-ladrillo-claro/70">
+        <span key={index} className={`relative border border-ladrillo-claro/70 ${mark}`}>
           <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-ladrillo-claro/70" />
         </span>
       ))}
@@ -969,15 +1080,29 @@ function EmptyResults({
   );
 }
 
+/** Con la forma de las tarjetas de club, para que la página no salte cuando llegan. */
 function ResultsSkeleton() {
   return (
-    <div className="space-y-2.5" aria-label="Buscando canchas…">
-      {[0, 1, 2, 3].map((index) => (
+    <div className="space-y-4" aria-label="Buscando canchas…">
+      {[0, 1].map((index) => (
         <div
           key={index}
-          className="h-[4.5rem] animate-pulse rounded-2xl border border-cal/10 bg-vidrio"
+          className="animate-pulse overflow-hidden rounded-3xl border border-cal/10 bg-vidrio"
           style={{ animationDelay: `${index * 120}ms` }}
-        />
+        >
+          <div className="flex items-center gap-4 p-3">
+            <div className="size-16 shrink-0 rounded-2xl bg-cal/[0.06] sm:size-[4.5rem]" />
+            <div className="flex-1 space-y-2">
+              <div className="h-5 w-2/5 rounded bg-cal/[0.08]" />
+              <div className="h-3 w-3/5 rounded bg-cal/[0.05]" />
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-1.5 border-t border-cal/10 p-3 sm:grid-cols-6 md:grid-cols-7">
+            {[0, 1, 2, 3].map((chip) => (
+              <div key={chip} className="h-[4.4rem] rounded-2xl bg-cal/[0.05]" />
+            ))}
+          </div>
+        </div>
       ))}
     </div>
   );

@@ -92,12 +92,14 @@ export interface Availability {
   slots: Slot[];
 }
 
-/** Un club en el filtro de la búsqueda global. */
+/** Un club en el filtro de la búsqueda global y en la tarjeta de sus resultados. */
 export interface ClubOption {
   slug: string;
   name: string;
   city: string | null;
   bookingHorizonDays: number;
+  /** Foto de portada: URL externa o la subida desde el panel. Null si no cargó ninguna. */
+  heroImageUrl: string | null;
 }
 
 /** Un horario libre en un club concreto, ya listo para pintar como resultado. */
