@@ -69,7 +69,8 @@ class BuffetOrderDialog extends Dialog {
     }
 
     private void rebuild() {
-        setHeaderTitle("Pedido de " + order.getCustomerName());
+        setHeaderTitle(order.getCustomerName() == null ? BuffetOrder.QUICK_SALE
+                : "Pedido de " + order.getCustomerName());
         removeAll();
         getFooter().removeAll();
         add(details(), items(), payments());
@@ -80,7 +81,7 @@ class BuffetOrderDialog extends Dialog {
         FormLayout form = new FormLayout();
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1));
 
-        Span name = new Span(order.getCustomerName());
+        Span name = new Span(order.displayName());
         name.addClassNames(LumoUtility.FontWeight.SEMIBOLD);
         form.addFormItem(name, "A nombre de");
 

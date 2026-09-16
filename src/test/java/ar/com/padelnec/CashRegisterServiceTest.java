@@ -203,6 +203,33 @@ class CashRegisterServiceTest {
     }
 
     @Test
+    @DisplayName("Una venta rápida sin nombre entra a la caja como \"Venta rápida\"")
+    void aQuickSaleWithoutNameShowsUpAsQuickSale() {
+        Product agua = productService.createProduct("Agua", new BigDecimal("1500"));
+        BuffetOrder order = buffetOrderService.checkout(null, null,
+                java.util.List.of(new BuffetOrderService.NewItem(agua.getId(), 2)), PaymentMethod.CASH,
+                mostrador.getId()).order();
+        backdate("buffet_order", order.getId(), TUESDAY.atTime(18, 0));
+        jdbc.update("UPDATE product_sale SET created_at = ? WHERE buffet_order_id = ?",
+                OffsetDateTime.ofInstant(TUESDAY.atTime(18, 0).atZone(ZONE).toInstant(), ZoneOffset.UTC),
+                order.getId());
+        jdbc.update("UPDATE payment SET created_at = ? WHERE buffet_order_id = ?",
+                OffsetDateTime.ofInstant(TUESDAY.atTime(18, 1).atZone(ZONE).toInstant(), ZoneOffset.UTC),
+                order.getId());
+
+        DayCash caja = cashRegisterService.of(club, TUESDAY);
+
+        assertThat(caja.movements())
+                .singleElement()
+                .satisfies(movement -> {
+                    assertThat(movement.customerName()).isEqualTo("Venta rápida");
+                    assertThat(movement.buffet()).isTrue();
+                    assertThat(movement.amount()).isEqualByComparingTo("3000");
+                });
+        assertThat(caja.pending()).isEqualByComparingTo("0");
+    }
+
+    @Test
     @DisplayName("Un pedido de buffet sin turno entra a la caja a su nombre, con su venta y su saldo")
     void aBuffetOrderWithoutBookingShowsUpInTheCash() {
         Product cafe = productService.createProduct("Café", new BigDecimal("2000"));

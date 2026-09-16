@@ -13,8 +13,9 @@ import lombok.Setter;
  * Pedido de buffet sin turno: lo que consume alguien que no está jugando, por
  * ejemplo el que vino a mirar.
  *
- * <p>Se abre con un nombre -a nombre de quién es- y los productos se le suman
- * después, a medida que los pide. Se cobra igual que un turno: uno o varios
+ * <p>Una cuenta se abre con un nombre -a nombre de quién es- y los productos se
+ * le suman después, a medida que los pide. Una venta rápida, que se cobra en el
+ * momento, puede no tener nombre. Se cobra igual que un turno: uno o varios
  * cobros en el mostrador, y una devolución si se saca algo ya cobrado.
  */
 @Entity
@@ -23,8 +24,14 @@ import lombok.Setter;
 @Setter
 public class BuffetOrder extends TenantScopedEntity {
 
-    /** A nombre de quién es el pedido. No es un jugador del club: no pide teléfono. */
-    @Column(name = "customer_name", nullable = false, length = 120)
+    /** Cómo se muestra un pedido sin nombre. */
+    public static final String QUICK_SALE = "Venta rápida";
+
+    /**
+     * A nombre de quién es el pedido; null en una venta rápida. No es un jugador
+     * del club: no pide teléfono.
+     */
+    @Column(name = "customer_name", length = 120)
     private String customerName;
 
     /** Suma de los productos cargados. Se mantiene al día para no recalcularla en cada pantalla. */
@@ -50,6 +57,11 @@ public class BuffetOrder extends TenantScopedEntity {
     /** Lo cobrado de más, ej. después de sacar un producto que ya se había pagado. */
     public BigDecimal creditBalance() {
         return paidAmount.subtract(totalPrice).max(BigDecimal.ZERO);
+    }
+
+    /** El nombre, o "Venta rápida" si se cobró sin uno. */
+    public String displayName() {
+        return customerName == null ? QUICK_SALE : customerName;
     }
 
     public boolean hasMoneyIn() {

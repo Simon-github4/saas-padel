@@ -65,7 +65,8 @@ public class CashRegisterService {
      * nulo cuando no lo cargo una persona: los pagos de MercadoPago los asienta
      * el webhook. En un cobro de buffet ({@code buffet}) no hay turno:
      * {@code courtName} y {@code bookingStartTime} son nulos y
-     * {@code customerName} es a nombre de quien fue el pedido.
+     * {@code customerName} es a nombre de quien fue el pedido, o "Venta rápida"
+     * si se cobró sin nombre.
      */
     public record Movement(Instant at, PaymentMethod method, BigDecimal amount,
                            String registeredByName, String customerName, String courtName,
@@ -148,10 +149,13 @@ public class CashRegisterService {
     // ------------------------------------------------------------ internos
 
     private Movement toMovement(CashMovementRow row, Map<UUID, String> names) {
+        boolean buffet = row.buffetOrderId() != null;
+        String customer = buffet && row.customerFullName() == null
+                ? BuffetOrder.QUICK_SALE
+                : row.customerFullName();
         return new Movement(row.createdAt(), row.method(), row.amount(),
                 row.registeredBy() == null ? null : names.get(row.registeredBy()),
-                row.customerFullName(), row.courtName(), row.bookingStartTime(),
-                row.buffetOrderId() != null);
+                customer, row.courtName(), row.bookingStartTime(), buffet);
     }
 
     /**

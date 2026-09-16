@@ -165,6 +165,24 @@ class BuffetOrderServiceTest {
     }
 
     @Test
+    @DisplayName("Una venta que se cobra en el momento puede ir sin nombre; para dejarla en la cuenta, no")
+    void aQuickSaleNeedsNoNameButAnAccountDoes() {
+        Checkout quick = buffetOrderService.checkout(null, "   ", List.of(new NewItem(agua.getId(), 1)),
+                PaymentMethod.CASH, null);
+
+        BuffetOrder order = reload(quick.order());
+        assertThat(order.getCustomerName()).isNull();
+        assertThat(order.displayName()).isEqualTo("Venta rápida");
+        assertThat(order.balanceDue()).isEqualByComparingTo("0");
+
+        assertThatThrownBy(() -> buffetOrderService.checkout(null, null,
+                List.of(new NewItem(agua.getId(), 1)), null, null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("poné a nombre de quién es");
+        assertThat(buffetOrderRepository.findAll()).hasSize(1);
+    }
+
+    @Test
     @DisplayName("Una cuenta abierta suma productos y al cobrarla se cobra solo lo que debe")
     void checkoutOnAnAccountChargesOnlyTheBalance() {
         Checkout tab = buffetOrderService.checkout(null, "Marta", List.of(new NewItem(agua.getId(), 2)), null, null);

@@ -60,9 +60,13 @@ public class BuffetOrderService {
         if (customerName == null || customerName.isBlank()) {
             throw new BusinessRuleException("Poné a nombre de quién es el pedido");
         }
-        String name = customerName.trim();
+        return create(customerName, registeredBy);
+    }
+
+    private BuffetOrder create(String customerName, UUID registeredBy) {
+        String name = customerName == null || customerName.isBlank() ? null : customerName.trim();
         BuffetOrder order = new BuffetOrder();
-        order.setCustomerName(name.length() > 120 ? name.substring(0, 120) : name);
+        order.setCustomerName(name != null && name.length() > 120 ? name.substring(0, 120) : name);
         order.setRegisteredBy(registeredBy);
         return buffetOrderRepository.save(order);
     }
@@ -76,13 +80,20 @@ public class BuffetOrderService {
      * un producto dado de baja en el medio o un cobro rechazado no dejen un
      * pedido a medio cargar.
      *
+     * <p>El nombre solo hace falta para dejar algo en la cuenta: una venta que se
+     * cobra en el momento puede ir sin nombre (venta rápida).
+     *
      * @param orderId    el pedido al que se suman los productos, o null para abrir uno
      * @param chargeWith cómo se cobra el saldo, o null para dejarlo pendiente
      */
     @Transactional
     public Checkout checkout(UUID orderId, String customerName, List<NewItem> items,
                              PaymentMethod chargeWith, UUID registeredBy) {
-        BuffetOrder order = orderId == null ? open(customerName, registeredBy) : require(orderId);
+        boolean unnamed = customerName == null || customerName.isBlank();
+        if (orderId == null && chargeWith == null && unnamed) {
+            throw new BusinessRuleException("Para dejarlo en la cuenta, poné a nombre de quién es");
+        }
+        BuffetOrder order = orderId == null ? create(customerName, registeredBy) : require(orderId);
 
         // El mismo producto dos veces va en una sola línea: así se lee en el detalle.
         Map<UUID, Integer> quantities = new LinkedHashMap<>();

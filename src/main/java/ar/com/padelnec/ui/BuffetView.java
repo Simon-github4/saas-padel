@@ -73,9 +73,11 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
  * al cobrarlo o al dejarlo en la cuenta, así que tocar un producto de más no
  * ensucia nada.
  *
- * <p>El circuito rápido: el nombre, Enter, "agua" Enter, "2 cafe" Enter, Enter
- * (pasa a "Paga con"), el billete, Enter. Cobrado, con el vuelto a la vista, y el
- * cursor de vuelta en el nombre para el siguiente.
+ * <p>El circuito rápido: el nombre (o nada, en una venta rápida), Enter, "agua"
+ * Enter, "cafe" Enter, Enter (pasa a "Paga con"), el billete, Enter. Cobrado,
+ * con el vuelto a la vista, y el cursor de vuelta en el nombre para el siguiente.
+ * La flecha abajo baja del buscador a los productos, que se recorren con las
+ * flechas de costado como una botonera; dos unidades son dos Enter.
  */
 @Route(value = "buffet", layout = MainLayout.class)
 @PageTitle("Buffet | Panel del club")
@@ -102,7 +104,6 @@ public class BuffetView extends VerticalLayout {
     private final Div tileGrid = new Div();
     private final Span noMatches = new Span();
     private List<Integer> matches = List.of();
-    private int highlighted;
 
     // --- pedido en pantalla
     private final Span ticketTitle = new Span();
@@ -169,7 +170,9 @@ public class BuffetView extends VerticalLayout {
         newOrder.setSuffixComponent(kbd("F2"));
         newOrder.getElement().setAttribute("aria-keyshortcuts", "F2");
 
-        Div header = new Div(daySummary, newOrder);
+        // El botón a la izquierda, sobre el buscador, donde arranca el trabajo; el
+        // resumen del día a la derecha.
+        Div header = new Div(newOrder, daySummary);
         header.addClassName("buffet-header");
         return header;
     }
@@ -180,13 +183,11 @@ public class BuffetView extends VerticalLayout {
         search.setClearButtonVisible(true);
         search.setWidthFull();
         search.setValueChangeMode(ValueChangeMode.EAGER);
-        search.setHelperText("Enter agrega el resaltado · ↑ ↓ elige otro · «3 agua» suma tres · "
-                + "«-agua» saca uno · Enter con el buscador vacío pasa a «Paga con»");
+        search.setHelperText("↓ baja a los productos: ← → para elegir, "
+                + "Enter suma, ↑ vuelve · «-agua» saca uno · Enter vacío pasa a «Paga con»");
         search.getElement().setAttribute("aria-label", "Buscar producto");
         search.addValueChangeListener(event -> filterTiles());
         search.addKeyDownListener(Key.ENTER, event -> onSearchEnter());
-        search.addKeyDownListener(Key.ARROW_DOWN, event -> moveHighlight(1));
-        search.addKeyDownListener(Key.ARROW_UP, event -> moveHighlight(-1));
 
         tileGrid.addClassName("buffet-tiles");
         noMatches.addClassNames(LumoUtility.TextColor.SECONDARY);
@@ -197,7 +198,86 @@ public class BuffetView extends VerticalLayout {
 
         Div pos = new Div(catalogPanel, ticket());
         pos.addClassName("buffet-pos");
+        enableTileNavigation();
         return pos;
+    }
+
+    /**
+     * Flechas sobre los productos, del lado del navegador: ir y volver al
+     * servidor en cada tecla se notaría.
+     *
+     * <p>Siempre igual, haya o no texto en el buscador: la flecha abajo baja del
+     * buscador al primer producto a la vista (el resaltado, si se filtró), las
+     * flechas de costado recorren los productos en el orden en que se ven, y la
+     * flecha arriba o Escape vuelven al buscador. Enter o espacio suman el
+     * producto con foco, que se queda ahí para sumar otro. Tipear una letra
+     * vuelve al buscador con la letra ya escrita.
+     */
+    private void enableTileNavigation() {
+        tileGrid.getElement().executeJs("""
+                const grid = this;
+                const search = $0;
+                if (grid.__buffetNavigation) {
+                  return;
+                }
+                grid.__buffetNavigation = true;
+                // Los productos a la vista en el orden en que se ven: el buscador
+                // los reordena y la grilla cambia de columnas con el ancho.
+                const tiles = () => [...grid.querySelectorAll('.buffet-tile')]
+                    .filter((tile) => !tile.hidden && tile.offsetParent !== null)
+                    .map((tile) => ({ tile, box: tile.getBoundingClientRect() }))
+                    .sort((a, b) => (Math.round(a.box.top) - Math.round(b.box.top)) || (a.box.left - b.box.left))
+                    .map((entry) => entry.tile);
+                search.addEventListener('keydown', (event) => {
+                  if (event.key !== 'ArrowDown') {
+                    return;
+                  }
+                  event.preventDefault();
+                  const first = tiles()[0];
+                  if (first) {
+                    first.focus();
+                  }
+                });
+                grid.addEventListener('keydown', (event) => {
+                  const current = event.target.closest('.buffet-tile');
+                  if (!current || event.ctrlKey || event.metaKey || event.altKey) {
+                    return;
+                  }
+                  const all = tiles();
+                  const index = all.indexOf(current);
+                  if (index < 0) {
+                    return;
+                  }
+                  let target;
+                  switch (event.key) {
+                    case 'ArrowRight': target = all[index + 1]; break;
+                    case 'ArrowLeft': target = all[index - 1]; break;
+                    case 'Home': target = all[0]; break;
+                    case 'End': target = all[all.length - 1]; break;
+                    case 'ArrowUp':
+                    case 'Escape': target = search; break;
+                    // Abajo ya está en los productos: no hace nada, ni baja la página.
+                    case 'ArrowDown': break;
+                    case 'Enter':
+                    case ' ':
+                      // Explícito y no el click nativo del botón, que según el
+                      // navegador sale al soltar la tecla o no sale.
+                      event.preventDefault();
+                      current.click();
+                      return;
+                    default:
+                      // Una letra o un número: vuelve al buscador y la letra cae ahí.
+                      if (event.key.length === 1) {
+                        search.focus();
+                      }
+                      return;
+                  }
+                  event.preventDefault();
+                  if (target) {
+                    target.focus();
+                  }
+                });
+                """, search.getElement());
     }
 
     private Div ticket() {
@@ -212,7 +292,9 @@ public class BuffetView extends VerticalLayout {
 
         customerName.setWidthFull();
         customerName.setMaxLength(120);
-        customerName.setPlaceholder("¿Para quién es?");
+        // Opcional: una venta que se cobra en el momento no necesita nombre. Solo
+        // lo pide "Cobrar después", porque una cuenta sin nombre no se encuentra.
+        customerName.setPlaceholder("Venta rápida (opcional)");
         customerName.setManualValidation(true);
         customerName.setValueChangeMode(ValueChangeMode.EAGER);
         customerName.addValueChangeListener(event -> {
@@ -276,7 +358,7 @@ public class BuffetView extends VerticalLayout {
         settledGrid.setAllRowsVisible(true);
         settledGrid.addColumn(item -> HH_MM.format(item.order().getCreatedAt().atZone(club.zoneId())))
                 .setHeader("Hora").setAutoWidth(true).setPartNameGenerator(item -> "tabular");
-        settledGrid.addColumn(item -> item.order().getCustomerName()).setHeader("A nombre de")
+        settledGrid.addColumn(item -> item.order().displayName()).setHeader("A nombre de")
                 .setAutoWidth(true);
         settledGrid.addColumn(item -> itemsSummary(item.items())).setHeader("Detalle").setFlexGrow(1);
         settledGrid.addColumn(item -> Money.format(item.order().getTotalPrice())).setHeader("Total")
@@ -371,7 +453,13 @@ public class BuffetView extends VerticalLayout {
             button.getElement().setAttribute("type", "button");
             button.getElement().setAttribute("aria-label",
                     "Sumar %s, %s".formatted(product.getName(), Money.format(product.getUnitPrice())));
-            button.addClickListener(event -> add(product, 1));
+            button.addClickListener(event -> {
+                add(product, 1);
+                // Como el Enter del buscador: lo buscado ya se usó.
+                if (!search.isEmpty()) {
+                    search.clear();
+                }
+            });
         }
 
         private void showCount(int quantity) {
@@ -388,7 +476,6 @@ public class BuffetView extends VerticalLayout {
     private void filterTiles() {
         Command command = ProductQuickEntry.parse(search.getValue());
         matches = command.isEmpty() ? List.of() : ProductQuickEntry.matches(names(), command.query());
-        highlighted = 0;
 
         List<Tile> all = List.copyOf(tiles.values());
         for (int i = 0; i < all.size(); i++) {
@@ -407,17 +494,10 @@ public class BuffetView extends VerticalLayout {
         markHighlighted();
     }
 
-    private void moveHighlight(int step) {
-        if (matches.size() > 1) {
-            highlighted = Math.floorMod(highlighted + step, matches.size());
-            markHighlighted();
-        }
-    }
-
     private void markHighlighted() {
         List<Tile> all = List.copyOf(tiles.values());
         for (int i = 0; i < all.size(); i++) {
-            boolean next = !matches.isEmpty() && matches.get(highlighted) == i;
+            boolean next = !matches.isEmpty() && matches.getFirst() == i;
             all.get(i).button.setClassName("buffet-tile--next", next);
         }
     }
@@ -430,24 +510,20 @@ public class BuffetView extends VerticalLayout {
             }
             return;
         }
-        if (command.quantity() <= 0) {
-            warn("La cantidad tiene que ser mayor a cero");
-            return;
-        }
         matches = ProductQuickEntry.matches(names(), command.query());
         if (matches.isEmpty()) {
             warn("Ningún producto coincide con «%s»".formatted(command.query()));
             return;
         }
-        Product product = catalog.get(matches.get(Math.min(highlighted, matches.size() - 1)));
+        Product product = catalog.get(matches.getFirst());
         if (command.remove()) {
             if (!draft.containsKey(product.getId())) {
                 warn(product.getName() + " no está entre lo que estás sumando");
                 return;
             }
-            changeQuantity(product, -command.quantity());
+            changeQuantity(product, -1);
         } else {
-            add(product, command.quantity());
+            add(product, 1);
         }
         search.clear();
     }
@@ -506,7 +582,7 @@ public class BuffetView extends VerticalLayout {
             loadAccount(item, false);
         } else {
             confirmDiscard("Se pierde lo que cargaste y se abre la cuenta de %s."
-                    .formatted(item.order().getCustomerName()), () -> loadAccount(item, false));
+                    .formatted(item.order().displayName()), () -> loadAccount(item, false));
         }
     }
 
@@ -580,8 +656,8 @@ public class BuffetView extends VerticalLayout {
                 customerName.focus();
                 return;
             }
-            if (isNew && name.isEmpty()) {
-                customerName.setErrorMessage("Poné a nombre de quién es");
+            if (isNew && name.isEmpty() && method == null) {
+                customerName.setErrorMessage("Para dejarlo en la cuenta, poné a nombre de quién es");
                 customerName.setInvalid(true);
                 customerName.focus();
                 return;
@@ -627,13 +703,15 @@ public class BuffetView extends VerticalLayout {
         lastCharge.removeAll();
         Span text = new Span();
         text.addClassName("buffet-last__text");
+        String how = method == PaymentMethod.CASH ? "en efectivo" : "por transferencia";
         if (method == null) {
             text.setText("Quedó en la cuenta de %s: debe %s".formatted(
                     order.getCustomerName(), Money.format(order.balanceDue())));
+        } else if (order.getCustomerName() == null) {
+            text.setText("Venta rápida cobrada: %s %s".formatted(Money.format(result.charged()), how));
         } else {
             text.setText("Cobrado a %s: %s %s".formatted(order.getCustomerName(),
-                    Money.format(result.charged()),
-                    method == PaymentMethod.CASH ? "en efectivo" : "por transferencia"));
+                    Money.format(result.charged()), how));
         }
         lastCharge.add(VaadinIcon.CHECK_CIRCLE.create(), text);
         if (given != null) {
@@ -708,7 +786,9 @@ public class BuffetView extends VerticalLayout {
             ticketMeta.setText("Se guarda al cobrarlo o al dejarlo en la cuenta");
         } else {
             BuffetOrder order = loaded.order();
-            ticketTitle.setText((isSettled(order) ? "Pedido de " : "Cuenta de ") + order.getCustomerName());
+            ticketTitle.setText(order.getCustomerName() == null
+                    ? BuffetOrder.QUICK_SALE
+                    : (isSettled(order) ? "Pedido de " : "Cuenta de ") + order.getCustomerName());
             ticketMeta.setText(openedText(order)
                     + (order.getPaidAmount().signum() > 0 ? " · ya pagó " + Money.format(order.getPaidAmount()) : ""));
         }
@@ -866,7 +946,7 @@ public class BuffetView extends VerticalLayout {
 
     private NativeButton accountCard(OrderWithItems item) {
         BuffetOrder order = item.order();
-        Span name = new Span(order.getCustomerName());
+        Span name = new Span(order.displayName());
         name.addClassName("buffet-account__name");
 
         Span amount = new Span();

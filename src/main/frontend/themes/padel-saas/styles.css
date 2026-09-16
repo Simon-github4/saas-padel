@@ -581,11 +581,6 @@ vaadin-side-nav-item[current]::part(item) {
   transform: scale(0.97);
 }
 
-.buffet-tile:focus-visible {
-  outline: 2px solid var(--lumo-primary-color);
-  outline-offset: 2px;
-}
-
 .buffet-tile__key {
   font-size: var(--lumo-font-size-xs);
   font-weight: 700;
@@ -629,13 +624,17 @@ vaadin-side-nav-item[current]::part(item) {
 }
 
 /* El que agrega el Enter: anillo y la tecla escrita, para que no haya que
-   adivinar cual de los filtrados va a entrar. */
-.buffet-tile--next {
+   adivinar cual de los filtrados va a entrar. Igual el que tiene el foco al
+   recorrerlos con las flechas. */
+.buffet-tile--next,
+.buffet-tile:focus-visible {
+  outline: none;
   border-color: var(--lumo-primary-color);
   box-shadow: 0 0 0 2px var(--lumo-primary-color);
 }
 
-.buffet-tile--next::after {
+.buffet-tile--next::after,
+.buffet-tile:focus-visible::after {
   content: "Enter \21B5";
   position: absolute;
   right: var(--lumo-space-s);
@@ -646,6 +645,21 @@ vaadin-side-nav-item[current]::part(item) {
   color: var(--lumo-primary-contrast-color);
   font-size: var(--lumo-font-size-xxs);
   font-weight: 700;
+}
+
+/* Recorriendo con las flechas, el resaltado del buscador se apaga: si no,
+   quedan dos productos marcados y no se sabe cual suma el Enter. */
+.buffet-tiles:focus-within .buffet-tile--next:not(:focus-visible) {
+  border-color: var(--lumo-contrast-20pct);
+  box-shadow: none;
+}
+
+.buffet-tiles:focus-within .buffet-tile--next.buffet-tile--in-order:not(:focus-visible) {
+  border-color: var(--lumo-primary-color);
+}
+
+.buffet-tiles:focus-within .buffet-tile--next:not(:focus-visible)::after {
+  content: none;
 }
 
 /* ------------------------------------------------------------- pedido */

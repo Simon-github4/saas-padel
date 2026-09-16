@@ -3,21 +3,18 @@ package ar.com.padelnec.support;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Lo que se tipea en el buscador del buffet para cargar un producto sin mouse.
  *
  * <p>En un día de torneo el mostrador vende de a decenas y cada click cuenta:
- * "agua" agrega un agua, "3 agua" (o "3x agua", "agua x3") agrega tres, "2" agrega
- * el producto número 2 de la pantalla y "-agua" saca uno. Sin mayúsculas ni tildes,
- * como se escribe apurado.
+ * "agua" agrega un agua, "2" agrega el producto número 2 de la pantalla y "-agua"
+ * saca uno. Sin mayúsculas ni tildes, como se escribe apurado. Para más de una
+ * unidad no hay sintaxis: se repite el Enter.
  */
 public final class ProductQuickEntry {
 
-    private static final Pattern QUANTITY_FIRST = Pattern.compile("^(\\d{1,3})\\s*(?:[x*×]\\s*|\\s+)(.+)$");
-    private static final Pattern QUANTITY_LAST = Pattern.compile("^(.+?)\\s*[x*×]\\s*(\\d{1,3})$");
     private static final Pattern NUMBER = Pattern.compile("\\d+");
 
     private ProductQuickEntry() {
@@ -26,11 +23,10 @@ public final class ProductQuickEntry {
     /**
      * Lo tipeado, ya separado.
      *
-     * @param quantity cuántas unidades; cero si se escribió "0 agua", que no es válido
-     * @param remove   si empezaba con "-": sacar en vez de agregar
-     * @param query    lo que queda para buscar el producto, por nombre o número
+     * @param remove si empezaba con "-": sacar en vez de agregar
+     * @param query  lo que queda para buscar el producto, por nombre o número
      */
-    public record Command(int quantity, boolean remove, String query) {
+    public record Command(boolean remove, String query) {
 
         public boolean isEmpty() {
             return query.isBlank();
@@ -43,15 +39,7 @@ public final class ProductQuickEntry {
         if (remove) {
             text = text.substring(1).strip();
         }
-        Matcher first = QUANTITY_FIRST.matcher(text);
-        if (first.matches()) {
-            return new Command(Integer.parseInt(first.group(1)), remove, first.group(2).strip());
-        }
-        Matcher last = QUANTITY_LAST.matcher(text);
-        if (last.matches()) {
-            return new Command(Integer.parseInt(last.group(2)), remove, last.group(1).strip());
-        }
-        return new Command(1, remove, text);
+        return new Command(remove, text);
     }
 
     /**

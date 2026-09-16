@@ -14,23 +14,19 @@ class ProductQuickEntryTest {
     private static final List<String> CATALOG = List.of("Agua", "Café", "Coca Cola", "Coca Cola Light", "Gatorade");
 
     @Test
-    @DisplayName("La cantidad va adelante o atrás, con x, * o un espacio")
-    void quantityGoesBeforeOrAfter() {
-        assertThat(ProductQuickEntry.parse("agua")).isEqualTo(new Command(1, false, "agua"));
-        assertThat(ProductQuickEntry.parse("3 agua")).isEqualTo(new Command(3, false, "agua"));
-        assertThat(ProductQuickEntry.parse("3x agua")).isEqualTo(new Command(3, false, "agua"));
-        assertThat(ProductQuickEntry.parse(" 3 * coca cola ")).isEqualTo(new Command(3, false, "coca cola"));
-        assertThat(ProductQuickEntry.parse("agua x3")).isEqualTo(new Command(3, false, "agua"));
-        assertThat(ProductQuickEntry.parse("3*2")).isEqualTo(new Command(3, false, "2"));
-        assertThat(ProductQuickEntry.parse("12")).isEqualTo(new Command(1, false, "12"));
-        assertThat(ProductQuickEntry.parse("7up")).isEqualTo(new Command(1, false, "7up"));
+    @DisplayName("Lo tipeado es el producto, sin cantidad: para más de uno se repite el Enter")
+    void theTextIsTheProduct() {
+        assertThat(ProductQuickEntry.parse(" agua ")).isEqualTo(new Command(false, "agua"));
+        assertThat(ProductQuickEntry.parse("3 agua")).isEqualTo(new Command(false, "3 agua"));
+        assertThat(ProductQuickEntry.matches(CATALOG, "3 agua")).isEmpty();
+        assertThat(ProductQuickEntry.parse("12")).isEqualTo(new Command(false, "12"));
     }
 
     @Test
     @DisplayName("Un guion adelante saca en vez de sumar")
     void aLeadingDashRemoves() {
-        assertThat(ProductQuickEntry.parse("-agua")).isEqualTo(new Command(1, true, "agua"));
-        assertThat(ProductQuickEntry.parse("- 2 cafe")).isEqualTo(new Command(2, true, "cafe"));
+        assertThat(ProductQuickEntry.parse("-agua")).isEqualTo(new Command(true, "agua"));
+        assertThat(ProductQuickEntry.parse("- 2")).isEqualTo(new Command(true, "2"));
         assertThat(ProductQuickEntry.parse("-").isEmpty()).isTrue();
         assertThat(ProductQuickEntry.parse("   ").isEmpty()).isTrue();
     }
