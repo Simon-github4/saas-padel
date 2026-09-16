@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { Slot } from '../../api/client';
+import { InstagramGlyph, type ClubInstagram } from '../../components/Ui';
 import { clockTime, money } from '../../format';
 
 /** Texto del botón cuando el club no cargó uno propio. Compartido por los tres diseños de portada. */
@@ -71,6 +72,7 @@ export function HeroClassic({
   heroCtaLabel,
   heroOverlay,
   address,
+  instagram,
   courtCount,
   todaySlots,
   timeZone,
@@ -85,6 +87,7 @@ export function HeroClassic({
   heroCtaLabel: string | null;
   heroOverlay: number;
   address: string | null;
+  instagram?: ClubInstagram | null;
   courtCount: number;
   /** Horarios con cancha libre de hoy; null si la página no está en hoy. */
   todaySlots?: Slot[] | null;
@@ -140,20 +143,39 @@ export function HeroClassic({
       )}
 
       <div className="relative mx-auto w-full max-w-lg px-5 pb-[clamp(1.25rem,4svh,2.5rem)] pt-8 text-center md:max-w-2xl">
-        {(address || courtsLabel) && (
-          <p
-            className="portada-sube mx-auto inline-flex max-w-full items-center gap-2.5 rounded-full border border-cal/15 bg-pista/40 px-4 py-2 text-xs font-semibold text-cal backdrop-blur-md"
+        {(address || courtsLabel || instagram) && (
+          // El Instagram va en su propia ficha y no como un tramo más de la de
+          // la dirección: es un link, y adentro de la ficha le robaba ancho a
+          // la dirección, que en un teléfono ya viene cortada.
+          <div
+            className="portada-sube flex flex-wrap items-center justify-center gap-2"
             style={delay(0)}
           >
-            {address && (
-              <span className="flex min-w-0 items-center gap-1.5">
-                <PinGlyph />
-                <span className="truncate">{address}</span>
-              </span>
+            {(address || courtsLabel) && (
+              <p className="inline-flex max-w-full items-center gap-2.5 rounded-full border border-cal/15 bg-pista/40 px-4 py-2 text-xs font-semibold text-cal backdrop-blur-md">
+                {address && (
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <PinGlyph />
+                    <span className="truncate">{address}</span>
+                  </span>
+                )}
+                {address && courtsLabel && <span aria-hidden className="h-3 w-px shrink-0 bg-cal/25" />}
+                {courtsLabel && <span className="shrink-0 tabular-nums">{courtsLabel}</span>}
+              </p>
             )}
-            {address && courtsLabel && <span aria-hidden className="h-3 w-px shrink-0 bg-cal/25" />}
-            {courtsLabel && <span className="shrink-0 tabular-nums">{courtsLabel}</span>}
-          </p>
+            {instagram && (
+              <a
+                href={instagram.url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Instagram de ${name}: @${instagram.handle}`}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-cal/15 bg-pista/40 px-4 py-2 text-xs font-semibold text-cal backdrop-blur-md transition hover:border-cal/40"
+              >
+                <InstagramGlyph className="size-3.5 shrink-0 text-ladrillo-claro" />
+                <span className="truncate">@{instagram.handle}</span>
+              </a>
+            )}
+          </div>
         )}
 
         <h1

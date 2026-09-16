@@ -473,6 +473,9 @@ export function WhatsappGlyph({ className }: { className?: string }) {
   );
 }
 
+/** Instagram del club, listo para mostrar: el usuario sin @ y el link al perfil. */
+export type ClubInstagram = { handle: string; url: string };
+
 /**
  * Marca de Instagram: el cuadrado redondeado con la lente y el punto del flash.
  *
@@ -523,11 +526,12 @@ export function SiteFooter({
   name: string;
   address: string | null;
   /**
-   * Instagram del club, si lo cargó. Va en el pie y no en la barra de arriba: la
-   * barra ya lleva cuenta, búsqueda y WhatsApp, y en un celular un cuarto botón
-   * le come el nombre del club. El pie es donde se buscan las redes.
+   * Instagram del club, si lo cargó. Va en la portada y en el pie, y no en la
+   * barra de arriba: la barra ya lleva cuenta, búsqueda y WhatsApp, y en un
+   * celular un cuarto botón le come el nombre del club. El pie es donde se
+   * buscan las redes.
    */
-  instagram?: { handle: string; url: string } | null;
+  instagram?: ClubInstagram | null;
 }) {
   return (
     <footer className="mt-14 border-t border-cal/10 pt-8 text-center">

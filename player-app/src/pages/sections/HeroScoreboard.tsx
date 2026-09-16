@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { Slot } from '../../api/client';
+import { InstagramGlyph, type ClubInstagram } from '../../components/Ui';
 import { clockTime, longDate, money, todayIso } from '../../format';
 import { DEFAULT_CTA, HERO_SCREEN } from './HeroClassic';
 
@@ -53,6 +54,7 @@ export function HeroScoreboard({
   heroHeadline,
   heroCtaLabel,
   address,
+  instagram,
   courtCount,
   todaySlots,
   timeZone,
@@ -66,6 +68,7 @@ export function HeroScoreboard({
   heroHeadline: string | null;
   heroCtaLabel: string | null;
   address: string | null;
+  instagram?: ClubInstagram | null;
   courtCount: number;
   /** Horarios con cancha libre de hoy; null si la página no está en hoy. */
   todaySlots?: Slot[] | null;
@@ -165,14 +168,33 @@ export function HeroScoreboard({
           </div>
         )}
 
-        {address && (
-          <p
-            className="portada-sube mt-[clamp(0.5rem,2svh,1.25rem)] flex items-center justify-center gap-1.5 text-sm font-semibold text-white/80"
+        {/* La dirección y el Instagram comparten renglón: uno abajo del otro
+            le sumaban alto a una portada que ya viene justa. Si no entran,
+            el Instagram baja solo. */}
+        {(address || instagram) && (
+          <div
+            className="portada-sube mt-[clamp(0.5rem,2svh,1.25rem)] flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-sm font-semibold text-white/80"
             style={delay(900)}
           >
-            <PinGlyph />
-            {address}
-          </p>
+            {address && (
+              <p className="flex items-center gap-1.5">
+                <PinGlyph />
+                {address}
+              </p>
+            )}
+            {instagram && (
+              <a
+                href={instagram.url}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`Instagram de ${name}: @${instagram.handle}`}
+                className="flex min-w-0 items-center gap-1.5 transition hover:text-white"
+              >
+                <InstagramGlyph className="size-4 shrink-0 text-ladrillo-claro" />
+                <span className="truncate">@{instagram.handle}</span>
+              </a>
+            )}
+          </div>
         )}
 
         <div className="portada-sube" style={delay(1000)}>

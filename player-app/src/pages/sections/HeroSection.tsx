@@ -1,4 +1,5 @@
 import type { Slot } from '../../api/client';
+import type { ClubInstagram } from '../../components/Ui';
 import { HeroClassic } from './HeroClassic';
 import { HeroCourtSplit } from './HeroCourtSplit';
 import { HeroScoreboard } from './HeroScoreboard';
@@ -12,6 +13,8 @@ import { HeroScoreboard } from './HeroScoreboard';
  * <p>Los horarios de hoy (todaySlots y sus callbacks): la clásica y el marcador
  * los ofrecen como fichas para reservar directo; la cancha partida solo muestra
  * el resumen, sin botones.
+ *
+ * <p>El Instagram del club va en los tres, cada uno con el estilo del diseño.
  */
 export function HeroSection({
   name,
@@ -22,6 +25,7 @@ export function HeroSection({
   heroOverlay,
   heroVariant,
   address,
+  instagram,
   courtCount,
   todaySlots,
   timeZone,
@@ -37,6 +41,7 @@ export function HeroSection({
   heroOverlay: number;
   heroVariant: 'CLASSIC' | 'SCOREBOARD' | 'COURT_SPLIT';
   address: string | null;
+  instagram: ClubInstagram | null;
   courtCount: number;
   todaySlots: Slot[] | null;
   timeZone: string;
@@ -53,6 +58,7 @@ export function HeroSection({
         heroHeadline={heroHeadline}
         heroCtaLabel={heroCtaLabel}
         address={address}
+        instagram={instagram}
         courtCount={courtCount}
         todaySlots={todaySlots}
         timeZone={timeZone}
@@ -72,6 +78,7 @@ export function HeroSection({
         heroHeadline={heroHeadline}
         heroCtaLabel={heroCtaLabel}
         address={address}
+        instagram={instagram}
         courtCount={courtCount}
         todaySlots={todaySlots}
         timeZone={timeZone}
@@ -88,6 +95,7 @@ export function HeroSection({
       heroCtaLabel={heroCtaLabel}
       heroOverlay={heroOverlay}
       address={address}
+      instagram={instagram}
       courtCount={courtCount}
       todaySlots={todaySlots}
       timeZone={timeZone}

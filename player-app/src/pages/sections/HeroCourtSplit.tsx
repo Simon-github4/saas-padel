@@ -1,5 +1,6 @@
 import { useRef, type CSSProperties, type PointerEvent } from 'react';
 import type { Slot } from '../../api/client';
+import { InstagramGlyph, type ClubInstagram } from '../../components/Ui';
 import { clockTime } from '../../format';
 import { DEFAULT_CTA, HERO_SCREEN } from './HeroClassic';
 
@@ -34,6 +35,7 @@ export function HeroCourtSplit({
   heroHeadline,
   heroCtaLabel,
   address,
+  instagram,
   courtCount,
   todaySlots,
   timeZone,
@@ -44,6 +46,7 @@ export function HeroCourtSplit({
   heroHeadline: string | null;
   heroCtaLabel: string | null;
   address: string | null;
+  instagram?: ClubInstagram | null;
   courtCount: number;
   /** Horarios con cancha libre de hoy; null si la página no está en hoy. */
   todaySlots: Slot[] | null;
@@ -161,22 +164,47 @@ export function HeroCourtSplit({
             <p className="eyebrow text-[#8a8377] max-md:bajo:hidden">Sin registro · Confirmación al instante</p>
           </div>
 
-          {address && (
-            <a
-              href="#como-llegar"
-              className="portada-sube group mt-[clamp(1rem,3.5svh,2rem)] flex items-center justify-center gap-3 border-t border-[#17140f]/10 pt-[clamp(0.75rem,2.5svh,1.25rem)] text-left md:justify-start"
+          {/* Dirección e Instagram lado a lado, con la misma forma: en un
+              teléfono angosto el Instagram baja y la foto de arriba cede ese
+              alto, así que la portada sigue midiendo la pantalla. */}
+          {(address || instagram) && (
+            <div
+              className="portada-sube mt-[clamp(1rem,3.5svh,2rem)] flex flex-wrap items-center justify-center gap-x-8 gap-y-3 border-t border-[#17140f]/10 pt-[clamp(0.75rem,2.5svh,1.25rem)] text-left md:justify-start"
               style={delay(600)}
             >
-              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#17140f]/[0.06] transition-colors group-hover:bg-ladrillo group-hover:text-white">
-                <PinGlyph />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold">{address}</span>
-                <span className="block text-xs text-[#8a8377] transition-colors group-hover:text-[#17140f]">
-                  Cómo llegar ↓
-                </span>
-              </span>
-            </a>
+              {address && (
+                <a href="#como-llegar" className="group flex min-w-0 items-center gap-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#17140f]/[0.06] transition-colors group-hover:bg-ladrillo group-hover:text-white">
+                    <PinGlyph />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">{address}</span>
+                    <span className="block text-xs text-[#8a8377] transition-colors group-hover:text-[#17140f]">
+                      Cómo llegar ↓
+                    </span>
+                  </span>
+                </a>
+              )}
+              {instagram && (
+                <a
+                  href={instagram.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Instagram de ${name}: @${instagram.handle}`}
+                  className="group flex min-w-0 items-center gap-3"
+                >
+                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#17140f]/[0.06] transition-colors group-hover:bg-ladrillo group-hover:text-white">
+                    <InstagramGlyph className="size-4" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold">@{instagram.handle}</span>
+                    <span className="block text-xs text-[#8a8377] transition-colors group-hover:text-[#17140f]">
+                      Instagram ↗
+                    </span>
+                  </span>
+                </a>
+              )}
+            </div>
           )}
         </div>
       </div>

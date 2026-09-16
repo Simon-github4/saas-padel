@@ -9,6 +9,7 @@ import {
   Alert,
   Badge,
   Button,
+  type ClubInstagram,
   FloatingWhatsapp,
   Loading,
   Screen,
@@ -265,6 +266,10 @@ export function ClubPage() {
   const club = data!.club;
   const whatsapp = whatsappLink(club.whatsappNumber);
   const lastBookable = addDays(todayIso(), club.bookingHorizonDays);
+  const instagram: ClubInstagram | null =
+    club.instagramHandle && club.instagramUrl
+      ? { handle: club.instagramHandle, url: club.instagramUrl }
+      : null;
   // Los horarios libres de hoy para la portada. Solo si la página está parada
   // en hoy: si el jugador eligió otro día, estos datos son de ese día.
   const todaySlots =
@@ -299,6 +304,7 @@ export function ClubPage() {
         heroOverlay={club.heroOverlay}
         heroVariant={club.heroVariant}
         address={club.address}
+        instagram={instagram}
         courtCount={data!.courts.length}
         todaySlots={todaySlots}
         timeZone={club.timeZone}
@@ -473,15 +479,7 @@ export function ClubPage() {
         longitude={club.longitude}
       />
 
-      <SiteFooter
-        name={club.name}
-        address={club.address}
-        instagram={
-          club.instagramHandle && club.instagramUrl
-            ? { handle: club.instagramHandle, url: club.instagramUrl }
-            : null
-        }
-      />
+      <SiteFooter name={club.name} address={club.address} instagram={instagram} />
 
       <FloatingWhatsapp href={whatsapp} />
     </Screen>
