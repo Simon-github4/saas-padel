@@ -490,3 +490,435 @@ vaadin-side-nav-item[current]::part(item) {
   font-weight: 500;
   color: var(--lumo-body-text-color);
 }
+
+/* =====================================================================
+   Buffet: la caja registradora del mostrador
+   =====================================================================
+
+   Productos a la izquierda, pedido a la derecha y fijo mientras se baja:
+   en un torneo se cobra de corrido y el total tiene que estar siempre a la
+   vista. Las piezas son botones nativos y no vaadin-button porque llevan
+   varias lineas adentro (numero, nombre, precio, cantidad). */
+.buffet-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lumo-space-s) var(--lumo-space-m);
+  width: 100%;
+}
+
+/* Con display propio, el atributo hidden de setVisible(false) pierde contra
+   la clase: sin esto un producto filtrado seguiria en pantalla. */
+.buffet-pos [hidden],
+.buffet-accounts[hidden] {
+  display: none !important;
+}
+
+.buffet-pos {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(20rem, 25rem);
+  gap: var(--lumo-space-l);
+  align-items: start;
+  width: 100%;
+}
+
+@media (max-width: 960px) {
+  .buffet-pos {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.buffet-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumo-space-s);
+  min-width: 0;
+}
+
+.buffet-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--lumo-space-s);
+}
+
+.kbd {
+  display: inline-block;
+  margin-inline-start: 0.4em;
+  padding: 0.1em 0.35em;
+  border: 1px solid currentColor;
+  border-radius: var(--lumo-border-radius-s);
+  font-size: 0.7em;
+  font-weight: 700;
+  line-height: 1.2;
+  opacity: 0.7;
+}
+
+.buffet-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  min-height: 5.75rem;
+  padding: var(--lumo-space-s) var(--lumo-space-m);
+  border: 1px solid var(--lumo-contrast-20pct);
+  border-radius: var(--lumo-border-radius-l);
+  background: var(--lumo-base-color);
+  color: var(--lumo-body-text-color);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.12s, box-shadow 0.12s, transform 0.06s;
+}
+
+.buffet-tile:hover {
+  border-color: var(--lumo-primary-color-50pct);
+}
+
+.buffet-tile:active {
+  transform: scale(0.97);
+}
+
+.buffet-tile:focus-visible {
+  outline: 2px solid var(--lumo-primary-color);
+  outline-offset: 2px;
+}
+
+.buffet-tile__key {
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 700;
+  color: var(--lumo-tertiary-text-color);
+  font-variant-numeric: tabular-nums;
+}
+
+.buffet-tile__name {
+  flex: 1;
+  font-size: var(--lumo-font-size-m);
+  font-weight: 650;
+  line-height: 1.2;
+  padding-inline-end: 1.75rem;
+}
+
+.buffet-tile__price {
+  color: var(--lumo-secondary-text-color);
+  font-weight: 600;
+}
+
+.buffet-tile__count {
+  position: absolute;
+  top: var(--lumo-space-s);
+  right: var(--lumo-space-s);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.625rem;
+  height: 1.625rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--lumo-primary-color);
+  color: var(--lumo-primary-contrast-color);
+  font-size: var(--lumo-font-size-s);
+  font-weight: 800;
+}
+
+.buffet-tile--in-order {
+  border-color: var(--lumo-primary-color);
+  background: var(--lumo-primary-color-10pct);
+}
+
+/* El que agrega el Enter: anillo y la tecla escrita, para que no haya que
+   adivinar cual de los filtrados va a entrar. */
+.buffet-tile--next {
+  border-color: var(--lumo-primary-color);
+  box-shadow: 0 0 0 2px var(--lumo-primary-color);
+}
+
+.buffet-tile--next::after {
+  content: "Enter \21B5";
+  position: absolute;
+  right: var(--lumo-space-s);
+  bottom: var(--lumo-space-s);
+  padding: 0.1em 0.4em;
+  border-radius: var(--lumo-border-radius-s);
+  background: var(--lumo-primary-color);
+  color: var(--lumo-primary-contrast-color);
+  font-size: var(--lumo-font-size-xxs);
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------- pedido */
+.buffet-ticket {
+  position: sticky;
+  top: var(--lumo-space-m);
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumo-space-s);
+  padding: var(--lumo-space-m);
+  border: 1px solid var(--lumo-contrast-10pct);
+  border-radius: var(--lumo-border-radius-l);
+  background: var(--lumo-base-color);
+  box-shadow: var(--lumo-box-shadow-s);
+}
+
+@media (max-width: 960px) {
+  .buffet-ticket {
+    position: static;
+  }
+}
+
+.buffet-ticket__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--lumo-space-s);
+}
+
+.buffet-ticket__heading {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.buffet-ticket__title {
+  font-size: var(--lumo-font-size-l);
+  font-weight: 800;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.buffet-suggestions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: calc(var(--lumo-space-s) * -1);
+}
+
+.buffet-lines {
+  display: flex;
+  flex-direction: column;
+  max-height: 20rem;
+  overflow-y: auto;
+  border-top: 1px solid var(--lumo-contrast-10pct);
+  border-bottom: 1px solid var(--lumo-contrast-10pct);
+  padding-block: var(--lumo-space-xs);
+}
+
+.buffet-lines__empty {
+  padding: var(--lumo-space-m) 0;
+  color: var(--lumo-secondary-text-color);
+  text-align: center;
+}
+
+.buffet-lines__caption {
+  padding-top: var(--lumo-space-xs);
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--lumo-tertiary-text-color);
+}
+
+.buffet-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--lumo-space-s);
+  min-height: 2.5rem;
+}
+
+.buffet-line--new {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.buffet-line--saved {
+  color: var(--lumo-secondary-text-color);
+}
+
+.buffet-line__qty {
+  min-width: 2rem;
+  font-weight: 700;
+}
+
+.buffet-line__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.buffet-line__amount {
+  font-weight: 600;
+}
+
+.buffet-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--lumo-contrast-20pct);
+  border-radius: var(--lumo-border-radius-m);
+}
+
+.buffet-stepper vaadin-button {
+  margin: 0;
+}
+
+.buffet-stepper__count {
+  min-width: 1.75rem;
+  text-align: center;
+  font-weight: 800;
+}
+
+.buffet-due {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--lumo-space-s);
+}
+
+.buffet-due__label {
+  font-weight: 600;
+  color: var(--lumo-secondary-text-color);
+}
+
+.buffet-due__value {
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.buffet-due--credit .buffet-due__value {
+  color: var(--lumo-success-text-color);
+}
+
+.buffet-cash {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--lumo-space-m);
+}
+
+.buffet-cash vaadin-big-decimal-field {
+  width: 9rem;
+}
+
+.buffet-change {
+  padding-bottom: var(--lumo-space-s);
+  font-size: var(--lumo-font-size-xl);
+  font-weight: 800;
+  color: var(--lumo-success-text-color);
+  white-space: nowrap;
+}
+
+.buffet-change--short {
+  color: var(--lumo-error-text-color);
+}
+
+.buffet-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--lumo-space-s);
+}
+
+.buffet-actions vaadin-button {
+  margin: 0;
+}
+
+.buffet-actions__wide {
+  grid-column: 1 / -1;
+}
+
+/* El ultimo cobro queda a la vista, con el vuelto grande: la notificacion se
+   va sola y el billete todavia esta en la mano. */
+.buffet-last {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lumo-space-xs) var(--lumo-space-s);
+  padding: var(--lumo-space-s) var(--lumo-space-m);
+  border-radius: var(--lumo-border-radius-m);
+  background: var(--lumo-success-color-10pct);
+  color: var(--lumo-success-text-color);
+  font-weight: 600;
+}
+
+.buffet-last vaadin-icon {
+  flex: none;
+}
+
+.buffet-last__text {
+  flex: 1;
+  min-width: 10rem;
+}
+
+.buffet-last__change {
+  font-size: var(--lumo-font-size-xl);
+  font-weight: 800;
+}
+
+/* ---------------------------------------------------- cuentas abiertas */
+.buffet-accounts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--lumo-space-s);
+  width: 100%;
+}
+
+.buffet-account {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.125rem var(--lumo-space-s);
+  padding: var(--lumo-space-s) var(--lumo-space-m);
+  border: 1px solid var(--lumo-contrast-20pct);
+  border-radius: var(--lumo-border-radius-l);
+  background: var(--lumo-base-color);
+  color: var(--lumo-body-text-color);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.buffet-account:hover {
+  border-color: var(--lumo-primary-color-50pct);
+}
+
+.buffet-account:focus-visible {
+  outline: 2px solid var(--lumo-primary-color);
+  outline-offset: 2px;
+}
+
+.buffet-account--current {
+  border-color: var(--lumo-primary-color);
+  box-shadow: 0 0 0 1px var(--lumo-primary-color);
+  background: var(--lumo-primary-color-10pct);
+}
+
+.buffet-account__name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.buffet-account__amount {
+  font-weight: 700;
+  color: var(--lumo-secondary-text-color);
+  white-space: nowrap;
+}
+
+.buffet-account__amount--due {
+  color: var(--lumo-error-text-color);
+}
+
+.buffet-account__amount--credit {
+  color: var(--lumo-success-text-color);
+}
+
+.buffet-account__meta {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--lumo-font-size-s);
+  color: var(--lumo-secondary-text-color);
+}

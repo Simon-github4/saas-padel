@@ -288,6 +288,9 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         // lado del mostrador y no de Estadisticas: el que cuenta los billetes a
         // la noche es el que atiende.
         diario.addItem(new SideNavItem("Caja", CajaView.class, iconChip(LumoIcon.ORDERED_LIST)));
+        // El buffet es su propia pantalla y no una seccion de la caja: se usa
+        // todo el dia, de corrido, y la caja se mira al cierre.
+        diario.addItem(new SideNavItem("Buffet", BuffetView.class, iconChip(VaadinIcon.COFFEE)));
         diario.addItem(new SideNavItem("Turnos fijos", RecurringView.class, iconChip(LumoIcon.RELOAD)));
         diario.addItem(new SideNavItem("Jugadores", CustomersView.class, iconChip(LumoIcon.USER)));
         // Junto a Alertas: la alerta de un turno cancelado con anotados lleva aca.
