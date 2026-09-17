@@ -11,6 +11,7 @@ import { NetworkSection } from './marketing/NetworkSection';
 import { PaymentsSection } from './marketing/PaymentsSection';
 import { PricingSection } from './marketing/PricingSection';
 import { StepsSection } from './marketing/StepsSection';
+import { TemaSwitch } from './marketing/TemaSwitch';
 import './marketing/landing.css';
 
 /**
@@ -50,6 +51,7 @@ export function Landing() {
         <ClosingSection />
       </main>
       <MarketingFooter />
+      <TemaSwitch />
     </div>
   );
 }

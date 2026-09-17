@@ -7,6 +7,10 @@
 @custom-variant bajo (@media (max-height: 760px));
 @custom-variant muy-bajo (@media (max-height: 640px));
 
+/* Para lo poco que no puede salir de un token de color: logos de otras marcas
+   que tienen una version para fondo claro y otra para oscuro. */
+@custom-variant claro (&:where(html[data-theme="light"], html[data-theme="light"] *));
+
 /* Rango doble de la busqueda (horario exacto): dos input range encimados sobre
    un riel dibujado aparte. Los inputs son transparentes y no reciben el puntero;
    solo sus manijas, asi cada una se agarra por separado. */

@@ -52,8 +52,13 @@ export function HeroSection() {
         </div>
       </div>
 
+      {/*
+        El aire de arriba y abajo se achica en pantallas anchas, y más todavía en
+        notebooks bajas: con el de antes la portada medía 805px en una pantalla de
+        768 y las tres promesas del final quedaban cortadas.
+      */}
       <div
-        className={`${CONTAINER} grid gap-16 pb-28 pt-14 md:pt-20 lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-14 lg:pb-24`}
+        className={`${CONTAINER} grid gap-16 pb-28 pt-14 md:pt-20 lg:min-h-[calc(100dvh-4rem)] lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-14 lg:pb-16 lg:pt-10 lg:bajo:pb-10 lg:bajo:pt-6`}
       >
         <div className="text-center lg:text-left">
           <p
@@ -63,7 +68,7 @@ export function HeroSection() {
             <span aria-hidden className="h-px w-6 bg-ladrillo-claro/60" />
             Para dueños de club
           </p>
-          <h1 className="mt-6 text-[clamp(3.75rem,15vw,7rem)] leading-[0.9] tracking-[0.01em] lg:text-[clamp(4.5rem,6.8vw,7.25rem)]">
+          <h1 className="mt-6 text-[clamp(3.75rem,15vw,7rem)] leading-[0.9] tracking-[0.01em] lg:text-[clamp(4.5rem,6.8vw,7.25rem)] lg:bajo:mt-4 lg:bajo:text-[clamp(3.75rem,5.4vw,5.5rem)]">
             <span className="mk-line">
               <span style={delay(100)}>Que tu club</span>
             </span>
@@ -74,21 +79,21 @@ export function HeroSection() {
             </span>
           </h1>
           <p
-            className="mk-fade-up mx-auto mt-7 max-w-md text-lg leading-relaxed text-ink-soft text-pretty lg:mx-0"
+            className="mk-fade-up mx-auto mt-7 max-w-md text-lg leading-relaxed text-ink-soft text-pretty lg:mx-0 lg:bajo:mt-5"
             style={delay(420)}
           >
             Tu WhatsApp deja de ser una fila de mensajes a la noche: el jugador abre
             tu link, ve las canchas libres y reserva. Vos mirás la agenda.
           </p>
           <div
-            className="mk-fade-up mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:justify-center lg:justify-start"
+            className="mk-fade-up mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:justify-center lg:justify-start lg:bajo:mt-6"
             style={delay(560)}
           >
             <WhatsappCta href={salesWhatsappHref()}>Hablemos</WhatsappCta>
             <DemoClubCta>Ver un club real</DemoClubCta>
           </div>
           <ul
-            className="mk-fade-up mt-9 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-ink-soft lg:justify-start"
+            className="mk-fade-up mt-9 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-ink-soft lg:justify-start lg:bajo:mt-6"
             style={delay(700)}
           >
             {PROMISES.map((promise) => (

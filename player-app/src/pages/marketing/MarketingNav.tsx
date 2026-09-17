@@ -96,7 +96,7 @@ export function MarketingNav() {
           <BrandLogo />
         </a>
 
-        <nav aria-label="Secciones" className="hidden items-center gap-1 xl:flex">
+        <nav aria-label="Secciones" className="hidden items-center gap-0.5 xl:flex">
           {ANCHORS.map((anchor) => {
             const current = active === anchor.href;
             return (
@@ -104,7 +104,7 @@ export function MarketingNav() {
                 key={anchor.href}
                 href={anchor.href}
                 aria-current={current ? 'true' : undefined}
-                className={`relative rounded-full px-4 py-2 text-sm transition-colors duration-300 ${
+                className={`relative whitespace-nowrap rounded-full px-3 py-2 text-sm transition-colors duration-300 ${
                   current ? 'text-cal' : 'text-ink-soft hover:text-cal'
                 }`}
               >

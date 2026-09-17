@@ -13,9 +13,17 @@
 const COLOR = '/marcas/mercado-pago-color.svg';
 const BLANCO = '/marcas/mercado-pago-blanco.svg';
 
-/** Sobre fondo oscuro. */
+/**
+ * Sobre el fondo de la pagina: blanco en el tema oscuro y a color en el claro,
+ * donde el blanco no se veria. Van las dos imagenes y el tema esconde una.
+ */
 export function MercadoPagoLogo({ className = '' }: { className?: string }) {
-  return <img src={BLANCO} alt="Mercado Pago" className={className} />;
+  return (
+    <>
+      <img src={BLANCO} alt="Mercado Pago" className={`${className} claro:hidden`} />
+      <img src={COLOR} alt="Mercado Pago" className={`${className} hidden claro:block`} />
+    </>
+  );
 }
 
 /** Sobre fondo claro: el logo con sus colores. */

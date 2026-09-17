@@ -140,7 +140,7 @@ function CheckoutDemo() {
         onClick={() => setStage(paid ? 'pagando' : 'acreditada')}
         aria-label={paid ? 'Ver el pago otra vez' : 'Pagar la seña con Mercado Pago'}
         className={`mt-4 flex w-full items-center justify-center gap-3 rounded-2xl px-5 py-4 font-semibold transition duration-300 hover:brightness-105 ${
-          paid ? 'border border-cal/10 bg-cal/[0.06] text-cal' : 'bg-cal text-pista'
+          paid ? 'border border-cal/10 bg-cal/[0.06] text-cal' : 'bg-white text-[#0a0a0a]'
         }`}
       >
         {paid ? (
