@@ -49,8 +49,9 @@ public class Payment extends TenantScopedEntity {
     @Column(nullable = false, length = 20)
     private PaymentStatus status = PaymentStatus.PENDING;
 
-    @Column(name = "mp_preference_id", length = 120)
-    private String mpPreferenceId;
+    /** Id de la order de MercadoPago (Orders API) que genero este pago pendiente. */
+    @Column(name = "mp_order_id", length = 120)
+    private String mpOrderId;
 
     /**
      * Identificador del pago en MercadoPago. Es unico en la base: si el webhook

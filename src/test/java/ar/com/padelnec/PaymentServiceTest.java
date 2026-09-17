@@ -29,7 +29,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.util.Optional;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -58,6 +58,7 @@ class PaymentServiceTest {
     private static final String NOW = "2026-09-01T10:00:00Z";
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 1);
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
+    private static final String MP_ORDER_ID = "ORDTST01ABCDEFGHIJKLMNOPQR";
     private static final String MP_PAYMENT_ID = "112233445";
 
     @TestConfiguration(proxyBeanMethods = false)
@@ -96,7 +97,7 @@ class PaymentServiceTest {
         fixture.allDayPrice(DayOfWeek.TUESDAY, "20000");
 
         when(gateway.createDepositCheckout(any(), any()))
-                .thenReturn(new MercadoPagoGateway.Checkout("pref-1", "https://mp.test/checkout"));
+                .thenReturn(new MercadoPagoGateway.Checkout(MP_ORDER_ID, "https://mp.test/checkout"));
     }
 
     @AfterEach
@@ -108,9 +109,9 @@ class PaymentServiceTest {
     @DisplayName("Una sena acreditada confirma el turno y descuenta del saldo")
     void approvedDepositConfirmsTheBooking() {
         Booking booking = draftBooking();
-        stubPayment(booking, "approved", "10000");
+        stubPayment(booking, "processed", "10000");
 
-        paymentService.applyWebhook(club, MP_PAYMENT_ID);
+        paymentService.applyWebhook(club, MP_ORDER_ID);
 
         Booking updated = reload(booking);
         assertThat(updated.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
@@ -123,13 +124,13 @@ class PaymentServiceTest {
     @DisplayName("El mismo webhook repetido no acredita dos veces")
     void duplicateWebhooksAreIdempotent() {
         Booking booking = draftBooking();
-        stubPayment(booking, "approved", "10000");
+        stubPayment(booking, "processed", "10000");
 
         // MercadoPago reintenta sus notificaciones: sin idempotencia, el saldo del
         // jugador quedaria en cero y el club cobraria de menos en el mostrador.
-        paymentService.applyWebhook(club, MP_PAYMENT_ID);
-        paymentService.applyWebhook(club, MP_PAYMENT_ID);
-        paymentService.applyWebhook(club, MP_PAYMENT_ID);
+        paymentService.applyWebhook(club, MP_ORDER_ID);
+        paymentService.applyWebhook(club, MP_ORDER_ID);
+        paymentService.applyWebhook(club, MP_ORDER_ID);
 
         assertThat(reload(booking).getPaidAmount()).isEqualByComparingTo("10000");
         assertThat(paymentRepository.findAll().stream()
@@ -148,8 +149,8 @@ class PaymentServiceTest {
                 clock.instant());
         bookingRepository.saveAndFlush(expired);
 
-        stubPayment(booking, "approved", "10000");
-        paymentService.applyWebhook(club, MP_PAYMENT_ID);
+        stubPayment(booking, "processed", "10000");
+        paymentService.applyWebhook(club, MP_ORDER_ID);
 
         Booking after = reload(booking);
         // El turno no revive: la cancha pudo haberse vendido a otro en el interin.
@@ -165,9 +166,9 @@ class PaymentServiceTest {
     @DisplayName("Un pago rechazado deja la reserva en borrador para reintentar")
     void rejectedPaymentKeepsTheDraftAlive() {
         Booking booking = draftBooking();
-        stubPayment(booking, "rejected", "10000");
+        stubPayment(booking, "failed", "10000");
 
-        paymentService.applyWebhook(club, MP_PAYMENT_ID);
+        paymentService.applyWebhook(club, MP_ORDER_ID);
 
         Booking after = reload(booking);
         assertThat(after.getStatus()).isEqualTo(BookingStatus.DRAFT);
@@ -181,9 +182,9 @@ class PaymentServiceTest {
     @DisplayName("Un pago pendiente todavia no confirma nada")
     void pendingPaymentChangesNothing() {
         Booking booking = draftBooking();
-        stubPayment(booking, "in_process", "10000");
+        stubPayment(booking, "processing", "10000");
 
-        paymentService.applyWebhook(club, MP_PAYMENT_ID);
+        paymentService.applyWebhook(club, MP_ORDER_ID);
 
         assertThat(reload(booking).getStatus()).isEqualTo(BookingStatus.DRAFT);
         assertThat(paymentRepository.findByMpPaymentId(MP_PAYMENT_ID)).isEmpty();
@@ -192,11 +193,11 @@ class PaymentServiceTest {
     @Test
     @DisplayName("Un pago sin reserva detras no rompe nada")
     void paymentWithUnknownReferenceIsIgnored() {
-        when(gateway.fetchPayment(any(), eq(MP_PAYMENT_ID))).thenReturn(Optional.of(
-                new ApprovedPayment(MP_PAYMENT_ID, "approved",
+        when(gateway.fetchOrderPayments(any(), eq(MP_ORDER_ID))).thenReturn(List.of(
+                new ApprovedPayment(MP_PAYMENT_ID, "processed",
                         "00000000-0000-0000-0000-000000000000", new BigDecimal("10000"))));
 
-        paymentService.applyWebhook(club, MP_PAYMENT_ID);
+        paymentService.applyWebhook(club, MP_ORDER_ID);
 
         assertThat(paymentRepository.findAll()).noneMatch(p -> p.getMpPaymentId() != null);
     }
@@ -205,8 +206,8 @@ class PaymentServiceTest {
     @DisplayName("Cobrar el saldo total en el mostrador deja el turno saldado y lo cierra")
     void cashPaymentSettlesTheBalance() {
         Booking booking = draftBooking();
-        stubPayment(booking, "approved", "10000");
-        paymentService.applyWebhook(club, MP_PAYMENT_ID);
+        stubPayment(booking, "processed", "10000");
+        paymentService.applyWebhook(club, MP_ORDER_ID);
 
         paymentService.registerManualPayment(reload(booking), new BigDecimal("10000"), PaymentMethod.CASH, null);
 
@@ -223,8 +224,8 @@ class PaymentServiceTest {
     @DisplayName("Cobrar solo una parte del saldo no cierra el turno")
     void partialCashPaymentDoesNotCloseTheBooking() {
         Booking booking = draftBooking();
-        stubPayment(booking, "approved", "10000");
-        paymentService.applyWebhook(club, MP_PAYMENT_ID);
+        stubPayment(booking, "processed", "10000");
+        paymentService.applyWebhook(club, MP_ORDER_ID);
 
         paymentService.registerManualPayment(reload(booking), new BigDecimal("5000"), PaymentMethod.CASH, null);
 
@@ -243,7 +244,7 @@ class PaymentServiceTest {
     }
 
     private void stubPayment(Booking booking, String status, String amount) {
-        when(gateway.fetchPayment(any(), eq(MP_PAYMENT_ID))).thenReturn(Optional.of(
+        when(gateway.fetchOrderPayments(any(), eq(MP_ORDER_ID))).thenReturn(List.of(
                 new ApprovedPayment(MP_PAYMENT_ID, status,
                         booking.getId().toString(), new BigDecimal(amount))));
     }

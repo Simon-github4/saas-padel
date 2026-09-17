@@ -69,18 +69,29 @@ public class MercadoPagoSignature {
                 received.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Rechaza tambien un ts en el futuro y no solo uno viejo: una ventana simetrica
+    /**
+     * Rechaza tambien un ts en el futuro y no solo uno viejo: una ventana simetrica
      * cubre el mismo reloj corrido de un lado que del otro, sin ampliar el margen
-     * real que le queda a quien reintenta una notificacion capturada. */
+     * real que le queda a quien reintenta una notificacion capturada.
+     *
+     * <p>La documentacion de MercadoPago dice que {@code ts} viene en milisegundos,
+     * pero sus propios ejemplos no son consistentes: unos traen 10 digitos
+     * (segundos) y otros 13 (milisegundos). Tratarlo siempre como milisegundos
+     * rechazaria de 401 cualquier webhook real que llegue en segundos, asi que se
+     * acepta cualquiera de los dos formatos segun el largo del numero.
+     */
     private boolean isRecent(String timestamp) {
-        long epochSeconds;
+        long epochMillis;
         try {
-            epochSeconds = Long.parseLong(timestamp);
+            long value = Long.parseLong(timestamp);
+            // Un ts en segundos de 13 digitos describiria una fecha en el año 5138:
+            // el largo alcanza para distinguir un formato del otro sin ambiguedad.
+            epochMillis = timestamp.length() >= 13 ? value : value * 1000;
         } catch (NumberFormatException ex) {
             return false;
         }
-        long ageSeconds = Math.abs(clock.instant().getEpochSecond() - epochSeconds);
-        return ageSeconds <= MAX_AGE.toSeconds();
+        long ageMillis = Math.abs(clock.millis() - epochMillis);
+        return ageMillis <= MAX_AGE.toMillis();
     }
 
     private String extract(String header, String key) {

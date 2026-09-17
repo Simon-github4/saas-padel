@@ -20,4 +20,7 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
 
     /** Clubes conectados por OAuth cuyo access token vence dentro de la ventana de renovacion. */
     List<Tenant> findAllByMpRefreshTokenIsNotNullAndMpTokenExpiresAtBefore(Instant threshold);
+
+    /** El webhook unico de la app identifica al club por el user_id de MercadoPago, no por slug. */
+    Optional<Tenant> findByMpUserId(String mpUserId);
 }

@@ -319,8 +319,10 @@ class PublicApiIntegrationTest {
     @Test
     @DisplayName("El webhook de MercadoPago sin firma valida se rechaza")
     void unsignedWebhooksAreRejected() {
-        // Sin esta barrera, cualquiera confirmaria turnos que nadie pago.
-        client.post().uri("/api/webhooks/mercadopago/club-necochea?type=payment&data.id=123")
+        // Sin esta barrera, cualquiera confirmaria turnos que nadie pago. Un solo
+        // endpoint para todos los clubes: con OAuth el club se identifica por el
+        // user_id del cuerpo, no por un slug en la URL.
+        client.post().uri("/api/webhooks/mercadopago?type=order&data.id=123")
                 .exchange()
                 .expectStatus().isUnauthorized();
     }

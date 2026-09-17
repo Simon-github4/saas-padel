@@ -14,6 +14,7 @@ import ar.com.padelnec.repository.BuffetOrderRepository;
 import ar.com.padelnec.repository.PaymentRepository;
 import ar.com.padelnec.web.BusinessRuleException;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -52,26 +53,31 @@ public class PaymentService {
         payment.setAmount(booking.getDepositAmount());
         payment.setMethod(PaymentMethod.MERCADOPAGO);
         payment.setStatus(PaymentStatus.PENDING);
-        payment.setMpPreferenceId(checkout.preferenceId());
+        payment.setMpOrderId(checkout.orderId());
         paymentRepository.save(payment);
 
         return checkout.checkoutUrl();
     }
 
     /**
-     * Procesa una notificacion de MercadoPago.
+     * Procesa una notificacion de MercadoPago para una order.
      *
      * <p>El estado se consulta contra la API y no se toma del cuerpo del webhook:
-     * la notificacion avisa que algo paso, no prueba que el dinero exista.
+     * la notificacion avisa que algo paso, no prueba que el dinero exista. Una
+     * order puede acumular mas de un intento de pago (un rechazo y despues uno
+     * aprobado, por ejemplo), asi que se procesan todos los que trajo -la
+     * idempotencia es por id de pago, no por order, asi que reprocesar los ya
+     * vistos no hace nada.
      */
     @Transactional
-    public void applyWebhook(Tenant club, String mercadoPagoPaymentId) {
-        Optional<ApprovedPayment> fetched = gateway.fetchPayment(club, mercadoPagoPaymentId);
-        if (fetched.isEmpty()) {
-            return;
+    public void applyWebhook(Tenant club, String mercadoPagoOrderId) {
+        List<ApprovedPayment> payments = gateway.fetchOrderPayments(club, mercadoPagoOrderId);
+        for (ApprovedPayment remote : payments) {
+            applyPayment(club, remote);
         }
-        ApprovedPayment remote = fetched.get();
+    }
 
+    private void applyPayment(Tenant club, ApprovedPayment remote) {
         // Idempotencia: MercadoPago reintenta sus webhooks, y sin esto una sena se
         // acreditaria dos veces sobre la misma reserva.
         if (paymentRepository.findByMpPaymentId(remote.paymentId()).isPresent()) {
@@ -92,7 +98,7 @@ public class PaymentService {
             return;
         }
         if (!remote.isApproved()) {
-            // En proceso: MercadoPago vuelve a avisar cuando se define.
+            // En proceso, esperando accion, etc: MercadoPago vuelve a avisar cuando se defina.
             return;
         }
         credit(club, booking, remote);

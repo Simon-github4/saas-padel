@@ -111,6 +111,21 @@ class MercadoPagoSignatureTest {
         assertThat(slightlyLater.isValid(header(VALID_HMAC), REQUEST_ID, "123456789", SECRET)).isTrue();
     }
 
+    @Test
+    @DisplayName("Un ts de 13 digitos se interpreta en milisegundos, no en segundos")
+    void millisecondTimestampIsAlsoAccepted() {
+        // Mismo instante que TIMESTAMP, pero en milisegundos: la doc de MercadoPago
+        // dice que ts siempre viene asi, aunque sus propios ejemplos a veces manden
+        // segundos (ver el otro caso, con VALID_HMAC). HMAC calculado aparte con
+        // openssl, no con MercadoPagoSignature, por la misma razon que el resto del
+        // archivo.
+        String millisTimestamp = "1756400000000";
+        String millisHmac = "1f631c6cb6b21b3867c48a51122dd311ed86ce20ff20d2c6f65c123a6e0a99d5";
+        String header = "ts=" + millisTimestamp + ",v1=" + millisHmac;
+
+        assertThat(signature.isValid(header, REQUEST_ID, "123456789", SECRET)).isTrue();
+    }
+
     private String header(String hmac) {
         return "ts=" + TIMESTAMP + ",v1=" + hmac;
     }

@@ -38,7 +38,6 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class TenantContextFilter extends OncePerRequestFilter {
 
     private static final String PUBLIC_PREFIX = "/api/public/";
-    private static final String WEBHOOK_PREFIX = "/api/webhooks/mercadopago/";
 
     /** Segmentos reservados: son endpoints de plataforma, no el slug de un club. */
     private static final Set<String> PLATFORM_ENDPOINTS = Set.of("search", "events");
@@ -58,10 +57,13 @@ public class TenantContextFilter extends OncePerRequestFilter {
         }
     }
 
+    /**
+     * El webhook de MercadoPago ({@code /api/webhooks/mercadopago}) no entra aca:
+     * es un unico endpoint para todos los clubes, sin slug en la URL, y resuelve
+     * su propio club por {@code user_id} dentro del controller
+     * ({@code MercadoPagoWebhookController}).
+     */
     private Optional<UUID> resolve(String path) {
-        if (path.startsWith(WEBHOOK_PREFIX)) {
-            return bySlug(firstSegment(path.substring(WEBHOOK_PREFIX.length())));
-        }
         if (!path.startsWith(PUBLIC_PREFIX)) {
             return Optional.empty();
         }
