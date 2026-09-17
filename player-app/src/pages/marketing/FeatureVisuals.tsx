@@ -59,48 +59,60 @@ function Avatar({ letter, muted = false }: { letter: string; muted?: boolean }) 
   );
 }
 
-/** El dueño elige: seña online o reserva de palabra. Interactivo. */
-export function DepositVisual() {
-  const [mode, setMode] = useState<'sena' | 'palabra'>('sena');
+/**
+ * El horario completo con tres anotados en la lista de espera: alguien cancela
+ * y el aviso sale solo. Se juega al entrar en pantalla.
+ */
+const WAITING = ['Nacho', 'Caro', 'Seba'];
+
+export function WaitlistVisual() {
+  const reduced = usePrefersReducedMotion();
+  const [ref, shown] = useInView<HTMLDivElement>();
+  const [freed, setFreed] = useState(false);
+
+  useEffect(() => {
+    if (!shown || reduced) {
+      return;
+    }
+    const id = window.setTimeout(() => setFreed(true), 1600);
+    return () => window.clearTimeout(id);
+  }, [shown, reduced]);
+
   return (
-    <div className="flex h-full flex-col justify-center gap-3">
-      <div role="group" aria-label="Cómo se confirma la reserva" className="grid grid-cols-2 rounded-full border border-cal/10 bg-pista p-1">
-        {(
-          [
-            ['sena', 'Con seña'],
-            ['palabra', 'De palabra'],
-          ] as const
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={mode === value}
-            onClick={() => setMode(value)}
-            className={`rounded-full px-3 text-xs font-bold uppercase tracking-[0.1em] transition duration-300 ${
-              mode === value ? 'bg-cal text-pista' : 'text-ink-soft hover:text-cal'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+    <div ref={ref} aria-hidden className="flex h-full flex-col justify-center gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="eyebrow text-ink-mute">Viernes 20:00</p>
+        <span
+          className={`eyebrow rounded-full px-2 py-0.5 transition-colors duration-500 ${
+            freed ? 'bg-ladrillo/15 text-ladrillo-claro' : 'bg-cal/10 text-ink-soft'
+          }`}
+        >
+          {freed ? 'Se liberó' : 'Completo'}
+        </span>
       </div>
-      <div key={mode} aria-hidden className="mk-fade-up rounded-xl border border-cal/10 bg-pista px-4 py-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-semibold">Cancha 2 · 19:30</span>
-          <span
-            className={`eyebrow rounded-full px-2 py-0.5 ${
-              mode === 'sena' ? 'bg-ladrillo/15 text-ladrillo-claro' : 'bg-cal/10 text-arena'
-            }`}
-          >
-            {mode === 'sena' ? 'Seña paga' : 'Confirmada'}
-          </span>
-        </div>
-        <p className="mt-1.5 text-xs text-ink-soft">
-          {mode === 'sena'
-            ? `${money(12000)} por MercadoPago, directo a tu cuenta`
-            : 'Sin cobro online: queda confirmada al instante'}
-        </p>
-      </div>
+
+      <ul className="space-y-2">
+        {shown &&
+          WAITING.map((name, index) => (
+            <li
+              key={name}
+              className="mk-fade-up flex items-center justify-between gap-3 rounded-xl border border-cal/10 bg-pista px-4 py-2.5"
+              style={delay(index * 160)}
+            >
+              <span className="flex items-center gap-3 text-sm font-semibold">
+                <Avatar letter={name[0]} muted={!freed} />
+                {name}
+              </span>
+              <span
+                className={`text-xs transition-colors duration-500 ${
+                  freed ? 'text-ladrillo-claro' : 'text-ink-mute'
+                }`}
+              >
+                {freed ? 'Avisado' : `En espera`}
+              </span>
+            </li>
+          ))}
+      </ul>
     </div>
   );
 }

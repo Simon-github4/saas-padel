@@ -2,11 +2,11 @@ import { useState, type ReactNode } from 'react';
 import { WhatsappGlyph } from '../../components/Ui';
 import {
   BrandVisual,
-  DepositVisual,
   ExpireVisual,
   FixedVisual,
   OverbookVisual,
   PricesVisual,
+  WaitlistVisual,
 } from './FeatureVisuals';
 import { CONTAINER, Reveal, SectionHeading } from './motion';
 
@@ -38,10 +38,10 @@ export function FeaturesSection() {
           </Feature>
           <Feature
             delay={100}
-            title="Seña o de palabra"
-            text="Cobrás una seña por MercadoPago a tu propia cuenta, o dejás reservar de palabra con confirmación al instante."
+            title="Nadie se queda afuera"
+            text="Cuando el horario está completo, el jugador se anota en la lista de espera. Si alguien cancela, el sistema le avisa solo."
           >
-            <DepositVisual />
+            <WaitlistVisual />
           </Feature>
           <Feature
             title="El olvido se cae solo"
@@ -74,10 +74,36 @@ export function FeaturesSection() {
             <FixedVisual />
           </Feature>
         </div>
+
+        <Reveal delay={150}>
+          <div className="mt-5 rounded-[1.75rem] border border-cal/10 bg-vidrio/40 p-6 md:p-8">
+            <p className="eyebrow text-ink-mute">Y adentro del panel, además</p>
+            <ul className="mt-5 flex flex-wrap gap-2.5">
+              {EXTRAS.map((extra) => (
+                <li
+                  key={extra}
+                  className="rounded-full border border-cal/10 bg-pista px-4 py-2 text-sm text-arena"
+                >
+                  {extra}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Reveal>
       </div>
     </section>
   );
 }
+
+/** Pantallas del panel que un club usa todos los días, pero no venden solas. */
+const EXTRAS = [
+  'Caja del día',
+  'Buffet y consumos',
+  'Estadísticas del club',
+  'Jugadores con marca de confianza',
+  'Suspensiones por lluvia o torneo',
+  'Alertas de lo que necesita tu atención',
+];
 
 function Feature({
   title,
