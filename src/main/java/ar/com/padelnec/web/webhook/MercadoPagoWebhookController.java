@@ -90,6 +90,12 @@ public class MercadoPagoWebhookController {
         TenantContext.set(club.get().getId());
         try {
             paymentService.applyWebhook(club.get(), dataId);
+            // Sin este log, un rechazo procesado bien no deja ningun rastro: ni
+            // PaymentService.recordRejection ni este controller logueaban nada en
+            // el camino feliz, asi que confirmar que un webhook se proceso de
+            // verdad exigia ir a revisar la reserva en el panel.
+            log.info("Webhook de MercadoPago procesado: order {} del club {}",
+                    dataId, club.get().getSlug());
         } catch (RuntimeException ex) {
             log.error("Fallo el procesamiento de la order {} del club {}",
                     dataId, club.get().getSlug(), ex);
