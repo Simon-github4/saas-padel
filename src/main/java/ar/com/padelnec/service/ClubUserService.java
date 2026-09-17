@@ -54,12 +54,12 @@ public class ClubUserService {
         user.setRole(UserRole.STAFF);
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         try {
-            // saveAndFlush, no save: la unique constraint del mail se checkea recien
-            // al insertar de verdad, y sin forzar el flush aca ese INSERT queda
-            // diferido hasta el commit -- demasiado tarde para este catch.
+            // saveAndFlush, no save: las unique constraints del mail y del nombre se
+            // checkean recien al insertar de verdad, y sin forzar el flush aca ese
+            // INSERT queda diferido hasta el commit -- demasiado tarde para este catch.
             return clubUserRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException ex) {
-            throw new BusinessRuleException("Ya existe un usuario con ese mail");
+            throw new BusinessRuleException("Ya existe un usuario con ese nombre o ese mail");
         }
     }
 

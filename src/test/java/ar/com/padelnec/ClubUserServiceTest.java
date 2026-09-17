@@ -80,6 +80,17 @@ class ClubUserServiceTest {
     }
 
     @Test
+    @DisplayName("El nombre de mostrador no puede repetir uno ya usado en otro club")
+    void rejectsADuplicateFullName() {
+        clubUserService.createStaff(club, "Ana Mostrador", "ana@clubnecochea.test", "unaClaveLarga123");
+        Tenant otherClub = fixture.club("otro-club");
+
+        assertThatThrownBy(() -> clubUserService.createStaff(
+                otherClub, "Ana Mostrador", "ana@otroclub.test", "otraClaveLarga1"))
+                .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test
     @DisplayName("La contraseña tiene que tener un largo mínimo")
     void rejectsAShortPassword() {
         assertThatThrownBy(() -> clubUserService.createStaff(club, "Ana", "ana@clubnecochea.test", "corta"))

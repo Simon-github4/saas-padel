@@ -11,9 +11,13 @@ public interface ClubUserRepository extends JpaRepository<ClubUser, UUID> {
 
     Optional<ClubUser> findByEmailIgnoreCase(String email);
 
+    Optional<ClubUser> findByFullNameIgnoreCase(String fullName);
+
     List<ClubUser> findAllByClubIdOrderByFullNameAsc(UUID clubId);
 
     boolean existsByEmailIgnoreCase(String email);
+
+    boolean existsByFullNameIgnoreCase(String fullName);
 
     /** Un solo usuario de mostrador por club: alcanza con el primero que haya. */
     Optional<ClubUser> findFirstByClubIdAndRole(UUID clubId, UserRole role);

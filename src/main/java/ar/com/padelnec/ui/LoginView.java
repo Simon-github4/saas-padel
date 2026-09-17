@@ -45,11 +45,15 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
         brand.setAlignItems(Alignment.CENTER);
         brand.addClassNames(LumoUtility.Gap.SMALL);
 
+        Paragraph usernameHint = new Paragraph("Podés ingresar con tu nombre de usuario o con tu mail.");
+        usernameHint.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY,
+                LumoUtility.Margin.NONE, LumoUtility.TextAlignment.CENTER);
+
         Paragraph help = new Paragraph("Si no recordás tu clave, escribinos y te la restablecemos.");
         help.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY,
                 LumoUtility.Margin.NONE, LumoUtility.TextAlignment.CENTER);
 
-        add(brand, login, help);
+        add(brand, usernameHint, login, help);
     }
 
     @Override
@@ -65,7 +69,7 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
 
         LoginI18n.Form form = i18n.getForm();
         form.setTitle("Ingresar");
-        form.setUsername("Correo");
+        form.setUsername("Usuario");
         form.setPassword("Clave");
         form.setSubmit("Entrar");
         form.setForgotPassword("Olvidé mi clave");
@@ -73,8 +77,8 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
         LoginI18n.ErrorMessage error = i18n.getErrorMessage();
         error.setTitle("No pudimos ingresar");
         // Mismo mensaje para usuario inexistente y clave equivocada: distinguirlos le
-        // confirmaria a un atacante que correos existen.
-        error.setMessage("Revisá el correo y la clave.");
+        // confirmaria a un atacante que usuarios existen.
+        error.setMessage("Revisá el usuario y la clave.");
 
         i18n.setForm(form);
         i18n.setErrorMessage(error);
