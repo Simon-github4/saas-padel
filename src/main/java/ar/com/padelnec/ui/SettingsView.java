@@ -29,7 +29,6 @@ import ar.com.padelnec.support.InstagramHandles;
 import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.ItemLabelGenerator;
-import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
@@ -147,6 +146,17 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
     private final Grid<Product> productGrid = new Grid<>();
     private final Paragraph pricingWarning = new Paragraph();
     private final VerticalLayout usersContent = new VerticalLayout();
+    private final VerticalLayout mercadoPagoSection = new VerticalLayout();
+
+    /**
+     * Conectar y desconectar MercadoPago vuelven aca sin conservar la pestana
+     * activa por su cuenta -desconectar refresca la seccion en el lugar, pero
+     * conectar sale a auth.mercadopago.com y vuelve con una navegacion nueva,
+     * que reinicia el TabSheet a la primera pestana. {@code beforeEnter} usa
+     * esta referencia para volver a pararse en "Cobros online".
+     */
+    private Tab paymentsTab;
+    private TabSheet tabs;
 
     private Tenant club;
 
@@ -175,7 +185,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         setSizeFull();
         this.club = tenantService.requireCurrent();
 
-        TabSheet tabs = new TabSheet();
+        this.tabs = new TabSheet();
         tabs.add(new Tab("Web Reservas"), profileForm());
         tabs.add(new Tab("Club"), clubForm());
         tabs.add(new Tab("Canchas"), courtsTab());
@@ -184,7 +194,8 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         // Las credenciales de MercadoPago son plata de verdad: esta pestana
         // es la unica de Configuracion que el mostrador no ve.
         if (canManageSettings()) {
-            tabs.add(new Tab("Cobros online"), paymentsForm());
+            paymentsTab = new Tab("Cobros online");
+            tabs.add(paymentsTab, paymentsForm());
         }
         tabs.add(new Tab("Usuarios"), usersTab());
         tabs.setSizeFull();
@@ -210,6 +221,12 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
             Notification error = Notification.show(
                     "No pudimos completar la conexión con MercadoPago. Probá de nuevo.");
             error.addThemeVariants(NotificationVariant.LUMO_ERROR);
+        }
+        // Volver de auth.mercadopago.com es una navegacion nueva: sin esto el
+        // TabSheet se reinicia en "Web Reservas" y el dueno pierde de vista el
+        // resultado de lo que acaba de hacer.
+        if (paymentsTab != null) {
+            tabs.setSelectedTab(paymentsTab);
         }
     }
 
@@ -1277,14 +1294,29 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         // cosas que se tocan en momentos distintos, y antes mezclaba ademas
         // credenciales que ya no existen (el token se pegaba a mano; ahora lo
         // entrega el consentimiento OAuth, ver MercadoPagoOAuthService).
+        refreshMercadoPagoSection();
         return tabContent(
                 section("Cómo se cobra", allowUnpaid, requiresConfirmation, deposit),
-                mercadoPagoConnectionSection(),
+                mercadoPagoSection,
                 actions(save));
     }
 
-    /** Estado de la conexion OAuth con MercadoPago, y las acciones para conectar o desconectar. */
-    private VerticalLayout mercadoPagoConnectionSection() {
+    /**
+     * Estado de la conexion OAuth con MercadoPago, y las acciones para conectar
+     * o desconectar.
+     *
+     * <p>Reconstruye {@code mercadoPagoSection} en el lugar en vez de devolver un
+     * componente nuevo: desconectar no necesita salir de la pagina, y evitar esa
+     * navegacion es lo que permite quedarse en esta misma pestana (ver tambien
+     * {@code beforeEnter}, para cuando conectar si sale y vuelve).
+     */
+    private void refreshMercadoPagoSection() {
+        mercadoPagoSection.removeAll();
+        mercadoPagoSection.setPadding(false);
+        mercadoPagoSection.setSpacing(false);
+        mercadoPagoSection.setWidthFull();
+        mercadoPagoSection.addClassNames(LumoUtility.Gap.SMALL);
+
         H3 heading = new H3("Conexión con MercadoPago");
         heading.addClassNames(LumoUtility.FontSize.MEDIUM, LumoUtility.Margin.NONE,
                 LumoUtility.FontWeight.SEMIBOLD);
@@ -1313,9 +1345,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
                 dialog.addConfirmListener(confirmEvent -> {
                     mercadoPagoOAuthService.disconnect(club);
                     Notification.show("MercadoPago desconectado");
-                    // Recarga la vista entera: mas simple que reconstruir a mano
-                    // el estado del boton y el parrafo de arriba.
-                    UI.getCurrent().getPage().reload();
+                    refreshMercadoPagoSection();
                 });
                 dialog.open();
             });
@@ -1324,20 +1354,15 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         }
         buttons.setPadding(false);
 
-        VerticalLayout box = new VerticalLayout(heading, status);
+        mercadoPagoSection.add(heading, status);
         if (expired) {
             Paragraph warning = new Paragraph("La conexión venció. Reconectá para volver a cobrar "
                     + "online.");
             warning.addClassNames(LumoUtility.TextColor.ERROR, LumoUtility.FontSize.SMALL,
                     LumoUtility.Margin.NONE);
-            box.add(warning);
+            mercadoPagoSection.add(warning);
         }
-        box.add(buttons);
-        box.setPadding(false);
-        box.setSpacing(false);
-        box.setWidthFull();
-        box.addClassNames(LumoUtility.Gap.SMALL);
-        return box;
+        mercadoPagoSection.add(buttons);
     }
 
     private String connectionStatusText(boolean connected) {
