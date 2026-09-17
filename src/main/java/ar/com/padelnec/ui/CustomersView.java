@@ -224,7 +224,7 @@ public class CustomersView extends VerticalLayout {
 
     private Checkbox trustedToggle(Customer customer) {
         Checkbox checkbox = new Checkbox(customer.isTrusted());
-        checkbox.setAriaLabel("Reserva sin sena");
+        checkbox.setAriaLabel("Reserva sin seña");
         checkbox.addValueChangeListener(event -> {
             if (event.isFromClient()) {
                 customerService.setTrusted(customer, event.getValue());

@@ -67,7 +67,7 @@ public class MercadoPagoGateway {
         // Sin external_code: MercadoPago lo limita a 30 caracteres y un UUID tiene
         // 36. external_reference a nivel order ya ata el pago a la reserva.
         OrderItemRequest item = OrderItemRequest.builder()
-                .title("Sena %s - %s".formatted(club.getName(), booking.getCourt().getName()))
+                .title("Seña %s - %s".formatted(club.getName(), booking.getCourt().getName()))
                 .description("Turno del %s".formatted(
                         booking.getStartTime().atZone(club.zoneId()).toLocalDateTime()))
                 .unitPrice(booking.getDepositAmount().toPlainString())
