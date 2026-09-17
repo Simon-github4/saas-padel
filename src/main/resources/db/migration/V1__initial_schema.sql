@@ -6,11 +6,11 @@
 -- los instantes se guardan en TIMESTAMPTZ (UTC); la zona horaria de
 -- presentacion vive en tenant.time_zone.
 --
--- Este es el V1 real de la aplicacion: hasta esta version, todo lo que
--- existia era entorno de desarrollo, sin datos reales que migrar. Es la
--- fusion de lo que hasta aca fueron 18 migraciones separadas, en el
--- esquema final que produce correr todas en orden -- no hay historia que
--- preservar todavia.
+-- Es el punto de partida de produccion: la fusion, en su estado final, de
+-- todas las migraciones que se usaron durante el desarrollo. Produccion
+-- arranca con una base vacia, asi que no hay historia que preservar ni
+-- datos que convertir. Las migraciones que vengan despues se suman como
+-- V2, V3, ... sin tocar este archivo.
 -- =====================================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -23,9 +23,16 @@ CREATE TABLE tenant (
     slug                           VARCHAR(60)  NOT NULL UNIQUE,
     whatsapp_number                VARCHAR(25)  NOT NULL,
     time_zone                      VARCHAR(60)  NOT NULL DEFAULT 'America/Argentina/Buenos_Aires',
-    -- Credenciales de MercadoPago: cifradas en reposo por la aplicacion.
+    -- MercadoPago se conecta por OAuth con PKCE desde el panel. Los tokens
+    -- van cifrados en reposo por la aplicacion. No hay secreto de webhooks
+    -- por club: todos los clubes cuelgan de la misma aplicacion de
+    -- MercadoPago, que firma sus webhooks con un unico secreto
+    -- (app.mercadopago.webhook-secret).
     mp_access_token                TEXT,
-    mp_webhook_secret              TEXT,
+    mp_refresh_token               TEXT,
+    mp_user_id                     VARCHAR(60),
+    mp_token_expires_at            TIMESTAMPTZ,
+    mp_connected_at                TIMESTAMPTZ,
     open_time                      TIME         NOT NULL DEFAULT '08:00',
     -- close_time <= open_time significa que el club cierra pasada la medianoche.
     close_time                     TIME         NOT NULL DEFAULT '23:59',
@@ -37,8 +44,9 @@ CREATE TABLE tenant (
     draft_ttl_minutes              INT          NOT NULL DEFAULT 10 CHECK (draft_ttl_minutes BETWEEN 5 AND 60),
     confirmation_ttl_minutes       INT          NOT NULL DEFAULT 15 CHECK (confirmation_ttl_minutes BETWEEN 5 AND 120),
     -- Techo de turnos futuros por telefono. Reservar bloquea la grilla sin pagar
-    -- nada, asi que sin un limite cualquiera voltea la agenda del club en un minuto.
-    max_active_bookings            INT          NOT NULL DEFAULT 3 CHECK (max_active_bookings BETWEEN 1 AND 50),
+    -- nada, asi que sin un limite cualquiera voltea la agenda del club en un
+    -- minuto. Mismo default que Tenant.maxActiveBookings.
+    max_active_bookings            INT          NOT NULL DEFAULT 7 CHECK (max_active_bookings BETWEEN 1 AND 50),
     active                         BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at                     TIMESTAMPTZ  NOT NULL DEFAULT now(),
     updated_at                     TIMESTAMPTZ  NOT NULL DEFAULT now(),
@@ -50,6 +58,14 @@ CREATE TABLE tenant (
     city                           VARCHAR(100),
     latitude                       NUMERIC(9,6),
     longitude                      NUMERIC(9,6),
+    -- Link a la ficha real del negocio en Google Maps, que GoogleMapsLinkResolver
+    -- extrae del link de "Compartir" que pega el club. Nulo cuando ese link no
+    -- permite identificar el lugar: Tenant.mapsUrl() cae entonces al link armado
+    -- con las coordenadas (o con direccion y ciudad).
+    google_maps_url                VARCHAR(500),
+    -- Usuario de Instagram pelado (sin @ ni link), en minusculas; 30 es el largo
+    -- maximo de Instagram. Tenant.instagramUrl() arma el link (ver InstagramHandles).
+    instagram_handle               VARCHAR(30),
     -- URL externa de la foto de portada. Cuando el club sube un archivo en vez
     -- de pegar una URL, esos bytes viven aparte, en tenant_hero_image: tenant
     -- se carga en practicamente cualquier request del sistema y ninguno de esos
@@ -72,8 +88,7 @@ CREATE TABLE tenant (
     theme_mode                     VARCHAR(10)  NOT NULL DEFAULT 'DARK' CHECK (theme_mode IN ('DARK', 'LIGHT')),
     primary_color                  VARCHAR(7)   CHECK (primary_color ~ '^#[0-9a-fA-F]{6}$'),
     secondary_color                VARCHAR(7)   CHECK (secondary_color ~ '^#[0-9a-fA-F]{6}$'),
-    -- Que diseno de portada usa el club. Default CLASSIC: el que ya tenia la
-    -- app antes de que esto fuera configurable.
+    -- Que diseno de portada usa el club.
     hero_variant                   VARCHAR(20)  NOT NULL DEFAULT 'CLASSIC'
                                         CHECK (hero_variant IN ('CLASSIC', 'SCOREBOARD', 'COURT_SPLIT')),
     -- Algunos clubes no quieren el paso de confirmacion por WhatsApp para las
@@ -106,6 +121,23 @@ CREATE TABLE tenant_hero_image (
     content_type  VARCHAR(100) NOT NULL
 );
 
+-- Intercambio PKCE de MercadoPago. Fila de vida corta (10 minutos, lo que dura
+-- el "code" de MercadoPago) entre "el dueno toco Conectar" y "MercadoPago
+-- redirigio de vuelta". El code_verifier tiene que vivir en el servidor y nunca
+-- en la URL que viaja por el navegador: es lo unico que impide que un code
+-- interceptado a mitad de camino alcance para completar el intercambio
+-- (RFC 7636). El state se guarda con huella, igual que el resto de los tokens
+-- de un solo uso de la aplicacion (ver TokenHash).
+CREATE TABLE mp_oauth_attempt (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    state_hash    VARCHAR(64) NOT NULL UNIQUE,
+    tenant_id     UUID        NOT NULL REFERENCES tenant (id) ON DELETE CASCADE,
+    code_verifier TEXT        NOT NULL,
+    expires_at    TIMESTAMPTZ NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ------------------------------------------------------- usuarios panel
 CREATE TABLE club_user (
     id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -132,6 +164,13 @@ CREATE TABLE court (
     is_active     BOOLEAN     NOT NULL DEFAULT TRUE,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Paredes, piso y techo: el jugador puede buscar canchas por cada uno.
+    -- OUTDOOR por defecto porque es la opcion que menos engana: una techada
+    -- cargada como descubierta solo le falta a quien filtra por techo, pero una
+    -- descubierta cargada como techada le promete un partido bajo la lluvia.
+    wall          VARCHAR(10) NOT NULL DEFAULT 'GLASS'   CHECK (wall IN ('GLASS', 'WALL')),
+    surface       VARCHAR(10) NOT NULL DEFAULT 'CARPET'  CHECK (surface IN ('CARPET', 'NO_CARPET')),
+    roof          VARCHAR(10) NOT NULL DEFAULT 'OUTDOOR' CHECK (roof IN ('COVERED', 'OUTDOOR')),
     CONSTRAINT ux_court_club_name UNIQUE (club_id, name)
 );
 CREATE INDEX ix_court_club ON court (club_id);
@@ -184,6 +223,71 @@ CREATE INDEX ix_customer_club ON customer (club_id);
 -- con club_id como columna lider, no le sirve.
 CREATE INDEX ix_customer_phone ON customer (phone_number);
 
+-- ------------------------------------------------------ cuenta del jugador
+-- Login por email + contrasena (o Google), sin club_id: a diferencia de
+-- customer (que es por club a proposito, ver su comentario de clase), esta
+-- cuenta es global porque el mismo jugador reserva en varios clubes de la
+-- plataforma y el historial tiene que verse junto. El telefono es opcional,
+-- nadie lo verifica y NO es la identidad de la cuenta: la reserva y la lista
+-- de espera recuerdan la cuenta de forma explicita (player_account_id).
+--
+-- Los tokens de sesion, de reseteo de contrasena y de confirmacion de alta
+-- son credenciales, asi que se guardan como huella SHA-256 (TokenHash), nunca
+-- en claro: una copia de la base no alcanza para entrar. SHA-256 y no bcrypt
+-- porque son 32 bytes de SecureRandom y la busqueda es por igualdad. Las
+-- columnas se llaman *_hash a proposito, para que nadie lea ese valor y lo
+-- trate como el token de verdad.
+CREATE TABLE player_account (
+    id                                   UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    phone_number                         VARCHAR(25),
+    last_login_at                        TIMESTAMPTZ,
+    created_at                           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at                           TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- Se llena la primera vez que reserva con sesion iniciada; /account lo
+    -- muestra y el checkout lo precarga.
+    display_name                         VARCHAR(100),
+    email                                VARCHAR(255),
+    email_verified                       BOOLEAN      NOT NULL DEFAULT FALSE,
+    password_hash                        VARCHAR(100),
+    google_subject                       VARCHAR(255),
+    password_reset_token_hash            VARCHAR(64),
+    password_reset_token_expires_at      TIMESTAMPTZ,
+    CONSTRAINT ux_player_account_phone UNIQUE (phone_number),
+    CONSTRAINT ux_player_account_email UNIQUE (email),
+    CONSTRAINT ux_player_account_google_subject UNIQUE (google_subject),
+    CONSTRAINT ux_player_account_password_reset_token_hash UNIQUE (password_reset_token_hash)
+);
+
+-- Un registro todavia no confirmado. Si el jugador no lo confirma con el
+-- codigo de 6 digitos o el link (los dos van en el mismo mail) dentro del
+-- plazo, esta fila se descarta y ninguna cuenta llega a existir -- a
+-- diferencia de player_account, que solo tiene filas de cuentas reales.
+CREATE TABLE player_signup_pending (
+    id                 UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    email              VARCHAR(255) NOT NULL UNIQUE,
+    password_hash      VARCHAR(100) NOT NULL,
+    display_name       VARCHAR(100),
+    phone_number       VARCHAR(25),
+    code_hash          VARCHAR(100) NOT NULL,
+    confirm_token_hash VARCHAR(64)  NOT NULL UNIQUE,
+    expires_at         TIMESTAMPTZ  NOT NULL,
+    attempts           INT          NOT NULL DEFAULT 0,
+    created_at         TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+CREATE TABLE player_session (
+    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    player_id   UUID         NOT NULL REFERENCES player_account (id) ON DELETE CASCADE,
+    token_hash  VARCHAR(64)  NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    expires_at  TIMESTAMPTZ  NOT NULL,
+    revoked_at  TIMESTAMPTZ,
+    CONSTRAINT ux_player_session_token_hash UNIQUE (token_hash)
+);
+CREATE INDEX ix_player_session_player ON player_session (player_id);
+
 -- --------------------------------------------------------- turnos fijos
 CREATE TABLE recurring_booking (
     id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -222,6 +326,16 @@ CREATE TABLE booking (
     court_id                UUID          NOT NULL REFERENCES court (id),
     customer_id             UUID          NOT NULL REFERENCES customer (id),
     recurring_booking_id    UUID          REFERENCES recurring_booking (id) ON DELETE SET NULL,
+    -- Cuenta de jugador que hizo la reserva: es la identidad con la que el
+    -- historial de /account cruza clubes (nunca el telefono, que cualquiera
+    -- puede escribir). Nulo para las reservas de invitado, que siguen siendo el
+    -- camino principal: reservar no pide cuenta.
+    player_account_id       UUID          REFERENCES player_account (id) ON DELETE SET NULL,
+    -- El nombre que escribio quien reservo. El nombre del customer no lo pisa
+    -- cualquiera (CustomerService.findOrCreate), y este queda en el turno para
+    -- que diga quien reservo de verdad. Nulo en los turnos que genera un turno
+    -- fijo: esos muestran el del jugador.
+    booked_name             VARCHAR(120),
     start_time              TIMESTAMPTZ   NOT NULL,
     end_time                TIMESTAMPTZ   NOT NULL,
     status                  VARCHAR(25)   NOT NULL CHECK (status IN
@@ -254,6 +368,8 @@ CREATE INDEX ix_booking_club_start ON booking (club_id, start_time);
 CREATE INDEX ix_booking_court_start ON booking (court_id, start_time);
 CREATE INDEX ix_booking_status_expiry ON booking (status, draft_expires_at, confirmation_expires_at);
 CREATE INDEX ix_booking_customer ON booking (customer_id);
+-- El historial del jugador entra por esta columna, cruzando todos los clubes.
+CREATE INDEX ix_booking_player_account ON booking (player_account_id, start_time DESC);
 
 -- Unica garantia real contra el doble booking: dos requests concurrentes que
 -- pasen la validacion aplicativa chocan aca, en la base.
@@ -279,11 +395,34 @@ CREATE TABLE blackout (
 );
 CREATE INDEX ix_blackout_club_start ON blackout (club_id, start_time);
 
+-- ------------------------------------------------------- pedidos de buffet
+-- El buffet tambien le vende a quien no juega: el que viene a mirar, el
+-- acompanante. Un pedido es un nombre -"a nombre de" quien se pidio-, los
+-- productos que se le van sumando y los cobros, igual que un turno.
+-- customer_name es nullable: una venta rapida que se cobra en el momento no
+-- necesita nombre. Para dejar algo en la cuenta si es obligatorio, y eso lo
+-- controla la aplicacion.
+CREATE TABLE buffet_order (
+    id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    club_id       UUID          NOT NULL REFERENCES tenant (id) ON DELETE CASCADE,
+    customer_name VARCHAR(120),
+    total_price   NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (total_price >= 0),
+    paid_amount   NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (paid_amount >= 0),
+    registered_by UUID          REFERENCES club_user (id) ON DELETE SET NULL,
+    version       BIGINT        NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+-- La caja lista los pedidos del dia por fecha de creacion.
+CREATE INDEX ix_buffet_order_club_created ON buffet_order (club_id, created_at);
+
 -- ---------------------------------------------------------------- pagos
+-- Un cobro es de un turno o de un pedido de buffet, nunca de los dos ni de ninguno.
 CREATE TABLE payment (
     id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     club_id          UUID          NOT NULL REFERENCES tenant (id) ON DELETE CASCADE,
-    booking_id       UUID          NOT NULL REFERENCES booking (id) ON DELETE CASCADE,
+    booking_id       UUID          REFERENCES booking (id) ON DELETE CASCADE,
+    buffet_order_id  UUID          REFERENCES buffet_order (id) ON DELETE CASCADE,
     -- <> 0 y no >= 0: una devolucion de mostrador (ej. sacar un producto ya
     -- cobrado) se registra como un Payment con monto negativo en vez de un
     -- movimiento aparte, asi el saldo y el desglose por metodo de las
@@ -291,19 +430,22 @@ CREATE TABLE payment (
     amount           NUMERIC(12,2) NOT NULL CHECK (amount <> 0),
     method           VARCHAR(20)   NOT NULL CHECK (method IN ('MERCADOPAGO', 'CASH', 'TRANSFER')),
     status           VARCHAR(20)   NOT NULL CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'REFUNDED')),
-    mp_preference_id VARCHAR(120),
+    -- Id de la order de MercadoPago (API de Orders) con la que arranca el pago.
+    mp_order_id      VARCHAR(120),
     -- Unico: hace idempotente el reprocesamiento del webhook de MercadoPago.
     mp_payment_id    VARCHAR(60)   UNIQUE,
     raw_payload      TEXT,
     registered_by    UUID          REFERENCES club_user (id) ON DELETE SET NULL,
     created_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMPTZ   NOT NULL DEFAULT now()
+    updated_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT ck_payment_owner CHECK ((booking_id IS NULL) <> (buffet_order_id IS NULL))
 );
 CREATE INDEX ix_payment_booking ON payment (booking_id);
+CREATE INDEX ix_payment_buffet_order ON payment (buffet_order_id);
 CREATE INDEX ix_payment_club_created ON payment (club_id, created_at);
-CREATE INDEX ix_payment_preference ON payment (mp_preference_id);
+CREATE INDEX ix_payment_order ON payment (mp_order_id);
 
--- ---------------------------------------- productos vendidos en un turno
+-- ------------------------------------------------ productos del buffet
 -- product: catalogo del club (ej. "Gatorade", "Agua"). Se desactiva en vez de
 -- borrarse, para no perder el historial de ventas ya cargadas.
 CREATE TABLE product (
@@ -318,22 +460,26 @@ CREATE TABLE product (
 );
 CREATE INDEX ix_product_club ON product (club_id);
 
--- Una linea vendida en un turno, con nombre y precio "congelados" al momento
--- de la venta. Su importe se suma directo a booking.total_price: el saldo y
--- el cobro de mostrador ya existentes no necesitan saber que esto existe.
+-- Una linea vendida, con nombre y precio "congelados" al momento de la venta.
+-- Es de un turno o de un pedido de buffet, nunca de los dos ni de ninguno. Su
+-- importe se suma directo al total_price del turno o del pedido: el saldo y el
+-- cobro de mostrador no necesitan saber que esto existe.
 CREATE TABLE product_sale (
-    id            UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-    club_id       UUID          NOT NULL REFERENCES tenant (id) ON DELETE CASCADE,
-    booking_id    UUID          NOT NULL REFERENCES booking (id) ON DELETE CASCADE,
-    product_id    UUID          NOT NULL REFERENCES product (id),
-    product_name  VARCHAR(80)   NOT NULL,
-    unit_price    NUMERIC(12,2) NOT NULL CHECK (unit_price >= 0),
-    quantity      INT           NOT NULL CHECK (quantity > 0),
-    registered_by UUID          REFERENCES club_user (id) ON DELETE SET NULL,
-    created_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ   NOT NULL DEFAULT now()
+    id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    club_id         UUID          NOT NULL REFERENCES tenant (id) ON DELETE CASCADE,
+    booking_id      UUID          REFERENCES booking (id) ON DELETE CASCADE,
+    buffet_order_id UUID          REFERENCES buffet_order (id) ON DELETE CASCADE,
+    product_id      UUID          NOT NULL REFERENCES product (id),
+    product_name    VARCHAR(80)   NOT NULL,
+    unit_price      NUMERIC(12,2) NOT NULL CHECK (unit_price >= 0),
+    quantity        INT           NOT NULL CHECK (quantity > 0),
+    registered_by   UUID          REFERENCES club_user (id) ON DELETE SET NULL,
+    created_at      TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    CONSTRAINT ck_product_sale_owner CHECK ((booking_id IS NULL) <> (buffet_order_id IS NULL))
 );
 CREATE INDEX ix_product_sale_booking ON product_sale (booking_id);
+CREATE INDEX ix_product_sale_buffet_order ON product_sale (buffet_order_id);
 CREATE INDEX ix_product_sale_club_created ON product_sale (club_id, created_at);
 
 -- ------------------------------------------------- alertas para el panel
@@ -341,14 +487,18 @@ CREATE TABLE operational_alert (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     club_id     UUID        NOT NULL REFERENCES tenant (id) ON DELETE CASCADE,
     booking_id  UUID        REFERENCES booking (id) ON DELETE CASCADE,
-    type        VARCHAR(40) NOT NULL CHECK (type IN
-                    ('REFUND_REQUIRED', 'ORPHAN_PAYMENT', 'NOTIFICATION_FAILED', 'RECURRING_CONFLICT')),
+    -- WAITLIST_SLOT_FREED: un jugador cancelo por la web un turno con gente en
+    -- la lista de espera (AlertService.waitlistSlotFreed).
+    type        VARCHAR(40) NOT NULL,
     message     TEXT        NOT NULL,
     resolved    BOOLEAN     NOT NULL DEFAULT FALSE,
     resolved_at TIMESTAMPTZ,
     resolved_by UUID        REFERENCES club_user (id) ON DELETE SET NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT operational_alert_type_check CHECK (type IN
+        ('REFUND_REQUIRED', 'ORPHAN_PAYMENT', 'NOTIFICATION_FAILED', 'RECURRING_CONFLICT',
+         'WAITLIST_SLOT_FREED'))
 );
 CREATE INDEX ix_alert_club_pending ON operational_alert (club_id, resolved, created_at DESC);
 
@@ -370,79 +520,110 @@ CREATE INDEX ix_notification_club_created ON notification_log (club_id, created_
 
 -- --------------------------------------------------- lista de espera de turnos
 CREATE TABLE waitlist_entry (
-    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-    club_id     UUID        NOT NULL REFERENCES tenant (id) ON DELETE CASCADE,
-    customer_id UUID        NOT NULL REFERENCES customer (id) ON DELETE CASCADE,
-    starts_at   TIMESTAMPTZ NOT NULL,
-    ends_at     TIMESTAMPTZ NOT NULL,
-    notified    BOOLEAN     NOT NULL DEFAULT FALSE,
-    notified_at TIMESTAMPTZ,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    club_id           UUID        NOT NULL REFERENCES tenant (id) ON DELETE CASCADE,
+    customer_id       UUID        NOT NULL REFERENCES customer (id) ON DELETE CASCADE,
+    -- Cuenta de quien se anoto (anotarse exige sesion, ver WaitlistService.join):
+    -- es lo que deja a "Mis turnos" listar sus anotaciones en todos los clubes.
+    -- ON DELETE SET NULL, igual que booking.player_account_id: si la cuenta se
+    -- borra, la anotacion sigue y el aviso igual puede salir.
+    player_account_id UUID        REFERENCES player_account (id) ON DELETE SET NULL,
+    -- Mail de respaldo para el aviso cuando el WhatsApp del club esta apagado o
+    -- el envio fallo. Congelado en el momento del alta -mismo criterio que
+    -- ProductSale con nombre y precio-, no una referencia viva a la cuenta.
+    email             VARCHAR(255),
+    starts_at         TIMESTAMPTZ NOT NULL,
+    ends_at           TIMESTAMPTZ NOT NULL,
+    notified          BOOLEAN     NOT NULL DEFAULT FALSE,
+    notified_at       TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT ux_waitlist_slot UNIQUE (club_id, customer_id, starts_at)
 );
 CREATE INDEX ix_waitlist_pending ON waitlist_entry (club_id, notified, starts_at);
+CREATE INDEX ix_waitlist_player_account ON waitlist_entry (player_account_id, starts_at);
 
--- ------------------------------------------------------ cuenta del jugador
--- Login por email + contrasena (o Google), sin club_id: a diferencia de
--- customer (que es por club a proposito, ver su comentario de clase), esta
--- cuenta es global porque el mismo jugador reserva en varios clubes de la
--- plataforma y el historial tiene que verse junto. El vinculo con el
--- customer de cada club es implicito, por telefono normalizado: no hay FK.
--- El telefono es opcional y no es la identidad de la cuenta -- sigue
--- existiendo porque el historial global (findHistoryByPhone) no tiene otra
--- forma de cruzar reservas entre clubes.
+-- =====================================================================
+-- Bitacora de visitas: quien entra a la app del jugador y hasta donde
+-- llega, para armar el embudo (de cada cien que abren la ficha de un club,
+-- cuantos reservan) y distinguir al que llego por la busqueda global del
+-- que entro por el link directo del club.
 --
--- Los tokens de verificacion/reset viven en texto plano, unicos e indexados
--- -- igual que player_session.token o booking.management_token -- porque hay
--- que poder resolver la cuenta a partir del link sin conocerla de antemano.
-CREATE TABLE player_account (
-    id                              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    phone_number                    VARCHAR(25),
-    last_login_at                   TIMESTAMPTZ,
-    created_at                      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at                      TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    -- Se llena la primera vez que reserva con sesion iniciada; /account lo
-    -- muestra y el checkout lo precarga.
-    display_name                    VARCHAR(100),
-    email                           VARCHAR(255),
-    email_verified                  BOOLEAN      NOT NULL DEFAULT FALSE,
-    password_hash                   VARCHAR(100),
-    google_subject                  VARCHAR(255),
-    password_reset_token            VARCHAR(64),
-    password_reset_token_expires_at TIMESTAMPTZ,
-    CONSTRAINT ux_player_account_phone UNIQUE (phone_number),
-    CONSTRAINT ux_player_account_email UNIQUE (email),
-    CONSTRAINT ux_player_account_google_subject UNIQUE (google_subject),
-    CONSTRAINT ux_player_account_password_reset_token UNIQUE (password_reset_token)
+-- Es propia y no un servicio de terceros: el CSP de la app del jugador
+-- solo admite scripts de su propio origen (ver SecurityConfig), y la
+-- politica de privacidad promete que no hay rastreo de terceros.
+--
+-- Columnas tipadas en vez de un jsonb de propiedades libres: el catalogo
+-- de eventos es cerrado y chico, y asi las consultas del embudo se
+-- escriben en SQL comun. Las columnas que solo aplican a un evento quedan
+-- nulas en el resto.
+-- =====================================================================
+CREATE TABLE page_event (
+    id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- Sesion anonima del navegador: vive en sessionStorage y muere con la
+    -- pestana. No identifica a una persona ni sobrevive entre visitas; es
+    -- solo el hilo que une los eventos de un mismo recorrido.
+    session_id     UUID         NOT NULL,
+    -- Orden dentro de la sesion, puesto por el navegador. created_at no
+    -- alcanza: los eventos viajan en lotes y varios entran con el mismo
+    -- instante de recepcion. Ademas hace idempotente la ingesta, porque
+    -- sendBeacon puede reintentar un lote ya entregado.
+    seq            INT          NOT NULL CHECK (seq > 0),
+
+    name           VARCHAR(30)  NOT NULL,
+    -- Ruta normalizada, nunca la URL cruda: /manage/:token y /confirm/:token
+    -- llevan el token que ES la credencial del turno. Lo normaliza el
+    -- servidor (PageEventService).
+    path           VARCHAR(120) NOT NULL,
+
+    -- Nulo en la portada y en la busqueda global, que no son de ningun club.
+    -- Por eso la tabla no lleva @TenantId como el resto: el filtro de
+    -- Hibernate exige un club siempre, y aca la mitad del embudo ocurre
+    -- antes de que el jugador elija uno.
+    club_id        UUID         REFERENCES tenant (id) ON DELETE CASCADE,
+
+    -- Atribucion de origen. from_search: entro al club con el ?fecha=&hora=
+    -- que arma la busqueda global. referrer_host y utm_source describen de
+    -- donde llego al sitio, que es otra pregunta distinta.
+    from_search    BOOLEAN      NOT NULL DEFAULT FALSE,
+    referrer_host  VARCHAR(120),
+    utm_source     VARCHAR(60),
+    -- Lo deduce el servidor del User-Agent. El navegador no lo manda.
+    device         VARCHAR(10),
+
+    -- ------------------------------------------- propiedades por evento
+    -- search: los filtros con los que busco y cuantos turnos le volvieron.
+    -- results = 0 es el dato mas valioso de la tabla: demanda sin oferta.
+    results        INT,
+    search_date    DATE,
+    time_from      TIME,
+    time_to        TIME,
+    clubs_filter   VARCHAR(200),
+
+    -- Horario del turno que toco (search_result_click, slot_click,
+    -- link_expired, waitlist_joined).
+    slot_at        TIMESTAMPTZ,
+    -- Paso del flujo de reserva dentro de la ficha del club: 1 dia,
+    -- 2 hora, 3 datos.
+    step           SMALLINT     CHECK (step BETWEEN 1 AND 3),
+    payment_choice VARCHAR(20),
+    -- Ata la sesion anonima con la reserva real. Sin clave foranea a
+    -- proposito: el id lo manda el navegador, y con la foranea un id
+    -- inventado hace fallar el INSERT y se lleva puesto el lote entero de
+    -- eventos buenos. Si el id no existe, el JOIN simplemente no encuentra nada.
+    booking_id     UUID,
+    -- Texto corto y acotado para el resto: el codigo de error de un
+    -- checkout fallido, la posicion de un resultado en la lista.
+    detail         VARCHAR(60),
+
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    -- La tabla es append-only y nunca se actualiza una fila; la columna
+    -- esta porque la comparten todas las entidades (BaseEntity).
+    updated_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+
+    CONSTRAINT ux_page_event_session_seq UNIQUE (session_id, seq)
 );
 
--- Un registro todavia no confirmado. Si el jugador no lo confirma con el
--- codigo de 6 digitos o el link (los dos van en el mismo mail) dentro del
--- plazo, esta fila se descarta y ninguna cuenta llega a existir -- a
--- diferencia de player_account, que solo tiene filas de cuentas reales.
-CREATE TABLE player_signup_pending (
-    id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    email         VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(100) NOT NULL,
-    display_name  VARCHAR(100),
-    phone_number  VARCHAR(25),
-    code_hash     VARCHAR(100) NOT NULL,
-    confirm_token VARCHAR(64)  NOT NULL UNIQUE,
-    expires_at    TIMESTAMPTZ  NOT NULL,
-    attempts      INT          NOT NULL DEFAULT 0,
-    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
-);
-
-CREATE TABLE player_session (
-    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id   UUID         NOT NULL REFERENCES player_account (id) ON DELETE CASCADE,
-    token       VARCHAR(64)  NOT NULL,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    expires_at  TIMESTAMPTZ  NOT NULL,
-    revoked_at  TIMESTAMPTZ,
-    CONSTRAINT ux_player_session_token UNIQUE (token)
-);
-CREATE INDEX ix_player_session_player ON player_session (player_id);
+CREATE INDEX ix_page_event_club_time ON page_event (club_id, created_at);
+CREATE INDEX ix_page_event_time ON page_event (created_at);

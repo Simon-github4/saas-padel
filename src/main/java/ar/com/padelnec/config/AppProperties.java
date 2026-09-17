@@ -124,8 +124,8 @@ public class AppProperties {
 
         /**
          * Clave con la que esa aplicacion firma sus webhooks. Unica para todos
-         * los clubes que se conectan por OAuth -- ver V16 y por que ya no hay
-         * una por club.
+         * los clubes que se conectan por OAuth, por eso no hay una por club (ver
+         * la tabla tenant en V1__initial_schema.sql).
          */
         private String webhookSecret;
     }

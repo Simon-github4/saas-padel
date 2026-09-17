@@ -329,7 +329,7 @@ Las tres piezas funcionando de punta a punta. 231 tests del backend y 40 de la a
   elegido preseleccionado al entrar al club
 
 Lo que falta para salir a producción no es código: número de WhatsApp habilitado,
-plantillas aprobadas por Meta y las credenciales de MercadoPago de cada club.
+plantillas aprobadas por Meta y que cada club conecte su cuenta de MercadoPago.
 
 ## Configuración de producción
 
@@ -343,15 +343,30 @@ plantillas aprobadas por Meta y las credenciales de MercadoPago de cada club.
 | `WHATSAPP_PROVIDER` | `off` (default, no manda nada — WhatsApp está en stand by), `log` (desarrollo, lo imprime) o `twilio` (lo manda de verdad) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `WHATSAPP_FROM` | Credenciales del proveedor |
 | `app.whatsapp.templates.*` | Content SID de cada plantilla aprobada por Meta |
+| `MP_CLIENT_ID`, `MP_CLIENT_SECRET` | Aplicación de MercadoPago (Tus integraciones) con la que se conectan los clubes por OAuth |
+| `MP_WEBHOOK_SECRET` | Clave secreta de webhooks de esa aplicación: una sola para todos los clubes |
+| `GOOGLE_CLIENT_ID` | Login con Google en la app del jugador |
 
 Sobre las plantillas: WhatsApp solo permite texto libre dentro de las 24 horas
 posteriores a un mensaje del jugador. Todos los avisos de este sistema los inicia el
 negocio, así que **sin plantillas aprobadas no llegan**. Cargarlas es parte del alta
 en producción, no un detalle opcional.
 
-Cada club necesita además, desde su panel, su access token de producción de
-MercadoPago y la clave secreta de webhooks. La URL a configurar en MercadoPago es
-`{APP_BASE_URL}/api/webhooks/mercadopago/{slug}`.
+Cada club conecta además su cuenta de MercadoPago desde su panel (OAuth): no
+copia ningún token a mano. En la aplicación de MercadoPago hay que configurar la
+URL de redirección `{APP_BASE_URL}/api/mercadopago/oauth/callback` y la de
+webhooks `{APP_BASE_URL}/api/webhooks/mercadopago` (la misma para todos los
+clubes: el club se identifica por el `user_id` de la notificación).
+
+### Base de datos
+
+El esquema lo crea Flyway al arrancar, a partir de
+`src/main/resources/db/migration/V1__initial_schema.sql`, sobre una base vacía.
+Los cambios futuros se agregan como `V2__...`, `V3__...`, sin editar el V1.
+
+Una base de desarrollo creada con las migraciones anteriores a la consolidación
+no arranca (Flyway rechaza el historial): hay que resetearla con
+`DEV_DB_RESET=true` o `mvn clean`.
 
 ### Desplegar con Docker
 

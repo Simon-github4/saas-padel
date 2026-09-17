@@ -309,7 +309,7 @@ public class BookingStatsService {
                 .filter(b -> b.status() == BookingStatus.CANCELLED)
                 .toList();
 
-        // La columna es nullable en la base (V1__baseline.sql): el flujo normal
+        // La columna es nullable en la base (V1__initial_schema.sql): el flujo normal
         // siempre pasa por Booking.markCancelled y carga un motivo, pero una fila
         // que entra por otro lado (una migracion, una correccion manual) puede no
         // traerlo. Collectors.groupingBy no admite un classifier que devuelva null

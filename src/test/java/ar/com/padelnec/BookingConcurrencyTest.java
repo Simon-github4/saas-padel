@@ -34,7 +34,7 @@ import org.springframework.test.web.servlet.client.RestTestClient;
 /**
  * La garantia de fondo del sistema no es que la app valide bien: es que la
  * restriccion de exclusion GiST de la base (`ex_booking_no_overlap`,
- * {@code V1__baseline.sql}) gana la carrera cuando dos requests le pegan al
+ * {@code V1__initial_schema.sql}) gana la carrera cuando dos requests le pegan al
  * mismo turno de verdad al mismo tiempo, no en orden. {@link
  * PublicApiIntegrationTest#theSecondBookingGetsAConflict()} ya prueba el
  * caso secuencial (la segunda request llega despues de que la primera ya

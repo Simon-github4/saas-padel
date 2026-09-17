@@ -148,23 +148,6 @@ class TokenStorageTest {
         assertThat(TokenHash.of(stolen)).isNotEqualTo(TokenHash.of(issued.token()));
     }
 
-    @Test
-    @DisplayName("La huella que calcula la migracion es la misma que calcula la aplicacion")
-    void theMigrationComputesTheSameHash() {
-        // V5 convierte las filas que ya existian con SQL:
-        //   UPDATE player_session SET token = encode(sha256(token::bytea), 'hex')
-        // Si ese calculo no coincidiera con el de TokenHash, cada sesion abierta
-        // quedaria rota en silencio el dia del despliegue. En una base de test
-        // vacia la migracion no convierte nada, asi que la equivalencia hay que
-        // comprobarla aparte -- es la unica parte de V5 que ningun otro test toca.
-        String token = "un-token-de-ejemplo_con-guiones-y_guion-bajo";
-
-        String comoLoHaceLaMigracion = jdbc.queryForObject(
-                "SELECT encode(sha256(?::bytea), 'hex')", String.class, token);
-
-        assertThat(comoLoHaceLaMigracion).isEqualTo(TokenHash.of(token));
-    }
-
     // ----------------------------------------------------------------- helpers
 
     private IssuedSession registerAndConfirm() {
