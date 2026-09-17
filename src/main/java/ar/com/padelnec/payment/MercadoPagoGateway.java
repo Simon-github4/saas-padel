@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -63,13 +64,14 @@ public class MercadoPagoGateway {
      * cae en una casilla que existe de verdad en vez de rebotar.
      */
     public Checkout createDepositCheckout(Tenant club, Booking booking) {
+        // Sin external_code: MercadoPago lo limita a 30 caracteres y un UUID tiene
+        // 36. external_reference a nivel order ya ata el pago a la reserva.
         OrderItemRequest item = OrderItemRequest.builder()
                 .title("Sena %s - %s".formatted(club.getName(), booking.getCourt().getName()))
                 .description("Turno del %s".formatted(
                         booking.getStartTime().atZone(club.zoneId()).toLocalDateTime()))
                 .unitPrice(booking.getDepositAmount().toPlainString())
                 .quantity(1)
-                .externalCode(booking.getId().toString())
                 .build();
 
         OrderPayerRequest payer = OrderPayerRequest.builder()
@@ -179,12 +181,20 @@ public class MercadoPagoGateway {
         return properties.getBaseUrl() + "/manage/" + booking.getManagementToken();
     }
 
-    /** Duracion ISO 8601 (ej. "PT9M42S") hasta que vence el DRAFT, formato que exige {@code expiration_time}. */
+    /**
+     * Duracion ISO 8601 (ej. "PT9M42S") hasta que vence el DRAFT, formato que exige
+     * {@code expiration_time}.
+     *
+     * <p>Truncada a segundos: {@code Instant.now()} trae nanosegundos, y
+     * {@code Duration.toString()} los vuelca tal cual ("PT9M59.806925705S").
+     * MercadoPago devuelve {@code 400 property_value} ante esa fraccion -no
+     * documentado, encontrado probando contra la API real- asi que se descarta.
+     */
     private String expirationTime(Tenant club, Booking booking) {
         Instant expiresAt = booking.getDraftExpiresAt() != null
                 ? booking.getDraftExpiresAt()
                 : clock.instant().plus(Duration.ofMinutes(club.getDraftTtlMinutes()));
-        Duration remaining = Duration.between(clock.instant(), expiresAt);
+        Duration remaining = Duration.between(clock.instant(), expiresAt).truncatedTo(ChronoUnit.SECONDS);
         if (remaining.compareTo(MIN_EXPIRATION) < 0) {
             remaining = MIN_EXPIRATION;
         }
