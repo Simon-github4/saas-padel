@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="3.4 3.4 87 87">
+  <!-- La lupa de TurnosPadel: la misma de player-app/public/favicon.svg, para la marca del panel. -->
+  <defs>
+    <clipPath id="panel-pelota"><circle cx="40" cy="40" r="24"/></clipPath>
+  </defs>
+  <g fill="#f5a67b" transform="rotate(45 40 40)">
+    <rect x="72" y="37.25" width="12" height="5.5"/>
+    <rect x="82" y="35.2" width="25.5" height="9.6" rx="3.2"/>
+  </g>
+  <circle cx="40" cy="40" r="31.85" fill="none" stroke="#f5a67b" stroke-width="8.3"/>
+  <circle cx="40" cy="40" r="24" fill="#ea580c"/>
+  <g clip-path="url(#panel-pelota)" fill="none" stroke="#fff4ec" stroke-width="3.6">
+    <circle cx="64" cy="16" r="22.8"/>
+    <circle cx="16" cy="64" r="22.8"/>
+  </g>
+</svg>

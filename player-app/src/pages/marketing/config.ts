@@ -1,7 +1,9 @@
 import { whatsappLink } from '../../format';
 
 /** Editable de un solo lugar: nombre del producto y contacto de venta. */
-export const BRAND = 'TurnosPadel';
+/** El nombre en dos tramos: el logo pinta "Turnos" en blanco y "Padel" en ladrillo. */
+export const BRAND_PARTS = ['Turnos', 'Padel'] as const;
+export const BRAND = BRAND_PARTS.join('');
 export const SALES_WHATSAPP = '5492262566185';
 export const SALES_EMAIL = 'diazsimon1230@gmail.com';
 export const SALES_MESSAGE =

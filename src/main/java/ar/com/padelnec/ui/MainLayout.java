@@ -175,9 +175,7 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
      * estas parado.
      */
     private HorizontalLayout brand() {
-        Span mark = new Span("▦");
-        mark.setClassName("brand-mark");
-        mark.getElement().setAttribute("aria-hidden", "true");
+        BrandMark mark = new BrandMark();
 
         H1 club = new H1(clubName);
         club.addClassNames(LumoUtility.FontSize.MEDIUM, LumoUtility.Margin.NONE,

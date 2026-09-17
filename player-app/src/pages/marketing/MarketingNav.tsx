@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { BrandLogo } from '../../components/BrandLogo';
 import { SearchGlyph, WhatsappGlyph } from '../../components/Ui';
 import { BRAND, SALES_EMAIL, salesWhatsappHref } from './config';
 import { CONTAINER } from './motion';
@@ -89,13 +90,9 @@ export function MarketingNav() {
         <a
           href="#top"
           onClick={() => setAbierto(false)}
-          className="display group flex shrink-0 items-center gap-2.5 text-xl tracking-[0.14em]"
+          className="flex shrink-0 items-center text-xl transition-opacity hover:opacity-85"
         >
-          <span
-            aria-hidden
-            className="size-2.5 rounded-full bg-ladrillo transition-transform duration-500 group-hover:scale-150"
-          />
-          {BRAND}
+          <BrandLogo />
         </a>
 
         <nav aria-label="Secciones" className="hidden items-center gap-1 xl:flex">
@@ -132,7 +129,8 @@ export function MarketingNav() {
             className="inline-flex items-center gap-2 rounded-full bg-ladrillo px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] text-cal transition duration-300 hover:-translate-y-px hover:bg-ladrillo/90 sm:px-5 [box-shadow:var(--shadow-glow)]"
           >
             <WhatsappGlyph className="size-3.5" />
-            Hablemos
+            {/* En los teléfonos más angostos no entra al lado del logo: queda el ícono. */}
+            <span className="max-[399px]:sr-only">Hablemos</span>
           </a>
 
           <button
@@ -265,9 +263,8 @@ export function MarketingFooter() {
     <footer className="border-t border-cal/10 bg-vidrio/30">
       <div className={`${CONTAINER} grid gap-10 py-14 sm:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr]`}>
         <div>
-          <p className="display flex items-center gap-2.5 text-2xl tracking-[0.14em]">
-            <span aria-hidden className="size-2.5 rounded-full bg-ladrillo" />
-            {BRAND}
+          <p className="text-2xl">
+            <BrandLogo />
           </p>
           <p className="mt-3 max-w-xs text-sm text-ink-mute">Reservas online para tu club de pádel.</p>
         </div>

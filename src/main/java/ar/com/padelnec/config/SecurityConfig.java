@@ -126,7 +126,10 @@ public class SecurityConfig {
     @Order(Ordered.HIGHEST_PRECEDENCE + 2)
     public SecurityFilterChain playerAppChain(HttpSecurity http) throws Exception {
         return http
-                .securityMatcher("/", "/index.html", "/favicon.ico", "/assets/**",
+                .securityMatcher("/", "/index.html", "/assets/**",
+                        // Iconos de la pestaña y del acceso directo del celular: sin
+                        // esto caen en la cadena del panel y redirigen al login.
+                        "/favicon.ico", "/favicon.svg", "/apple-touch-icon.png",
                         "/robots.txt", "/sitemap.xml",
                         // Archivo de verificacion de Google Search Console: hay que poder
                         // pedirlo sin sesion, y el nombre trae un id al azar que cambia

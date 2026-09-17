@@ -47,6 +47,23 @@ class PlayerAssetsCacheIntegrationTest {
     }
 
     @Test
+    @DisplayName("Los iconos de la pestaña se sirven sin sesion, no el login del panel")
+    void iconsArePublic() {
+        String[][] icons = {
+                {"/favicon.ico", "image/"},
+                {"/favicon.svg", "image/svg+xml"},
+                {"/apple-touch-icon.png", "image/png"},
+        };
+        for (String[] icon : icons) {
+            client.get().uri(icon[0])
+                    .exchange()
+                    .expectStatus().isOk()
+                    .expectHeader().value(HttpHeaders.CONTENT_TYPE,
+                            value -> assertThat(value).as(icon[0]).startsWith(icon[1]));
+        }
+    }
+
+    @Test
     @DisplayName("El index y las rutas de la SPA siguen sin cache")
     void indexIsNeverCached() {
         for (String path : new String[] {"/", "/club/club-necochea"}) {

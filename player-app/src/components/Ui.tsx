@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { BrandLogo } from './BrandLogo';
 
 /**
  * Piezas visuales compartidas, para que las pantallas se ocupen del flujo.
@@ -63,8 +64,8 @@ export function TopBar({
    */
   titleTo?: string;
   /**
-   * El punto ladrillo del logo antes del título, como en la landing. Solo cuando
-   * el título es la marca y no el nombre de un club.
+   * El logo de la marca (lupa y nombre) en lugar del título, como en la landing.
+   * Solo cuando el título es la marca y no el nombre de un club.
    */
   brandMark?: boolean;
 }) {
@@ -76,13 +77,7 @@ export function TopBar({
             to={titleTo}
             className="display group flex min-w-0 cursor-pointer items-center gap-2.5 text-left text-xl tracking-[0.14em] transition hover:text-ink-soft"
           >
-            {brandMark && (
-              <span
-                aria-hidden
-                className="size-2.5 shrink-0 rounded-full bg-ladrillo transition-transform duration-300 group-hover:scale-125"
-              />
-            )}
-            <span className="truncate">{name}</span>
+            {brandMark ? <BrandLogo /> : <span className="truncate">{name}</span>}
           </Link>
         ) : (
           <p className="display truncate text-xl tracking-[0.14em]">{name}</p>

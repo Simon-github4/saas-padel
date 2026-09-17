@@ -2,7 +2,6 @@ package ar.com.padelnec.ui;
 
 import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Paragraph;
-import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.login.LoginForm;
 import com.vaadin.flow.component.login.LoginI18n;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
@@ -33,9 +32,7 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
 
         // La misma marca que encabeza el menu del panel: el que llega aca tiene
         // que reconocer que es el mismo producto antes de escribir su clave.
-        Span mark = new Span("▦");
-        mark.setClassName("brand-mark");
-        mark.getElement().setAttribute("aria-hidden", "true");
+        BrandMark mark = new BrandMark();
 
         H1 title = new H1("Panel del club");
         title.addClassNames(LumoUtility.FontSize.XLARGE, LumoUtility.Margin.NONE,
