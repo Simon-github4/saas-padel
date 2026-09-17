@@ -105,6 +105,10 @@ public class Tenant extends BaseEntity {
      * <p>Default en false mientras WhatsApp esta en stand by: pedir confirmacion
      * por un link que nunca llega solo haria que la reserva se caiga sola a los
      * 15 minutos. Revisar este default el dia que WhatsApp vuelva a estar activo.
+     *
+     * <p>Por lo mismo, el checkbox para tocar esto esta oculto en
+     * {@code SettingsView.paymentsForm} -no tiene sentido ofrecerselo a un club
+     * todavia. Volver a mostrarlo ahi cuando WhatsApp este activo.
      */
     @Column(name = "requires_booking_confirmation", nullable = false)
     private boolean requiresBookingConfirmation = false;

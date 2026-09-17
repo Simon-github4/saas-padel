@@ -1270,20 +1270,18 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         Checkbox allowUnpaid = new Checkbox("Aceptar reservas sin seña (de palabra)");
         allowUnpaid.setValue(club.isAllowUnpaidBooking());
 
-        Checkbox requiresConfirmation = new Checkbox("Pedir confirmación por WhatsApp");
-        requiresConfirmation.setValue(club.isRequiresBookingConfirmation());
-        requiresConfirmation.setHelperText("Si lo destildás, las reservas de palabra quedan "
-                + "confirmadas al toque, sin que el jugador tenga que tocar el link de WhatsApp. "
-                + "Sacás fricción, pero corrés más riesgo de ausentes en turnos que nadie llegó a "
-                + "confirmar. Ojo: tildarlo solo sirve si WhatsApp está activo a nivel plataforma "
-                + "(no en stand by) — si no, la reserva queda esperando un link que nunca llega.");
+        // TODO: "Pedir confirmacion por WhatsApp" esta oculto a proposito. La
+        // confirmacion por WhatsApp todavia no esta lista (integracion en stand
+        // by), asi que no tiene sentido ofrecerle la opcion a un club. El campo
+        // sigue existiendo (Tenant.requiresBookingConfirmation, default false)
+        // para no romper nada; cuando WhatsApp este activo, volver a mostrar el
+        // checkbox aca y en el save de mas abajo.
 
         BigDecimalField deposit = new BigDecimalField("Seña (% del turno)");
         deposit.setValue(club.getDepositPercentage());
 
         Button save = new Button("Guardar Cambios", event -> {
             club.setAllowUnpaidBooking(allowUnpaid.getValue());
-            club.setRequiresBookingConfirmation(requiresConfirmation.getValue());
             club.setDepositPercentage(deposit.getValue());
             club = tenantRepository.save(club);
             Notification.show("Cobros actualizados");
@@ -1296,7 +1294,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         // entrega el consentimiento OAuth, ver MercadoPagoOAuthService).
         refreshMercadoPagoSection();
         return tabContent(
-                section("Cómo se cobra", allowUnpaid, requiresConfirmation, deposit),
+                section("Cómo se cobra", allowUnpaid, deposit),
                 mercadoPagoSection,
                 actions(save));
     }
