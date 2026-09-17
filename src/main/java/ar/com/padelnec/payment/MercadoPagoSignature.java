@@ -48,25 +48,37 @@ public class MercadoPagoSignature {
             return false;
         }
         if (signatureHeader == null || signatureHeader.isBlank() || dataId == null) {
+            log.warn("Webhook de MercadoPago sin x-signature o sin data.id (signature={}, dataId={})",
+                    signatureHeader, dataId);
             return false;
         }
 
         String timestamp = extract(signatureHeader, "ts");
         String received = extract(signatureHeader, "v1");
-        if (timestamp == null || received == null || !isRecent(timestamp)) {
+        if (timestamp == null || received == null) {
+            log.warn("x-signature sin ts o v1: {}", signatureHeader);
+            return false;
+        }
+        if (!isRecent(timestamp)) {
+            log.warn("ts del webhook fuera de ventana: ts={}, ahora={}ms", timestamp, clock.millis());
             return false;
         }
 
-        // MercadoPago normaliza el id a minusculas cuando es alfanumerico.
-        String manifest = "id:%s;request-id:%s;ts:%s;"
-                .formatted(dataId.toLowerCase(), requestId == null ? "" : requestId, timestamp);
+        String manifest = manifestOf(dataId, requestId, timestamp);
 
         String expected = hmacHex(manifest, secret);
         // Comparacion de tiempo constante: comparar con equals filtra informacion
         // sobre cuantos caracteres acerto quien esta probando firmas.
-        return MessageDigest.isEqual(
+        boolean matches = MessageDigest.isEqual(
                 expected.getBytes(StandardCharsets.UTF_8),
                 received.getBytes(StandardCharsets.UTF_8));
+        if (!matches) {
+            // Los hashes en si no son secretos -no permiten reconstruir la clave-,
+            // asi que loguearlos para diagnosticar no expone nada.
+            log.warn("HMAC no coincide: manifest=\"{}\", esperado={}, recibido={}",
+                    manifest, expected, received);
+        }
+        return matches;
     }
 
     /**
@@ -92,6 +104,25 @@ public class MercadoPagoSignature {
         }
         long ageMillis = Math.abs(clock.millis() - epochMillis);
         return ageMillis <= MAX_AGE.toMillis();
+    }
+
+    /**
+     * {@code id:<data.id>;request-id:<x-request-id>;ts:<ts>;}, pero de verdad: si
+     * {@code x-request-id} no vino en la notificacion (el topico {@code order} no
+     * siempre lo manda, a diferencia del viejo {@code payment}), ese segmento se
+     * saca entero del manifest en vez de dejarlo vacio -es lo que dice la doc de
+     * MercadoPago para validar a mano, y dejarlo como {@code request-id:;} calcula
+     * un HMAC distinto al que compone el propio SDK de MercadoPago.
+     */
+    private String manifestOf(String dataId, String requestId, String timestamp) {
+        StringBuilder manifest = new StringBuilder();
+        // MercadoPago normaliza el id a minusculas cuando es alfanumerico.
+        manifest.append("id:").append(dataId.toLowerCase()).append(';');
+        if (requestId != null && !requestId.isBlank()) {
+            manifest.append("request-id:").append(requestId).append(';');
+        }
+        manifest.append("ts:").append(timestamp).append(';');
+        return manifest.toString();
     }
 
     private String extract(String header, String key) {

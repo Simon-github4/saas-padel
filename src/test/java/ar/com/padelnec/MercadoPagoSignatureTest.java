@@ -126,6 +126,18 @@ class MercadoPagoSignatureTest {
         assertThat(signature.isValid(header, REQUEST_ID, "123456789", SECRET)).isTrue();
     }
 
+    @Test
+    @DisplayName("Sin x-request-id, ese segmento se saca del manifest en vez de dejarse vacio")
+    void missingRequestIdOmitsItsSegment() {
+        // El topico "order" no siempre manda x-request-id, a diferencia del viejo
+        // "payment". HMAC calculado aparte (openssl) sobre "id:...;ts:...;", sin
+        // "request-id:;" en el medio -que es lo que calcularia si el codigo lo
+        // dejara como string vacio en vez de sacarlo.
+        String hmacWithoutRequestId = "c1ecb59ae2e3fd3cd1d4a1c66c54e6594e182ca0db51a58b1b242e195c8c827b";
+
+        assertThat(signature.isValid(header(hmacWithoutRequestId), null, "123456789", SECRET)).isTrue();
+    }
+
     private String header(String hmac) {
         return "ts=" + TIMESTAMP + ",v1=" + hmac;
     }
