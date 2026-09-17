@@ -271,6 +271,14 @@ public class PlayerAuthService {
             return;
         }
         PlayerAccount account = found.get();
+        // La cuenta que entra con Google no tiene contrasena propia que recuperar:
+        // la suya la maneja Google y esta aplicacion no la ve ni la puede cambiar.
+        // Mandarle igual el link seria ofrecerle resetear algo que nunca tuvo. No
+        // se avisa nada afuera: la pantalla responde lo mismo para todos los
+        // emails, que es lo que evita que se pueda averiguar cuales existen.
+        if (account.getPasswordHash() == null) {
+            return;
+        }
         String token = Tokens.generate();
         account.setPasswordResetTokenHash(TokenHash.of(token));
         account.setPasswordResetTokenExpiresAt(clock.instant().plus(PASSWORD_RESET_TTL));

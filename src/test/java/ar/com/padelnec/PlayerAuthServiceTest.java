@@ -329,6 +329,18 @@ class PlayerAuthServiceTest {
     }
 
     @Test
+    @DisplayName("Una cuenta de Google no recibe el mail de reset: no tiene contrasena propia")
+    void googleOnlyAccountGetsNoResetEmail() {
+        googleVerifier.nextResult = Optional.of(
+                new GoogleIdTokenVerifier.GoogleIdentity("sub-1", EMAIL, true, "Juana"));
+        playerAuthService.loginWithGoogle("token");
+
+        playerAuthService.requestPasswordReset(EMAIL);
+
+        assertThat(emailSender.lastTo).isNull();
+    }
+
+    @Test
     @DisplayName("Un token de reset vencido se rechaza aunque la contrasena nueva sea valida")
     void expiredResetTokenIsRejected() {
         registerAndConfirm(EMAIL, PASSWORD, null, null);

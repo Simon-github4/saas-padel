@@ -2,10 +2,15 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError, playerApi } from '../api/client';
 import { Alert, Button, Card, Field, Screen, SectionTitle } from '../components/Ui';
+import { GoogleSignInButton } from '../components/GoogleSignInButton';
 
 /**
  * Pide el link para resetear la contraseña. Responde siempre el mismo mensaje,
  * exista o no ese email -- así la pantalla misma no delata qué cuentas existen.
+ *
+ * <p>Lleva además el botón de Google: quien entró siempre con Google no tiene
+ * contraseña propia, así que no le llega ningún mail (ver
+ * PlayerAuthService.requestPasswordReset) y este botón es su forma de entrar.
  */
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
@@ -56,6 +61,20 @@ export function ForgotPasswordPage() {
               </Button>
             </form>
           )}
+          <div className="mt-6 border-t border-white/10 pt-5 text-center">
+            <p className="mb-4 text-sm text-ink-soft">
+              ¿Creaste tu cuenta con Google? No tenés contraseña que recuperar: entrá con Google.
+            </p>
+            {/* Con el link ya mandado el formulario no esta en pantalla, y con
+                el su Alert: sin esto un fallo de Google no se veria en ningun lado. */}
+            {sent && error && <div className="mb-4"><Alert>{error}</Alert></div>}
+            <GoogleSignInButton
+              text="signin_with"
+              onSignedIn={() => navigate('/account')}
+              onError={setError}
+              onWorkingChange={setWorking}
+            />
+          </div>
         </Card>
       </div>
     </Screen>

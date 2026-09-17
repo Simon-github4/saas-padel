@@ -1,24 +1,9 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { usePlayerAuth } from '../auth/AuthContext';
-import { ApiError, playerApi } from '../api/client';
+import { ApiError } from '../api/client';
 import { Alert, Button, Card, Field, Screen, SectionTitle } from '../components/Ui';
-
-/** Ventana mínima del SDK de Google Identity Services -- no hay paquete de tipos instalado para esto. */
-interface GoogleIdentityServices {
-  accounts: {
-    id: {
-      initialize: (config: { client_id: string; callback: (response: { credential: string }) => void }) => void;
-      renderButton: (parent: HTMLElement, options: { type: string; width: number; text: string }) => void;
-    };
-  };
-}
-
-declare global {
-  interface Window {
-    google?: GoogleIdentityServices;
-  }
-}
+import { GoogleSignInButton } from '../components/GoogleSignInButton';
 
 /**
  * Login del jugador: email y contraseña, o Google. Reemplaza el viejo flujo de
@@ -28,7 +13,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const { login, register, confirmSignup, loginWithGoogle } = usePlayerAuth();
+  const { login, register, confirmSignup } = usePlayerAuth();
 
   const [mode, setMode] = useState<'login' | 'register'>(
     searchParams.get('mode') === 'register' ? 'register' : 'login',
@@ -60,60 +45,6 @@ export function LoginPage() {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);
-
-  const googleButtonRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    // El script de Google Identity Services carga con "async defer" (index.html):
-    // no hay garantia de que window.google ya exista cuando este efecto corre.
-    async function waitForGoogleScript(): Promise<boolean> {
-      for (let attempt = 0; attempt < 50; attempt++) {
-        if (window.google) {
-          return true;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-      return false;
-    }
-
-    async function renderGoogleButton() {
-      const [config, scriptReady] = await Promise.all([
-        playerApi.config().catch(() => null),
-        waitForGoogleScript(),
-      ]);
-      if (cancelled || !config?.googleClientId || !scriptReady || !window.google || !googleButtonRef.current) {
-        return;
-      }
-      window.google.accounts.id.initialize({
-        client_id: config.googleClientId,
-        callback: async (response) => {
-          setError(null);
-          setWorking(true);
-          try {
-            await loginWithGoogle(response.credential);
-            navigate(returnTo);
-          } catch (err) {
-            setError(err instanceof ApiError ? err.message : 'No pudimos verificar tu cuenta de Google.');
-          } finally {
-            setWorking(false);
-          }
-        },
-      });
-      googleButtonRef.current.innerHTML = '';
-      window.google.accounts.id.renderButton(googleButtonRef.current, {
-        type: 'standard',
-        width: 320,
-        text: 'continue_with',
-      });
-    }
-
-    void renderGoogleButton();
-    return () => {
-      cancelled = true;
-    };
-  }, [loginWithGoogle, navigate]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -195,7 +126,12 @@ export function LoginPage() {
             </form>
           ) : (
             <>
-              <div ref={googleButtonRef} className="mb-5 flex justify-center" />
+              <GoogleSignInButton
+                onSignedIn={() => navigate(returnTo)}
+                onError={setError}
+                onWorkingChange={setWorking}
+                className="mb-5 flex justify-center"
+              />
 
               <form className="space-y-5" onSubmit={submit}>
                 <Field

@@ -33,7 +33,9 @@ public class SecurityConfig {
      * atributo {@code style=""} en el HTML. {@code img-src} permite cualquier
      * origen https porque el dueno del club puede pegar una URL externa como
      * foto de portada (ver {@code Tenant.heroImageUrl}). Google Identity
-     * Services necesita su propio origen en script/connect/frame, y el mapa
+     * Services necesita su propio origen en script/connect/frame y tambien en
+     * style-src: el boton trae su hoja de estilos desde ahi, y sin eso el
+     * navegador la bloquea y el boton se dibuja con el formato de fabrica. Y el mapa
      * de "como llegar" embebe un iframe de Google Maps
      * ({@code HowToGetThereSection.tsx}) que arranca en {@code maps.google.com}
      * y redirige a {@code www.google.com/maps/embed/...} -los dos hacen falta,
@@ -41,7 +43,7 @@ public class SecurityConfig {
      */
     private static final String PLAYER_APP_CSP = "default-src 'self'; "
             + "script-src 'self' https://accounts.google.com; "
-            + "style-src 'self' 'unsafe-inline'; "
+            + "style-src 'self' 'unsafe-inline' https://accounts.google.com; "
             + "img-src 'self' data: https:; "
             + "font-src 'self' data:; "
             + "connect-src 'self' https://accounts.google.com; "
