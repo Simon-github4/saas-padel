@@ -119,8 +119,9 @@ public class AgendaView extends VerticalLayout {
         addClassNames(LumoUtility.Gap.MEDIUM);
 
         this.club = tenantService.requireCurrent();
+        // El value-change listener de dayPicker() ya quedo registrado por add(header()...)
+        // de arriba, asi que este setValue dispara el primer refresh() solo.
         datePicker.setValue(LocalDate.now(club.zoneId()));
-        refresh();
     }
 
     // --------------------------------------------------------------- header

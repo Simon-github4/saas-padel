@@ -22,8 +22,11 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
@@ -134,6 +137,50 @@ public class AvailabilityService {
     public boolean anyCourtFree(Instant start, Instant end) {
         return courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc().stream()
                 .anyMatch(court -> isCourtFree(court, start, end));
+    }
+
+    /** Una franja de horario, tal como la necesita {@link #anyCourtFreeForSlots}. */
+    public record SlotWindow(Instant startsAt, Instant endsAt) {
+    }
+
+    /**
+     * Igual que {@link #anyCourtFree}, pero para varios horarios a la vez: trae
+     * canchas, turnos y bloqueos una sola vez para todo el rango pedido y resuelve
+     * cada horario en memoria, en vez de repetir las mismas 2 consultas por cancha
+     * y por horario. Lo usa la lista de espera, donde antes un barrido con varios
+     * horarios llenos y varias canchas terminaba en decenas de consultas
+     * identicas. Mismo patron que ya usa {@link #freeSlots}.
+     */
+    @Transactional(readOnly = true)
+    public Map<SlotWindow, Boolean> anyCourtFreeForSlots(Collection<SlotWindow> windows) {
+        if (windows.isEmpty()) {
+            return Map.of();
+        }
+        List<Court> courts = courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc();
+        Instant from = windows.stream().map(SlotWindow::startsAt).min(Instant::compareTo).orElseThrow();
+        Instant until = windows.stream().map(SlotWindow::endsAt).max(Instant::compareTo).orElseThrow();
+        List<Booking> taken = bookingRepository.findOverlapping(from, until, BLOCKING);
+        List<Blackout> blackouts = blackoutRepository.findOverlapping(from, until);
+
+        Map<SlotWindow, Boolean> result = new LinkedHashMap<>();
+        for (SlotWindow window : windows) {
+            boolean free = courts.stream().anyMatch(court -> isFreeInMemory(court, window, taken, blackouts));
+            result.put(window, free);
+        }
+        return result;
+    }
+
+    private boolean isFreeInMemory(Court court, SlotWindow window, List<Booking> taken,
+                                   List<Blackout> blackouts) {
+        boolean occupied = taken.stream()
+                .anyMatch(booking -> booking.getCourt().getId().equals(court.getId())
+                        && booking.overlaps(window.startsAt(), window.endsAt()));
+        if (occupied) {
+            return false;
+        }
+        return blackouts.stream()
+                .noneMatch(blackout -> blackout.appliesTo(court)
+                        && blackout.overlaps(window.startsAt(), window.endsAt()));
     }
 
     // ------------------------------------------------------------- internos

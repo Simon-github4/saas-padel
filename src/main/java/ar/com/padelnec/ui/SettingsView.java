@@ -32,6 +32,7 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
+import com.vaadin.flow.component.details.Details;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.ColumnTextAlign;
 import com.vaadin.flow.component.grid.Grid;
@@ -164,7 +165,7 @@ public class SettingsView extends VerticalLayout {
         this.club = tenantService.requireCurrent();
 
         TabSheet tabs = new TabSheet();
-        tabs.add(new Tab("Perfil"), profileForm());
+        tabs.add(new Tab("Web Reservas"), profileForm());
         tabs.add(new Tab("Club"), clubForm());
         tabs.add(new Tab("Canchas"), courtsTab());
         tabs.add(new Tab("Tarifas"), pricingTab());
@@ -362,7 +363,8 @@ public class SettingsView extends VerticalLayout {
         // el club, como se ve su portada, con que paleta, y donde queda.
         return tabContent(
                 section("Identidad", tagline, instagram),
-                section("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline, heroOverlay, heroCta),
+                collapsibleSection("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline,
+                        heroOverlay, heroCta),
                 section("Apariencia", 3, theme, primaryColorField, secondaryColorField),
                 section("Ubicación", address, city, mapsLinkField(latitude, longitude, googleMapsUrl)),
                 actions(save),
@@ -622,6 +624,28 @@ public class SettingsView extends VerticalLayout {
         box.setWidthFull();
         box.addClassNames(LumoUtility.Gap.SMALL);
         return box;
+    }
+
+    /**
+     * Igual que {@link #section}, pero pegable: Portada trae seis campos (imagen,
+     * variante, titulo, overlay, boton) que ocupan bastante alto y no hacen falta
+     * a la vista todo el tiempo. Empieza abierta para no esconder nada de entrada;
+     * quien la usa la achica a mano cuando le estorba.
+     */
+    private static Details collapsibleSection(String title, Component... fields) {
+        H3 heading = new H3(title);
+        heading.addClassNames(LumoUtility.FontSize.MEDIUM, LumoUtility.Margin.NONE,
+                LumoUtility.FontWeight.SEMIBOLD);
+
+        FormLayout form = new FormLayout(fields);
+        form.setResponsiveSteps(
+                new FormLayout.ResponsiveStep("0", 1),
+                new FormLayout.ResponsiveStep("30em", 2));
+
+        Details details = new Details(heading, form);
+        details.setOpened(true);
+        details.setWidthFull();
+        return details;
     }
 
     /**

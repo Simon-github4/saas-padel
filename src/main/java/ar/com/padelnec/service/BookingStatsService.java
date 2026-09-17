@@ -121,6 +121,13 @@ public class BookingStatsService {
         List<PaymentCashRow> allPayments = paymentRepository.findCashBetween(
                 rangeFromInstant, rangeUntilInstant, PaymentStatus.APPROVED);
 
+        return buildPeriods(club, courts, periodo, from, to, rangeEnd, allBookings, allPayments, blackouts);
+    }
+
+    /** El cuerpo de {@link #statsFor}, sobre datos ya traidos: lo reusa {@link #dashboardFor}. */
+    private List<PeriodStats> buildPeriods(Tenant club, List<Court> courts, Periodo periodo,
+            LocalDate from, LocalDate to, LocalDate rangeEnd, List<BookingStatsRow> allBookings,
+            List<PaymentCashRow> allPayments, List<Blackout> blackouts) {
         List<PeriodStats> result = new ArrayList<>();
         for (LocalDate bucketStart = bucketStart(periodo, from); !bucketStart.isAfter(to);
                 bucketStart = nextBucketStart(periodo, bucketStart)) {
@@ -164,10 +171,58 @@ public class BookingStatsService {
         return summarize(club, courts, from, toExclusive, bookings, payments, blackouts, "Total");
     }
 
+    /** Todo lo que pinta el Dashboard de una sola pasada: ver {@link #dashboardFor}. */
+    public record DashboardSnapshot(PeriodStats summary, List<PeriodStats> periods,
+                                    List<HourlyStat> topHours, List<CustomerStat> topCustomers,
+                                    List<CancellationStat> cancellations,
+                                    List<PaymentMethodStat> paymentsByMethod) {
+    }
+
+    /**
+     * Todo lo que necesita {@code DashboardView.refresh()} en una sola pasada.
+     *
+     * <p>Antes cada tarjeta y cada tabla llamaba a su propio metodo publico, y cada
+     * uno volvia a pedir turnos y cobros del mismo rango por su cuenta: un refresh
+     * del dashboard disparaba el mismo {@code findStatsBetween} hasta 5 veces y el
+     * mismo {@code findCashBetween} 3 veces, ademas de canchas y bloqueos 2 veces
+     * cada uno. Aca se trae todo una sola vez y el resto se resuelve en memoria,
+     * igual que ya hacia cada metodo por separado para si mismo.
+     */
+    @Transactional(readOnly = true)
+    public DashboardSnapshot dashboardFor(Tenant club, Periodo periodo, LocalDate from, LocalDate to,
+                                          int topLimit) {
+        List<Court> courts = courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc();
+        LocalDate rangeEnd = to.plusDays(1);
+        Instant rangeFromInstant = from.atStartOfDay(club.zoneId()).toInstant();
+        Instant rangeUntilInstant = rangeEnd.atStartOfDay(club.zoneId()).toInstant();
+
+        List<BookingStatsRow> allBookings = bookingRepository.findStatsBetween(rangeFromInstant, rangeUntilInstant);
+        List<Blackout> blackouts = blackoutRepository.findOverlapping(rangeFromInstant, rangeUntilInstant);
+        List<PaymentCashRow> allPayments = paymentRepository.findCashBetween(
+                rangeFromInstant, rangeUntilInstant, PaymentStatus.APPROVED);
+
+        PeriodStats summary = summarize(club, courts, from, rangeEnd, allBookings, allPayments, blackouts, "Total");
+        List<PeriodStats> periods =
+                buildPeriods(club, courts, periodo, from, to, rangeEnd, allBookings, allPayments, blackouts);
+        List<BookingStatsRow> occupying =
+                allBookings.stream().filter(b -> b.status().occupiesSlot()).toList();
+
+        return new DashboardSnapshot(summary, periods,
+                topHoursFrom(club, occupying, topLimit),
+                topCustomersFrom(occupying, topLimit),
+                cancellationsFrom(allBookings),
+                paymentsByMethodFrom(allPayments));
+    }
+
     /** Los horarios que mas turnos venden en el rango, sin importar el dia. */
     @Transactional(readOnly = true)
     public List<HourlyStat> topHours(Tenant club, LocalDate from, LocalDate to, int limit) {
-        Map<java.time.LocalTime, List<BookingStatsRow>> byHour = bookingsInRange(club, from, to).stream()
+        return topHoursFrom(club, bookingsInRange(club, from, to), limit);
+    }
+
+    /** El cuerpo de {@link #topHours}, sobre turnos ya traidos y filtrados: lo reusa {@link #dashboardFor}. */
+    private List<HourlyStat> topHoursFrom(Tenant club, List<BookingStatsRow> occupying, int limit) {
+        Map<java.time.LocalTime, List<BookingStatsRow>> byHour = occupying.stream()
                 .collect(Collectors.groupingBy(b -> b.startTime().atZone(club.zoneId()).toLocalTime()));
 
         return byHour.entrySet().stream()
@@ -201,10 +256,15 @@ public class BookingStatsService {
      */
     @Transactional(readOnly = true)
     public List<CustomerStat> topCustomers(Tenant club, LocalDate from, LocalDate to, int limit) {
+        return topCustomersFrom(bookingsInRange(club, from, to), limit);
+    }
+
+    /** El cuerpo de {@link #topCustomers}, sobre turnos ya traidos y filtrados: lo reusa {@link #dashboardFor}. */
+    private List<CustomerStat> topCustomersFrom(List<BookingStatsRow> occupying, int limit) {
         // Se agrupa por id, no por el registro entero: dos filas del mismo cliente
         // difieren en horario/precio, asi que agrupar "por cliente" solo funciona
         // por su identidad, no por igualdad estructural de la proyeccion.
-        Map<CustomerGroupKey, List<BookingStatsRow>> grouped = bookingsInRange(club, from, to).stream()
+        Map<CustomerGroupKey, List<BookingStatsRow>> grouped = occupying.stream()
                 .collect(Collectors.groupingBy(row -> row.playerAccountId() != null
                         ? new CustomerGroupKey(row.playerAccountId(), null)
                         : new CustomerGroupKey(null, row.customerId())));
@@ -237,10 +297,15 @@ public class BookingStatsService {
     /** Por que se cancelo cada turno anulado del rango: para ver si predomina un motivo. */
     @Transactional(readOnly = true)
     public List<CancellationStat> cancellationsByReason(Tenant club, LocalDate from, LocalDate to) {
-        List<BookingStatsRow> cancelled = bookingRepository.findStatsBetween(
-                        from.atStartOfDay(club.zoneId()).toInstant(),
-                        nextDay(to).atStartOfDay(club.zoneId()).toInstant())
-                .stream()
+        List<BookingStatsRow> allBookings = bookingRepository.findStatsBetween(
+                from.atStartOfDay(club.zoneId()).toInstant(),
+                nextDay(to).atStartOfDay(club.zoneId()).toInstant());
+        return cancellationsFrom(allBookings);
+    }
+
+    /** El cuerpo de {@link #cancellationsByReason}, sobre turnos ya traidos: lo reusa {@link #dashboardFor}. */
+    private List<CancellationStat> cancellationsFrom(List<BookingStatsRow> allBookings) {
+        List<BookingStatsRow> cancelled = allBookings.stream()
                 .filter(b -> b.status() == BookingStatus.CANCELLED)
                 .toList();
 
@@ -270,10 +335,16 @@ public class BookingStatsService {
      */
     @Transactional(readOnly = true)
     public List<PaymentMethodStat> paymentsByMethod(Tenant club, LocalDate from, LocalDate to) {
-        Map<PaymentMethod, BigDecimal> byMethod = paymentRepository.findCashBetween(
-                        from.atStartOfDay(club.zoneId()).toInstant(),
-                        nextDay(to).atStartOfDay(club.zoneId()).toInstant(),
-                        PaymentStatus.APPROVED).stream()
+        List<PaymentCashRow> payments = paymentRepository.findCashBetween(
+                from.atStartOfDay(club.zoneId()).toInstant(),
+                nextDay(to).atStartOfDay(club.zoneId()).toInstant(),
+                PaymentStatus.APPROVED);
+        return paymentsByMethodFrom(payments);
+    }
+
+    /** El cuerpo de {@link #paymentsByMethod}, sobre pagos ya traidos: lo reusa {@link #dashboardFor}. */
+    private List<PaymentMethodStat> paymentsByMethodFrom(List<PaymentCashRow> payments) {
+        Map<PaymentMethod, BigDecimal> byMethod = payments.stream()
                 .collect(Collectors.groupingBy(PaymentCashRow::method,
                         Collectors.reducing(BigDecimal.ZERO, PaymentCashRow::amount, BigDecimal::add)));
 

@@ -111,12 +111,23 @@ public class WaitlistService {
                 .stream()
                 .collect(Collectors.groupingBy(WaitlistEntry::getStartsAt, LinkedHashMap::new,
                         Collectors.toList()));
+
+        // Una sola consulta de turnos y bloqueos para todos los horarios de la
+        // pantalla, en vez de una por horario: ver AvailabilityService#anyCourtFreeForSlots.
+        List<AvailabilityService.SlotWindow> windows = bySlot.values().stream()
+                .map(entries -> new AvailabilityService.SlotWindow(
+                        entries.getFirst().getStartsAt(), entries.getFirst().getEndsAt()))
+                .toList();
+        Map<AvailabilityService.SlotWindow, Boolean> freeBySlot =
+                availabilityService.anyCourtFreeForSlots(windows);
+
         return bySlot.values().stream()
                 .map(entries -> {
                     WaitlistEntry first = entries.getFirst();
+                    AvailabilityService.SlotWindow window =
+                            new AvailabilityService.SlotWindow(first.getStartsAt(), first.getEndsAt());
                     return new SlotWaitlist(first.getStartsAt(), first.getEndsAt(),
-                            availabilityService.anyCourtFree(first.getStartsAt(), first.getEndsAt()),
-                            entries);
+                            freeBySlot.get(window), entries);
                 })
                 .toList();
     }

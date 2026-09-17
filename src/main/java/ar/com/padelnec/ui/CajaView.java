@@ -89,8 +89,9 @@ public class CajaView extends VerticalLayout {
         add(header(), kpis, movementsSection(), buffetSection());
         addClassNames(LumoUtility.Gap.LARGE);
 
+        // El value-change listener de dayPicker() ya quedo registrado por el add()
+        // de arriba, asi que este setValue dispara el primer refresh() solo.
         datePicker.setValue(LocalDate.now(club.zoneId()));
-        refresh();
     }
 
     // --------------------------------------------------------------- header

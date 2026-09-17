@@ -332,7 +332,9 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
      */
     private SideNavItem alertsItem() {
         alertsNavItem = new SideNavItem("Alertas", AlertsView.class, iconChip(LumoIcon.BELL));
-        showPendingAlerts(alertService.pendingCount());
+        // El punto rojo se pinta cuando arma pendingAlertsBadge() mas abajo, con el
+        // mismo conteo: alertsNavItem ya existe para entonces, no hace falta pedirlo
+        // dos veces seguidas dentro del mismo navigation().
         return alertsNavItem;
     }
 

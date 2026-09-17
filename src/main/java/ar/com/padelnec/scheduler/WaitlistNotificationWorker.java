@@ -6,8 +6,10 @@ import ar.com.padelnec.notification.NotificationService;
 import ar.com.padelnec.notification.whatsapp.WhatsAppSender;
 import ar.com.padelnec.repository.WaitlistEntryRepository;
 import ar.com.padelnec.service.AvailabilityService;
+import ar.com.padelnec.service.AvailabilityService.SlotWindow;
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -51,9 +53,20 @@ public class WaitlistNotificationWorker {
     @Transactional
     public int notifyFreedSlots(Tenant club) {
         List<WaitlistEntry> pending = waitlistEntryRepository.findPending(clock.instant());
+
+        // Varios anotados suelen compartir el mismo horario lleno: se resuelve una
+        // sola vez por horario distinto, no una por anotado (ver
+        // AvailabilityService#anyCourtFreeForSlots).
+        List<SlotWindow> windows = pending.stream()
+                .map(entry -> new SlotWindow(entry.getStartsAt(), entry.getEndsAt()))
+                .distinct()
+                .toList();
+        Map<SlotWindow, Boolean> freeBySlot = availabilityService.anyCourtFreeForSlots(windows);
+
         int notified = 0;
         for (WaitlistEntry entry : pending) {
-            if (!availabilityService.anyCourtFree(entry.getStartsAt(), entry.getEndsAt())) {
+            SlotWindow window = new SlotWindow(entry.getStartsAt(), entry.getEndsAt());
+            if (!freeBySlot.get(window)) {
                 continue;
             }
             if (!attemptedDelivery(club, entry)) {

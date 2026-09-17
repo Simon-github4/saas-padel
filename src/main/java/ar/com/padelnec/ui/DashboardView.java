@@ -6,6 +6,7 @@ import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.service.BookingStatsService;
 import ar.com.padelnec.service.BookingStatsService.CancellationStat;
 import ar.com.padelnec.service.BookingStatsService.CustomerStat;
+import ar.com.padelnec.service.BookingStatsService.DashboardSnapshot;
 import ar.com.padelnec.service.BookingStatsService.HourlyStat;
 import ar.com.padelnec.service.BookingStatsService.PaymentMethodStat;
 import ar.com.padelnec.service.BookingStatsService.PeriodStats;
@@ -206,21 +207,23 @@ public class DashboardView extends VerticalLayout {
             return;
         }
 
-        // Las tarjetas resumen todo el rango de una: no dependen de en que periodo
-        // se agrupa la tabla de abajo, asi que se calculan aparte.
-        refreshKpis(statsService.summary(club, desde, hasta),
-                statsService.cancellationsByReason(club, desde, hasta));
+        // Un solo viaje a la base para todo lo que pinta la pantalla: antes cada
+        // tarjeta y cada tabla volvia a pedir turnos y cobros del mismo rango por
+        // su cuenta (ver BookingStatsService#dashboardFor).
+        DashboardSnapshot data = statsService.dashboardFor(club, periodoSelect.getValue(), desde, hasta, 8);
+
+        refreshKpis(data.summary(), data.cancellations());
 
         rangeHint.setText("Tomando datos desde " + DAY_MONTH_YEAR.format(desde)
                 + " hasta " + DAY_MONTH_YEAR.format(hasta));
 
-        periods = statsService.statsFor(club, periodoSelect.getValue(), desde, hasta);
+        periods = data.periods();
         periodsGrid.setItems(periods);
         refreshChart();
 
-        hoursGrid.setItems(statsService.topHours(club, desde, hasta, 8));
-        customersGrid.setItems(statsService.topCustomers(club, desde, hasta, 8));
-        paymentMethodGrid.setItems(statsService.paymentsByMethod(club, desde, hasta));
+        hoursGrid.setItems(data.topHours());
+        customersGrid.setItems(data.topCustomers());
+        paymentMethodGrid.setItems(data.paymentsByMethod());
     }
 
     private void refreshKpis(PeriodStats summary, List<CancellationStat> cancellations) {
