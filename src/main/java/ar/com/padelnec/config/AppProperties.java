@@ -31,6 +31,7 @@ public class AppProperties {
     private final Google google = new Google();
     private final Mail mail = new Mail();
     private final Analytics analytics = new Analytics();
+    private final Mercadopago mercadopago = new Mercadopago();
 
     @Getter
     @Setter
@@ -107,6 +108,26 @@ public class AppProperties {
 
         /** Direccion que figura como remitente. */
         private String from = "no-responder@padelnec.com.ar";
+    }
+
+    @Getter
+    @Setter
+    public static class Mercadopago {
+        /**
+         * Id de la aplicacion de MercadoPago (Tus integraciones). Publico: viaja
+         * tal cual en la URL de autorizacion que ve el navegador del dueno.
+         */
+        private String clientId;
+
+        /** Client secret de esa misma aplicacion. Nunca sale del backend. */
+        private String clientSecret;
+
+        /**
+         * Clave con la que esa aplicacion firma sus webhooks. Unica para todos
+         * los clubes que se conectan por OAuth -- ver V16 y por que ya no hay
+         * una por club.
+         */
+        private String webhookSecret;
     }
 
     @Getter

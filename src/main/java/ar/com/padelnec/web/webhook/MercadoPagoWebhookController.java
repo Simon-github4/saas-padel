@@ -1,5 +1,6 @@
 package ar.com.padelnec.web.webhook;
 
+import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.payment.MercadoPagoSignature;
 import ar.com.padelnec.service.PaymentService;
@@ -19,8 +20,12 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Recibe las notificaciones de pago de MercadoPago.
  *
- * <p>La URL lleva el slug del club porque la firma se valida con el secreto de ese
- * club: sin saber de quien es la notificacion no hay con que verificarla.
+ * <p>La URL lleva el slug del club para saber a que reserva aplicar el pago
+ * -el club sigue resolviendo el {@code Tenant}, y la ausencia de uno activo se
+ * rechaza igual que antes-, pero la firma ya se valida con un unico secreto de
+ * aplicacion ({@code AppProperties.Mercadopago.webhookSecret}): con OAuth todos
+ * los clubes cuelgan de la misma aplicacion de MercadoPago, que firma todas sus
+ * notificaciones con la misma clave.
  *
  * <p>Se responde 200 incluso ante notificaciones que no se pueden procesar. Un
  * error devuelto hace que MercadoPago reintente durante horas, y reintentar algo
@@ -35,6 +40,7 @@ public class MercadoPagoWebhookController {
     private final TenantService tenantService;
     private final PaymentService paymentService;
     private final MercadoPagoSignature signature;
+    private final AppProperties properties;
 
     @PostMapping("/{slug}")
     public ResponseEntity<Void> receive(
@@ -52,7 +58,7 @@ public class MercadoPagoWebhookController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
 
-        if (!signature.isValid(signatureHeader, requestId, dataId, club.getMpWebhookSecret())) {
+        if (!signature.isValid(signatureHeader, requestId, dataId, properties.getMercadopago().getWebhookSecret())) {
             // Sin esta barrera, cualquiera podria confirmar turnos que nadie pago
             // simplemente posteando a esta URL.
             log.warn("Firma invalida en un webhook para el club {}", slug);

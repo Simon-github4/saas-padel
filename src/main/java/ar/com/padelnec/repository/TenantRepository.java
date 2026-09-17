@@ -1,6 +1,7 @@
 package ar.com.padelnec.repository;
 
 import ar.com.padelnec.domain.Tenant;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -16,4 +17,7 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
     List<Tenant> findAllByActiveTrue();
 
     boolean existsBySlugIgnoreCase(String slug);
+
+    /** Clubes conectados por OAuth cuyo access token vence dentro de la ventana de renovacion. */
+    List<Tenant> findAllByMpRefreshTokenIsNotNullAndMpTokenExpiresAtBefore(Instant threshold);
 }

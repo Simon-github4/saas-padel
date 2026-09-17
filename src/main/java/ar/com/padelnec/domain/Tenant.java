@@ -11,6 +11,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import lombok.Getter;
@@ -37,15 +38,41 @@ public class Tenant extends BaseEntity {
     @Column(name = "time_zone", nullable = false, length = 60)
     private String timeZone = "America/Argentina/Buenos_Aires";
 
-    /** Token de produccion de MercadoPago. Cifrado en reposo. */
+    /**
+     * Access token de MercadoPago del club. Cifrado en reposo.
+     *
+     * <p>Lo entrega el intercambio OAuth ({@code MercadoPagoOAuthService}), no un
+     * campo pegado a mano: el club autoriza la conexion desde su panel y esto se
+     * completa solo. La clave con la que MercadoPago firma los webhooks ya no es
+     * por club -- todos cuelgan de la misma aplicacion -- y vive en
+     * {@code AppProperties.Mercadopago.webhookSecret}.
+     */
     @Convert(converter = EncryptedStringConverter.class)
     @Column(name = "mp_access_token", columnDefinition = "text")
     private String mpAccessToken;
 
-    /** Clave secreta con la que MercadoPago firma los webhooks. Cifrada en reposo. */
+    /**
+     * Refresh token de la conexion OAuth. Cifrado en reposo.
+     *
+     * <p>Dura 6 meses igual que el access token, y tambien se vence: sin
+     * renovarlo antes de ese plazo, el club queda sin forma de volver a pedir un
+     * access token sin pasar de nuevo por el consentimiento del dueno.
+     */
     @Convert(converter = EncryptedStringConverter.class)
-    @Column(name = "mp_webhook_secret", columnDefinition = "text")
-    private String mpWebhookSecret;
+    @Column(name = "mp_refresh_token", columnDefinition = "text")
+    private String mpRefreshToken;
+
+    /** Id de usuario de MercadoPago de la cuenta conectada. No es secreto. */
+    @Column(name = "mp_user_id", length = 60)
+    private String mpUserId;
+
+    /** Cuando vence el access token actual (180 dias desde que se emitio o se renovo). */
+    @Column(name = "mp_token_expires_at")
+    private Instant mpTokenExpiresAt;
+
+    /** Cuando el dueno autorizo la conexion por primera vez. Null si nunca conecto. */
+    @Column(name = "mp_connected_at")
+    private Instant mpConnectedAt;
 
     @Column(name = "open_time", nullable = false)
     private LocalTime openTime = LocalTime.of(8, 0);
@@ -280,5 +307,14 @@ public class Tenant extends BaseEntity {
 
     public boolean acceptsOnlinePayments() {
         return mpAccessToken != null && !mpAccessToken.isBlank();
+    }
+
+    /**
+     * El job de renovacion no llego a tiempo, o la conexion se desautorizo desde
+     * el lado de MercadoPago. El panel usa esto para avisarle al dueno que hay
+     * que volver a conectar antes de que las senas empiecen a caerse solas.
+     */
+    public boolean mpConnectionExpired(Instant now) {
+        return acceptsOnlinePayments() && mpTokenExpiresAt != null && mpTokenExpiresAt.isBefore(now);
     }
 }

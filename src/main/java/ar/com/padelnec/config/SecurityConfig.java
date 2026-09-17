@@ -90,7 +90,12 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/public/**", "/api/webhooks/**").permitAll()
+                        .requestMatchers("/api/public/**", "/api/webhooks/**",
+                                // El navegador del dueno vuelve aca sin sesion del panel,
+                                // recien saliendo de auth.mercadopago.com: lo que autoriza
+                                // el intercambio es el state firmado, no un login.
+                                "/api/mercadopago/oauth/callback")
+                                .permitAll()
                         .anyRequest().authenticated())
                 .headers(headers -> headers.frameOptions(frame -> frame.deny()))
                 .build();

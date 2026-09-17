@@ -12,6 +12,7 @@ import ar.com.padelnec.domain.enums.CourtSurface;
 import ar.com.padelnec.domain.enums.CourtWall;
 import ar.com.padelnec.domain.enums.HeroVariant;
 import ar.com.padelnec.domain.enums.ThemeMode;
+import ar.com.padelnec.payment.MercadoPagoOAuthService;
 import ar.com.padelnec.repository.ClubAmenityRepository;
 import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.PricingRuleRepository;
@@ -28,6 +29,7 @@ import ar.com.padelnec.support.InstagramHandles;
 import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.ItemLabelGenerator;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
@@ -56,6 +58,8 @@ import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.timepicker.TimePicker;
 import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
+import com.vaadin.flow.router.BeforeEnterEvent;
+import com.vaadin.flow.router.BeforeEnterObserver;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
@@ -63,8 +67,10 @@ import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -86,7 +92,7 @@ import java.util.stream.Collectors;
 @Route(value = "configuracion", layout = MainLayout.class)
 @PageTitle("Configuración | Panel del club")
 @PermitAll
-public class SettingsView extends VerticalLayout {
+public class SettingsView extends VerticalLayout implements BeforeEnterObserver {
 
     private static final Locale ES_AR = Locale.forLanguageTag("es-AR");
 
@@ -132,6 +138,8 @@ public class SettingsView extends VerticalLayout {
     private final ClubUserService clubUserService;
     private final GoogleMapsLinkResolver mapsLinkResolver;
     private final transient AuthenticationContext authenticationContext;
+    private final MercadoPagoOAuthService mercadoPagoOAuthService;
+    private final Clock clock;
 
     private final Grid<ClubAmenity> amenityGrid = new Grid<>();
     private final Grid<Court> courtGrid = new Grid<>();
@@ -148,7 +156,8 @@ public class SettingsView extends VerticalLayout {
                         ClubAmenityRepository amenityRepository, ProductRepository productRepository,
                         ProductService productService, ClubUserService clubUserService,
                         GoogleMapsLinkResolver mapsLinkResolver,
-                        AuthenticationContext authenticationContext) {
+                        AuthenticationContext authenticationContext,
+                        MercadoPagoOAuthService mercadoPagoOAuthService, Clock clock) {
         this.tenantService = tenantService;
         this.tenantRepository = tenantRepository;
         this.tenantHeroImageRepository = tenantHeroImageRepository;
@@ -160,6 +169,8 @@ public class SettingsView extends VerticalLayout {
         this.clubUserService = clubUserService;
         this.mapsLinkResolver = mapsLinkResolver;
         this.authenticationContext = authenticationContext;
+        this.mercadoPagoOAuthService = mercadoPagoOAuthService;
+        this.clock = clock;
 
         setSizeFull();
         this.club = tenantService.requireCurrent();
@@ -184,6 +195,22 @@ public class SettingsView extends VerticalLayout {
         return authenticationContext.getAuthenticatedUser(ClubUserPrincipal.class)
                 .map(ClubUserPrincipal::canManageSettings)
                 .orElse(false);
+    }
+
+    /** MercadoPago vuelve aca (fuera de sesion) despues del consentimiento OAuth. */
+    @Override
+    public void beforeEnter(BeforeEnterEvent event) {
+        List<String> mp = event.getLocation().getQueryParameters().getParameters().get("mp");
+        if (mp == null || mp.isEmpty()) {
+            return;
+        }
+        if ("ok".equals(mp.get(0))) {
+            Notification.show("Cuenta de MercadoPago conectada");
+        } else {
+            Notification error = Notification.show(
+                    "No pudimos completar la conexión con MercadoPago. Probá de nuevo.");
+            error.addThemeVariants(NotificationVariant.LUMO_ERROR);
+        }
     }
 
     // --------------------------------------------------------------- perfil
@@ -1237,50 +1264,92 @@ public class SettingsView extends VerticalLayout {
         BigDecimalField deposit = new BigDecimalField("Seña (% del turno)");
         deposit.setValue(club.getDepositPercentage());
 
-        PasswordField token = new PasswordField("Access token de MercadoPago");
-        token.setPlaceholder(club.acceptsOnlinePayments()
-                ? "Ya cargado. Escribí uno nuevo solo si querés reemplazarlo."
-                : "Sin cargar: el pago online está deshabilitado");
-        token.setHelperText("Se guarda cifrado");
-
-        PasswordField secret = new PasswordField("Clave secreta de webhooks");
-        secret.setPlaceholder(club.getMpWebhookSecret() != null && !club.getMpWebhookSecret().isBlank()
-                ? "Ya cargada. Escribí una nueva solo si querés reemplazarla."
-                : "Sin cargar: las notificaciones de pago se rechazan");
-        secret.setHelperText("Sin esto no se puede verificar que un aviso de pago sea real");
-
-        Paragraph webhookUrl = new Paragraph(
-                "URL a configurar en MercadoPago: /api/webhooks/mercadopago/" + club.getSlug());
-        webhookUrl.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.FontSize.SMALL,
-                LumoUtility.Margin.NONE);
-
         Button save = new Button("Guardar Cambios", event -> {
             club.setAllowUnpaidBooking(allowUnpaid.getValue());
             club.setRequiresBookingConfirmation(requiresConfirmation.getValue());
             club.setDepositPercentage(deposit.getValue());
-            // Vacio significa "no lo toques": mostrar el token guardado seria
-            // exponerlo en pantalla sin ninguna necesidad.
-            if (token.getValue() != null && !token.getValue().isBlank()) {
-                club.setMpAccessToken(token.getValue().trim());
-            }
-            if (secret.getValue() != null && !secret.getValue().isBlank()) {
-                club.setMpWebhookSecret(secret.getValue().trim());
-            }
             club = tenantRepository.save(club);
-            token.clear();
-            secret.clear();
             Notification.show("Cobros actualizados");
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
-        // Las credenciales van aparte de la politica de cobro: son dos cosas que
-        // se tocan en momentos distintos, y meter dos PasswordField al lado de
-        // un checkbox hacia que la pestana pareciera un solo bloque de riesgo.
+        // La conexion con MercadoPago va aparte de la politica de cobro: son dos
+        // cosas que se tocan en momentos distintos, y antes mezclaba ademas
+        // credenciales que ya no existen (el token se pegaba a mano; ahora lo
+        // entrega el consentimiento OAuth, ver MercadoPagoOAuthService).
         return tabContent(
                 section("Cómo se cobra", allowUnpaid, requiresConfirmation, deposit),
-                section("Credenciales de MercadoPago", token, secret),
-                webhookUrl,
+                mercadoPagoConnectionSection(),
                 actions(save));
+    }
+
+    /** Estado de la conexion OAuth con MercadoPago, y las acciones para conectar o desconectar. */
+    private VerticalLayout mercadoPagoConnectionSection() {
+        H3 heading = new H3("Conexión con MercadoPago");
+        heading.addClassNames(LumoUtility.FontSize.MEDIUM, LumoUtility.Margin.NONE,
+                LumoUtility.FontWeight.SEMIBOLD);
+
+        boolean connected = club.acceptsOnlinePayments();
+        boolean expired = club.mpConnectionExpired(clock.instant());
+
+        Paragraph status = new Paragraph(connectionStatusText(connected));
+        status.addClassNames(LumoUtility.Margin.NONE);
+
+        Button connect = new Button(connected ? "Reconectar" : "Conectar con MercadoPago", event -> {
+            String authorizationUrl = mercadoPagoOAuthService.startAuthorization(club);
+            event.getSource().getUI().ifPresent(ui -> ui.getPage().setLocation(authorizationUrl));
+        });
+        connect.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+
+        HorizontalLayout buttons = new HorizontalLayout(connect);
+        if (connected) {
+            Button disconnect = new Button("Desconectar", event -> {
+                ConfirmDialog dialog = new ConfirmDialog();
+                dialog.setHeader("Desconectar MercadoPago");
+                dialog.setText("Las reservas nuevas vuelven a \"pagar en el club\" hasta que reconectes.");
+                dialog.setCancelable(true);
+                dialog.setConfirmText("Desconectar");
+                dialog.setConfirmButtonTheme(ButtonVariant.LUMO_ERROR.getVariantName());
+                dialog.addConfirmListener(confirmEvent -> {
+                    mercadoPagoOAuthService.disconnect(club);
+                    Notification.show("MercadoPago desconectado");
+                    // Recarga la vista entera: mas simple que reconstruir a mano
+                    // el estado del boton y el parrafo de arriba.
+                    UI.getCurrent().getPage().reload();
+                });
+                dialog.open();
+            });
+            disconnect.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY);
+            buttons.add(disconnect);
+        }
+        buttons.setPadding(false);
+
+        VerticalLayout box = new VerticalLayout(heading, status);
+        if (expired) {
+            Paragraph warning = new Paragraph("La conexión venció. Reconectá para volver a cobrar "
+                    + "online.");
+            warning.addClassNames(LumoUtility.TextColor.ERROR, LumoUtility.FontSize.SMALL,
+                    LumoUtility.Margin.NONE);
+            box.add(warning);
+        }
+        box.add(buttons);
+        box.setPadding(false);
+        box.setSpacing(false);
+        box.setWidthFull();
+        box.addClassNames(LumoUtility.Gap.SMALL);
+        return box;
+    }
+
+    private String connectionStatusText(boolean connected) {
+        if (!connected) {
+            return "Sin conectar: el pago online está deshabilitado";
+        }
+        String since = club.getMpConnectedAt() == null
+                ? ""
+                : " · conectada el " + DateTimeFormatter.ofPattern("dd/MM/yyyy")
+                        .withZone(club.zoneId()).format(club.getMpConnectedAt());
+        String account = club.getMpUserId() == null ? "" : " · cuenta #" + club.getMpUserId();
+        return "Conectado" + account + since;
     }
 
     // ---------------------------------------------------------------- usuarios

@@ -95,6 +95,10 @@ app:
     recurring-horizon-weeks: 8
   google:
     client-id: ${GOOGLE_CLIENT_ID:}
+  mercadopago:
+    client-id: ${MP_CLIENT_ID:}
+    client-secret: ${MP_CLIENT_SECRET:}
+    webhook-secret: ${MP_WEBHOOK_SECRET:}
   analytics:
     enabled: ${ANALYTICS_ENABLED:true}
     retention-months: 12
