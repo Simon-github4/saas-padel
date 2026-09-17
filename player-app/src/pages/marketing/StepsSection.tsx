@@ -4,7 +4,7 @@ import { CONTAINER, SectionHeading, delay, useInView } from './motion';
 const STEPS = [
   {
     title: 'Charlamos y cargamos tu club',
-    text: 'Canchas, horarios y tarifas, listos en el sistema.',
+    text: 'Canchas, horarios y tarifas, listos en el sistema. Si vas a cobrar seña, conectás tu Mercado Pago en un clic.',
   },
   {
     title: `Probás tu link ${TRIAL_DAYS} días`,

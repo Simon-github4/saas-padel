@@ -8,6 +8,7 @@ import { HeroSection } from './marketing/HeroSection';
 import { MarketingFooter, MarketingNav } from './marketing/MarketingNav';
 import { MessagesMarquee } from './marketing/MessagesMarquee';
 import { NetworkSection } from './marketing/NetworkSection';
+import { PaymentsSection } from './marketing/PaymentsSection';
 import { PricingSection } from './marketing/PricingSection';
 import { StepsSection } from './marketing/StepsSection';
 import './marketing/landing.css';
@@ -21,7 +22,7 @@ import './marketing/landing.css';
  * pestaña, distinto del de la SPA, y lo restaura al salir.
  *
  * <p>El orden cuenta una historia: la promesa andando (portada), el dolor de
- * hoy (los mensajes), probarlo con las propias manos (demo), el detalle
+ * hoy (los mensajes), probarlo con las propias manos (demo), el cobro de la seña, el detalle
  * (funciones), cómo se empieza, cuánto sale y las dudas.
  */
 export function Landing() {
@@ -40,6 +41,7 @@ export function Landing() {
         <HeroSection />
         <MessagesMarquee />
         <DemoSection />
+        <PaymentsSection />
         <FeaturesSection />
         <NetworkSection />
         <StepsSection />

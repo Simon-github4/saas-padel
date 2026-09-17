@@ -12,7 +12,11 @@ const FAQS = [
   },
   {
     q: '¿La plata pasa por ustedes?',
-    a: 'No. La seña se cobra con tu propia cuenta de MercadoPago: el dinero va directo a vos.',
+    a: 'No. La seña se cobra con tu propia cuenta de Mercado Pago: el dinero va directo a vos y no te cobramos comisión por reserva. Mercado Pago sí descuenta la suya por cobrar online, como en cualquier venta.',
+  },
+  {
+    q: '¿Cómo conecto mi Mercado Pago?',
+    a: 'Desde el panel, con un botón: entrás con tu usuario de Mercado Pago y autorizás la conexión. No hay claves que copiar, y podés desconectarla cuando quieras.',
   },
   {
     q: '¿Y si no quiero cobrar seña?',

@@ -7,8 +7,9 @@ import { CONTAINER } from './motion';
 
 const ANCHORS = [
   { href: '#probalo', label: 'Probalo' },
+  { href: '#cobros', label: 'Cobros' },
   { href: '#funciones', label: 'Qué hace' },
-  { href: '#empezar', label: 'Cómo empezar' },
+  { href: '#empezar', label: 'Empezar' },
   { href: '#precio', label: 'Precio' },
 ];
 

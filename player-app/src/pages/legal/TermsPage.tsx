@@ -25,8 +25,8 @@ export function TermsPage() {
         <LegalList
           items={[
             'Elegís una cancha y un horario libre.',
-            'Según lo que acepte el club, reservás de palabra (queda confirmado al instante, pagás en el club) o con una seña por MercadoPago.',
-            'Si pagás una seña, el dinero va directo a la cuenta de MercadoPago del club: nosotros no la cobramos ni la retenemos.',
+            'Según lo que acepte el club, reservás de palabra (queda confirmado al instante, pagás en el club) o con una seña por Mercado Pago.',
+            'Si pagás una seña, el dinero va directo a la cuenta de Mercado Pago del club: nosotros no la cobramos ni la retenemos.',
           ]}
         />
       </LegalSection>

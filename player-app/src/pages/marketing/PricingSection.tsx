@@ -13,8 +13,9 @@ import { CONTAINER, CheckGlyph, Reveal, SectionHeading } from './motion';
 const INCLUDED = [
   'Grilla online para tus canchas, con tu link y tu marca',
   'Panel para cargar turnos de teléfono y mostrador',
-  'Seña por MercadoPago a tu propia cuenta, o reserva de palabra',
-  'Turnos fijos, alertas y jugadores con marca de confianza',
+  'Seña a tu propia cuenta de Mercado Pago, sin comisión nuestra',
+  'Turnos fijos, lista de espera, alertas y jugadores',
+  'Caja del día, buffet y estadísticas del club',
 ];
 
 /** El dueño piensa el precio por jugador; el turno es de a cuatro. */

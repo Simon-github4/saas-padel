@@ -63,7 +63,7 @@ export function PrivacyPage() {
       <LegalSection heading="Qué no guardamos">
         <p>
           Nunca vemos ni guardamos el número de tu tarjeta. Si pagás una seña, te llevamos al
-          checkout de MercadoPago y el pago se acredita directo en la cuenta del club: nosotros
+          checkout de Mercado Pago y el pago se acredita directo en la cuenta del club: nosotros
           solo recibimos la confirmación de que se pagó (monto y estado), nada más.
         </p>
       </LegalSection>
@@ -84,7 +84,7 @@ export function PrivacyPage() {
         <LegalList
           items={[
             'Con el club donde reservás: es indispensable, es quien te atiende.',
-            'Con MercadoPago, si elegís pagar una seña online (ellos procesan el pago).',
+            'Con Mercado Pago, si elegís pagar una seña online (ellos procesan el pago).',
             'Con Google, si elegís entrar con tu cuenta de Google.',
           ]}
         />

@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { TRIAL_DAYS, salesWhatsappHref } from './config';
 import { DemoClubCta, WhatsappCta } from './Cta';
+import { MercadoPagoLogo } from './MercadoPagoLogo';
 import { CONTAINER, CheckGlyph, CourtLines, delay } from './motion';
 import { LiveAgenda } from './mockups/LiveAgenda';
 
+/** La del medio termina en el logo de Mercado Pago: es la que el club busca con el ojo. */
 const PROMISES = [
-  `${TRIAL_DAYS} días gratis`,
-  'La seña va a tu MercadoPago',
-  'El jugador no crea cuenta',
+  { text: `${TRIAL_DAYS} días gratis` },
+  { text: 'La seña va a tu', mercadoPago: true },
+  { text: 'El jugador no crea cuenta' },
 ];
 
 /**
@@ -90,9 +92,10 @@ export function HeroSection() {
             style={delay(700)}
           >
             {PROMISES.map((promise) => (
-              <li key={promise} className="flex items-center gap-2">
+              <li key={promise.text} className="flex items-center gap-2">
                 <CheckGlyph className="size-3.5 text-ladrillo-claro" />
-                {promise}
+                {promise.text}
+                {promise.mercadoPago && <MercadoPagoLogo className="h-6 w-auto" />}
               </li>
             ))}
           </ul>
