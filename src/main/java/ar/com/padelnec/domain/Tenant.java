@@ -66,6 +66,17 @@ public class Tenant extends BaseEntity {
     @Column(name = "mp_user_id", length = 60)
     private String mpUserId;
 
+    /**
+     * Nombre y email de la cuenta de MercadoPago conectada, para que el dueno la
+     * reconozca en Configuracion: el {@code mpUserId} es un numero que no le dice
+     * nada. Los pide la aplicacion a MercadoPago al conectar.
+     */
+    @Column(name = "mp_account_name", length = 160)
+    private String mpAccountName;
+
+    @Column(name = "mp_account_email", length = 255)
+    private String mpAccountEmail;
+
     /** Cuando vence el access token actual (180 dias desde que se emitio o se renovo). */
     @Column(name = "mp_token_expires_at")
     private Instant mpTokenExpiresAt;

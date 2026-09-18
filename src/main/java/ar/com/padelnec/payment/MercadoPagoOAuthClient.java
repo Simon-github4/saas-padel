@@ -18,7 +18,8 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Llamadas crudas al endpoint {@code /oauth/token} de MercadoPago.
+ * Llamadas crudas al endpoint {@code /oauth/token} de MercadoPago, y a
+ * {@code /users/me} para saber de quien es la cuenta que se conecto.
  *
  * <p>HTTP a mano y no el SDK oficial: el SDK de MercadoPago (ver {@code MercadoPagoGateway})
  * no expone el flujo {@code authorization_code} con PKCE, solo Preferences y Payments.
@@ -31,6 +32,7 @@ import tools.jackson.databind.ObjectMapper;
 public class MercadoPagoOAuthClient {
 
     private static final URI TOKEN_URI = URI.create("https://api.mercadopago.com/oauth/token");
+    private static final URI USERS_ME_URI = URI.create("https://api.mercadopago.com/users/me");
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
     private final AppProperties properties;
@@ -64,6 +66,46 @@ public class MercadoPagoOAuthClient {
         body.put("redirect_uri", redirectUri);
         body.put("code_verifier", codeVerifier);
         return post(body);
+    }
+
+    /**
+     * Lo que importa de {@code /users/me}: con que reconoce el dueno su cuenta.
+     * Todo opcional, porque no todas las cuentas lo tienen cargado.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record AccountResponse(
+            @JsonProperty("nickname") String nickname,
+            @JsonProperty("first_name") String firstName,
+            @JsonProperty("last_name") String lastName,
+            @JsonProperty("email") String email) {
+    }
+
+    /** Los datos de la cuenta duena del access token: la que el club acaba de conectar. */
+    public AccountResponse fetchAccount(String accessToken) {
+        HttpResponse<String> response;
+        try {
+            HttpRequest request = HttpRequest.newBuilder(USERS_ME_URI)
+                    .timeout(TIMEOUT)
+                    .header("Authorization", "Bearer " + accessToken)
+                    .GET()
+                    .build();
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (IOException ex) {
+            throw new PaymentGatewayException("No se pudo comunicar con MercadoPago");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new PaymentGatewayException("No se pudo comunicar con MercadoPago");
+        }
+        if (response.statusCode() / 100 != 2) {
+            log.warn("MercadoPago rechazo /users/me: {}", response.statusCode());
+            throw new PaymentGatewayException("MercadoPago no devolvio los datos de la cuenta");
+        }
+        try {
+            return objectMapper.readValue(response.body(), AccountResponse.class);
+        } catch (JacksonException ex) {
+            log.warn("MercadoPago devolvio un cuerpo inesperado en /users/me", ex);
+            throw new PaymentGatewayException("MercadoPago devolvio una respuesta inesperada");
+        }
     }
 
     /** Pide un access token y refresh token nuevos antes de que venzan los actuales. */

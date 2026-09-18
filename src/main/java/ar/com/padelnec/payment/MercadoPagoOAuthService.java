@@ -3,6 +3,7 @@ package ar.com.padelnec.payment;
 import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.MercadoPagoOAuthAttempt;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.payment.MercadoPagoOAuthClient.AccountResponse;
 import ar.com.padelnec.payment.MercadoPagoOAuthClient.TokenResponse;
 import ar.com.padelnec.repository.MercadoPagoOAuthAttemptRepository;
 import ar.com.padelnec.repository.TenantRepository;
@@ -116,6 +117,7 @@ public class MercadoPagoOAuthService {
         TokenResponse token = client.exchangeCode(code, attempt.getCodeVerifier(), redirectUri());
         applyToken(club, token);
         club.setMpConnectedAt(clock.instant());
+        applyAccount(club);
         tenantRepository.save(club);
         log.info("Club {} conecto su cuenta de MercadoPago", club.getSlug());
         return true;
@@ -136,9 +138,29 @@ public class MercadoPagoOAuthService {
         club.setMpAccessToken(null);
         club.setMpRefreshToken(null);
         club.setMpUserId(null);
+        club.setMpAccountName(null);
+        club.setMpAccountEmail(null);
         club.setMpTokenExpiresAt(null);
         club.setMpConnectedAt(null);
         tenantRepository.save(club);
+    }
+
+    /**
+     * Completa nombre y email de la cuenta conectada si todavia no los tiene: las
+     * conexiones hechas antes de que se guardaran. Lo llama Configuracion al abrir
+     * la pestana de cobros, asi que se pide una sola vez por club.
+     *
+     * <p>Actualiza el {@code club} que recibe y la base con un update puntual, sin
+     * guardar la entidad entera (ver {@link TenantRepository#updateMpAccount}).
+     */
+    @Transactional
+    public void loadMissingAccount(Tenant club) {
+        if (!club.acceptsOnlinePayments()
+                || club.getMpAccountName() != null || club.getMpAccountEmail() != null) {
+            return;
+        }
+        applyAccount(club);
+        tenantRepository.updateMpAccount(club.getId(), club.getMpAccountName(), club.getMpAccountEmail());
     }
 
     /** Clubes cuyo access token vence dentro de la ventana de renovacion. */
@@ -146,6 +168,36 @@ public class MercadoPagoOAuthService {
     public List<Tenant> dueForRenewal() {
         return tenantRepository.findAllByMpRefreshTokenIsNotNullAndMpTokenExpiresAtBefore(
                 clock.instant().plus(RENEWAL_WINDOW));
+    }
+
+    /**
+     * Pide a MercadoPago de quien es la cuenta y la deja en el club.
+     *
+     * <p>Si falla, la conexion sigue adelante igual: el nombre es para que el dueno
+     * reconozca su cuenta, no hace falta para cobrar. Configuracion muestra
+     * entonces el numero de cuenta, como antes.
+     */
+    private void applyAccount(Tenant club) {
+        try {
+            AccountResponse account = client.fetchAccount(club.getMpAccessToken());
+            club.setMpAccountName(displayName(account));
+            club.setMpAccountEmail(blankToNull(account.email()));
+        } catch (PaymentGatewayException ex) {
+            log.warn("No se pudo leer la cuenta de MercadoPago del club {}: {}",
+                    club.getSlug(), ex.getMessage());
+        }
+    }
+
+    /** Nombre y apellido; si la cuenta no los tiene, el apodo de MercadoPago. */
+    private static String displayName(AccountResponse account) {
+        String fullName = ((account.firstName() == null ? "" : account.firstName().trim()) + " "
+                + (account.lastName() == null ? "" : account.lastName().trim())).trim();
+        String name = fullName.isEmpty() ? blankToNull(account.nickname()) : fullName;
+        return name == null || name.length() <= 160 ? name : name.substring(0, 160);
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private void applyToken(Tenant club, TokenResponse token) {

@@ -1321,6 +1321,10 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
 
         boolean connected = club.acceptsOnlinePayments();
         boolean expired = club.mpConnectionExpired(clock.instant());
+        if (connected) {
+            // Conexiones de antes de que se guardara de quien es la cuenta.
+            mercadoPagoOAuthService.loadMissingAccount(club);
+        }
 
         Paragraph status = new Paragraph(connectionStatusText(connected));
         status.addClassNames(LumoUtility.Margin.NONE);
@@ -1371,8 +1375,23 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
                 ? ""
                 : " · conectada el " + DateTimeFormatter.ofPattern("dd/MM/yyyy")
                         .withZone(club.zoneId()).format(club.getMpConnectedAt());
-        String account = club.getMpUserId() == null ? "" : " · cuenta #" + club.getMpUserId();
-        return "Conectado" + account + since;
+        return "Conectado" + connectedAccountText() + since;
+    }
+
+    /**
+     * De quien es la cuenta, como la reconoce el dueno: nombre y email. El numero
+     * de cuenta solo si MercadoPago no devolvio ninguno de los dos.
+     */
+    private String connectedAccountText() {
+        String name = club.getMpAccountName();
+        String email = club.getMpAccountEmail();
+        if (name != null && email != null) {
+            return " a " + name + " (" + email + ")";
+        }
+        if (name != null || email != null) {
+            return " a " + (name != null ? name : email);
+        }
+        return club.getMpUserId() == null ? "" : " · cuenta #" + club.getMpUserId();
     }
 
     // ---------------------------------------------------------------- usuarios
