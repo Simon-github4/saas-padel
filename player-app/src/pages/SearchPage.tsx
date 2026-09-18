@@ -676,6 +676,10 @@ function TimeStepper({
  * Cómo es la cancha: techo, paredes y piso. En Necochea conviven techadas y al
  * aire libre, blindex y pared, y algunas de las antiguas no tienen alfombra; para
  * quien juega no es lo mismo. Sin elegir nada, da igual y entran todas.
+ *
+ * <p>Cada fila lleva su "Todas" a la vista: se probó sin él (tocar la elegida
+ * la soltaba) y no se entendía de un vistazo que no había filtro puesto. Para
+ * que ocupe menos, las filas son más bajas y van más juntas.
  */
 function CourtFilter({
   wall,
@@ -697,7 +701,7 @@ function CourtFilter({
       <p className="eyebrow text-ink-soft">Cancha</p>
       {/* Uno debajo del otro: con tres grupos, de a dos por fila el tercero
           quedaba solo y a lo ancho. */}
-      <div className="grid gap-2">
+      <div className="grid gap-1.5">
         <Segmented
           label="Techo"
           options={[
@@ -733,7 +737,14 @@ function CourtFilter({
   );
 }
 
-/** Tres opciones en una pastilla, con el rótulo adentro a la izquierda. */
+/**
+ * Tres opciones en una pastilla, con el rótulo adentro a la izquierda.
+ *
+ * <p>Las opciones miden 36px y no los 44px que index.css le pone de piso a todo
+ * boton: es la altura de un control segmentado de iOS, y cada opcion es ancha
+ * (un tercio de la fila), asi que el dedo tiene donde apoyarse. Va con "!"
+ * porque aquella regla de index.css no tiene capa y le gana a las utilidades.
+ */
 function Segmented<T extends string>({
   label,
   options,
@@ -746,8 +757,8 @@ function Segmented<T extends string>({
   onChange: (value: T | null) => void;
 }) {
   return (
-    <div role="group" aria-label={label} className="flex items-center gap-1 rounded-2xl bg-cal/[0.05] p-1">
-      <span className="eyebrow w-[4.75rem] shrink-0 pl-2 text-ink-mute">{label}</span>
+    <div role="group" aria-label={label} className="flex items-center gap-0.5 rounded-xl bg-cal/[0.05] p-0.5">
+      <span className="eyebrow w-[4.75rem] shrink-0 pl-2.5 text-ink-mute">{label}</span>
       {options.map((option) => {
         const active = option.value === value;
         return (
@@ -756,7 +767,7 @@ function Segmented<T extends string>({
             type="button"
             aria-pressed={active}
             onClick={() => onChange(option.value)}
-            className={`min-w-0 flex-1 rounded-xl px-2 py-2 text-xs font-bold leading-tight transition ${
+            className={`min-h-9! min-w-0 flex-1 rounded-[0.625rem] px-1.5 py-1 text-xs font-bold leading-tight transition ${
               active ? 'bg-cal text-pista' : 'text-ink-soft hover:bg-cal/[0.06] hover:text-cal'
             }`}
           >
