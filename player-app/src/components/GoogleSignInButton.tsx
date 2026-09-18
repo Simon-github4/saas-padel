@@ -5,7 +5,7 @@ import { ApiError, playerApi } from '../api/client';
 /** Opciones de renderButton que usamos: https://developers.google.com/identity/gsi/web/reference/js-reference */
 interface GoogleButtonOptions {
   type: 'standard';
-  theme: 'outline' | 'filled_black';
+  theme: 'outline';
   size: 'large';
   shape: 'pill';
   text: 'continue_with' | 'signin_with';
@@ -59,8 +59,8 @@ interface Props {
  *
  * <p>Google lo dibuja adentro de un iframe, así que el CSS de la app no lo
  * alcanza: lo que se ajusta es lo que su SDK deja elegir. Píldora como el resto
- * de los botones, oscuro sobre el tema oscuro (el blanco de fábrica era un
- * parche encendido en la tarjeta) y del ancho de los campos, medido al dibujarlo.
+ * de los botones, blanca (la versión "outline" de Google, en cualquier tema) y
+ * del ancho de los campos, medido al dibujarlo.
  *
  * <p>No dibuja nada si la aplicación no tiene configurado el Client ID
  * ({@code GOOGLE_CLIENT_ID}): sin eso el login con Google no se ofrece.
@@ -116,12 +116,9 @@ export function GoogleSignInButton({
         },
       });
       parent.innerHTML = '';
-      // El tema del club vive en <html data-theme>: un club claro lleva el
-      // botón claro de Google, y todo lo demás, el oscuro.
-      const light = document.documentElement.getAttribute('data-theme') === 'light';
       window.google.accounts.id.renderButton(parent, {
         type: 'standard',
-        theme: light ? 'outline' : 'filled_black',
+        theme: 'outline',
         size: 'large',
         shape: 'pill',
         text,
