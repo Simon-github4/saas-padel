@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { setPageMeta } from '../seo';
 import { ClosingSection } from './marketing/ClosingSection';
 import { BRAND } from './marketing/config';
 import { DemoSection } from './marketing/DemoSection';
@@ -27,13 +28,16 @@ import './marketing/landing.css';
  * (funciones), cómo se empieza, cuánto sale y las dudas.
  */
 export function Landing() {
-  useEffect(() => {
-    const previous = document.title;
-    document.title = `Reservas online para tu club — ${BRAND}`;
-    return () => {
-      document.title = previous;
-    };
-  }, []);
+  // Mismos textos que SeoPageRenderer.landingMeta() en el backend, que es lo
+  // que ven los buscadores y las vistas previas de link antes de que cargue React.
+  useEffect(
+    () =>
+      setPageMeta(
+        `Reservas online para tu club — ${BRAND}`,
+        'Sistema de reservas online para clubes de pádel: tus jugadores reservan y pagan la seña solos, con Mercado Pago, y vos manejás la agenda desde un panel. Con 7 días de prueba.',
+      ),
+    [],
+  );
 
   return (
     <div className="mk min-h-dvh overflow-x-clip bg-pista">

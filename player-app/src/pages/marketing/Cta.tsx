@@ -4,7 +4,7 @@ import { WhatsappGlyph } from '../../components/Ui';
 import { ArrowGlyph } from './motion';
 
 /** El club de ejemplo con datos reales cargados: la prueba de que el sistema anda. */
-export const DEMO_CLUB_PATH = '/club/club-necochea';
+export const DEMO_CLUB_PATH = '/club/simon';
 
 /** Botón ladrillo que abre el WhatsApp de ventas. */
 export function WhatsappCta({

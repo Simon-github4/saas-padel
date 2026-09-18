@@ -3,6 +3,8 @@ package ar.com.padelnec.web;
 import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.repository.TenantRepository;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -27,6 +29,11 @@ public class SeoController {
     /**
      * Bloquea lo que no es contenido publico: portales por token (nadie mas
      * tiene que ver esos links en un resultado de busqueda), cuenta y login.
+     *
+     * <p>La portada de cada club se sirve desde {@code /api/public/{slug}/hero-image}
+     * cuando la subio como archivo: se libera esa ruta puntual porque sin ella los
+     * buscadores no pueden bajar la imagen que el propio club muestra como portada.
+     * Gana la regla mas especifica, asi que el resto de {@code /api/} sigue cerrado.
      */
     @GetMapping(value = "/robots.txt", produces = MediaType.TEXT_PLAIN_VALUE)
     public String robots() {
@@ -41,6 +48,7 @@ public class SeoController {
                 Disallow: /forgot-password
                 Disallow: /reset-password/
                 Disallow: /api/
+                Allow: /api/public/*/hero-image
 
                 Sitemap: %s/sitemap.xml
                 """.formatted(properties.getBaseUrl());
@@ -55,16 +63,25 @@ public class SeoController {
         StringBuilder xml = new StringBuilder();
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.append("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
-        appendUrl(xml, base + "/");
-        appendUrl(xml, base + "/buscar");
+        appendUrl(xml, base + "/", null);
+        appendUrl(xml, base + "/buscar", null);
         for (Tenant club : clubs) {
-            appendUrl(xml, base + "/club/" + club.getSlug());
+            appendUrl(xml, base + "/club/" + club.getSlug(), club.getUpdatedAt());
         }
         xml.append("</urlset>\n");
         return xml.toString();
     }
 
-    private void appendUrl(StringBuilder xml, String loc) {
-        xml.append("  <url><loc>").append(loc).append("</loc></url>\n");
+    /**
+     * {@code lastmod} solo donde es verdad: la pagina de un club cambia cuando el
+     * club edita su ficha. La portada y el buscador no tienen una fecha propia, y
+     * un {@code lastmod} inventado le quita credibilidad al resto.
+     */
+    private void appendUrl(StringBuilder xml, String loc, Instant lastModified) {
+        xml.append("  <url><loc>").append(loc).append("</loc>");
+        if (lastModified != null) {
+            xml.append("<lastmod>").append(DateTimeFormatter.ISO_INSTANT.format(lastModified)).append("</lastmod>");
+        }
+        xml.append("</url>\n");
     }
 }

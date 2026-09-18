@@ -37,6 +37,9 @@ export function setPageMeta(title: string, description?: string): () => void {
  * un resultado con mapa o ficha, no solo el link pelado.
  */
 export function setStructuredData(data: Record<string, unknown>): () => void {
+  // El servidor ya mete estos datos en el HTML (para los que no ejecutan JS);
+  // este los reemplaza en vez de sumar un segundo bloque igual.
+  document.querySelectorAll('script[data-server-seo]').forEach((el) => el.remove());
   const script = document.createElement('script');
   script.type = 'application/ld+json';
   script.textContent = JSON.stringify(data);

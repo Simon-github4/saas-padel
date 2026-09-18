@@ -67,7 +67,7 @@ class PlayerAssetsCacheIntegrationTest {
     @Test
     @DisplayName("El index y las rutas de la SPA siguen sin cache")
     void indexIsNeverCached() {
-        for (String path : new String[] {"/", "/club/club-necochea"}) {
+        for (String path : new String[] {"/", "/buscar", "/login"}) {
             client.get().uri(path)
                     .exchange()
                     .expectStatus().isOk()
