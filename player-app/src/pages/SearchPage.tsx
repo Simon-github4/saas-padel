@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { track } from '../analytics';
 import { ApiError, api } from '../api/client';
@@ -102,7 +102,7 @@ export function SearchPage() {
         to,
         clubs: selectedClubs.join(','),
         results: result.matches.length,
-        // Qué cancha se pidió: dice cuánta gente busca techada, blindex, pared o sin alfombra.
+        // Qué cancha se pidió: dice cuánta gente busca techada, blindex, pared o cemento.
         detail: [roof, wall, surface].filter(Boolean).join(',') || undefined,
       });
     } catch (err) {
@@ -677,9 +677,9 @@ function TimeStepper({
  * aire libre, blindex y pared, y algunas de las antiguas no tienen alfombra; para
  * quien juega no es lo mismo. Sin elegir nada, da igual y entran todas.
  *
- * <p>Cada fila lleva su "Todas" a la vista: se probó sin él (tocar la elegida
- * la soltaba) y no se entendía de un vistazo que no había filtro puesto. Para
- * que ocupe menos, las filas son más bajas y van más juntas.
+ * <p>Tres desplegables en una fila, con "Todas" a la vista cuando no hay filtro:
+ * ocupan una sola fila en vez de tres. El que tiene algo elegido se pinta lleno,
+ * para que se note de un vistazo que está filtrando.
  */
 function CourtFilter({
   wall,
@@ -699,35 +699,38 @@ function CourtFilter({
   return (
     <div className="space-y-3">
       <p className="eyebrow text-ink-soft">Cancha</p>
-      {/* Uno debajo del otro: con tres grupos, de a dos por fila el tercero
-          quedaba solo y a lo ancho. */}
-      <div className="grid gap-1.5">
-        <Segmented
+      {/* Cada uno del ancho de su opción más larga y no tres columnas iguales: en
+          360px, "Al aire libre" no entraba en un tercio. */}
+      <div className="flex gap-1">
+        <FeatureDropdown
           label="Techo"
+          align="left"
           options={[
-            { value: null, label: 'Todas' },
-            { value: 'COVERED', label: ROOF_LABEL.COVERED },
-            { value: 'OUTDOOR', label: ROOF_LABEL.OUTDOOR },
+            { value: null, label: 'Todas', hint: 'Techadas y al aire libre' },
+            { value: 'COVERED', label: ROOF_LABEL.COVERED, hint: 'Bajo techo' },
+            { value: 'OUTDOOR', label: ROOF_LABEL.OUTDOOR, hint: 'Sin techo' },
           ]}
           value={roof}
           onChange={onRoof}
         />
-        <Segmented
+        <FeatureDropdown
           label="Paredes"
+          align="center"
           options={[
-            { value: null, label: 'Todas' },
-            { value: 'GLASS', label: WALL_LABEL.GLASS },
-            { value: 'WALL', label: WALL_LABEL.WALL },
+            { value: null, label: 'Todas', hint: 'Blindex y pared' },
+            { value: 'GLASS', label: WALL_LABEL.GLASS, hint: 'Paredes de vidrio' },
+            { value: 'WALL', label: WALL_LABEL.WALL, hint: 'Paredes de material' },
           ]}
           value={wall}
           onChange={onWall}
         />
-        <Segmented
+        <FeatureDropdown
           label="Piso"
+          align="right"
           options={[
-            { value: null, label: 'Todos' },
-            { value: 'CARPET', label: SURFACE_LABEL.CARPET },
-            { value: 'NO_CARPET', label: SURFACE_LABEL.NO_CARPET },
+            { value: null, label: 'Todos', hint: 'Alfombra y cemento' },
+            { value: 'CARPET', label: SURFACE_LABEL.CARPET, hint: 'Césped sintético' },
+            { value: 'NO_CARPET', label: SURFACE_LABEL.NO_CARPET, hint: 'Sin alfombra' },
           ]}
           value={surface}
           onChange={onSurface}
@@ -738,43 +741,179 @@ function CourtFilter({
 }
 
 /**
- * Tres opciones en una pastilla, con el rótulo adentro a la izquierda.
+ * Un desplegable propio, con el estilo de la página: el nativo abre una lista
+ * que dibuja el sistema (en Windows, un recuadro gris de otra época) y no se le
+ * puede cambiar el aspecto.
  *
- * <p>Las opciones miden 36px y no los 44px que index.css le pone de piso a todo
- * boton: es la altura de un control segmentado de iOS, y cada opcion es ancha
- * (un tercio de la fila), asi que el dedo tiene donde apoyarse. Va con "!"
- * porque aquella regla de index.css no tiene capa y le gana a las utilidades.
+ * <p>Cada opción lleva una línea que la explica ("Paredes de vidrio"): quien no
+ * sabe qué es blindex lo entiende sin salir de la búsqueda. Se maneja con el
+ * teclado como un desplegable común (flechas, Enter, Escape) y se cierra tocando
+ * afuera.
+ *
+ * @param align de qué lado se abre la lista, para que la de la punta derecha no
+ *              se salga de la pantalla en el teléfono.
  */
-function Segmented<T extends string>({
+function FeatureDropdown<T extends string>({
   label,
   options,
   value,
   onChange,
+  align,
 }: {
   label: string;
-  options: { value: T | null; label: string }[];
+  /** La primera es la de "me da igual", con valor nulo. */
+  options: { value: T | null; label: string; hint: string }[];
   value: T | null;
   onChange: (value: T | null) => void;
+  align: 'left' | 'center' | 'right';
 }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const items = useRef<(HTMLButtonElement | null)[]>([]);
+  const labelId = useId();
+  const listId = useId();
+
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+  const selected = options[selectedIndex];
+  const filtering = value !== null;
+
+  // Tocar afuera cierra, como cualquier menú.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
+  // Al abrir, el foco va a la opción elegida: las flechas arrancan desde ahí.
+  useEffect(() => {
+    if (open) {
+      items.current[selectedIndex]?.focus();
+    }
+  }, [open, selectedIndex]);
+
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus();
+  };
+
+  const choose = (next: T | null) => {
+    onChange(next);
+    close();
+  };
+
+  const onItemKeyDown = (event: React.KeyboardEvent, index: number) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+    } else if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      items.current[(index + 1) % options.length]?.focus();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      items.current[(index - 1 + options.length) % options.length]?.focus();
+    } else if (event.key === 'Tab') {
+      setOpen(false);
+    }
+  };
+
+  const position = align === 'left' ? 'left-0' : align === 'right' ? 'right-0' : 'left-1/2 -translate-x-1/2';
+
   return (
-    <div role="group" aria-label={label} className="flex items-center gap-0.5 rounded-xl bg-cal/[0.05] p-0.5">
-      <span className="eyebrow w-[4.75rem] shrink-0 pl-2.5 text-ink-mute">{label}</span>
-      {options.map((option) => {
-        const active = option.value === value;
-        return (
-          <button
-            key={option.label}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(option.value)}
-            className={`min-h-9! min-w-0 flex-1 rounded-[0.625rem] px-1.5 py-1 text-xs font-bold leading-tight transition ${
-              active ? 'bg-cal text-pista' : 'text-ink-soft hover:bg-cal/[0.06] hover:text-cal'
-            }`}
-          >
-            {option.label}
-          </button>
-        );
-      })}
+    <div ref={root} className="relative min-w-0 flex-auto">
+      <p id={labelId} className="eyebrow mb-1.5 text-ink-mute">
+        {label}
+      </p>
+      <button
+        ref={trigger}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        onClick={() => setOpen(!open)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' && !open) {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className={`flex w-full items-center justify-between gap-1 rounded-xl border py-3 pl-2 pr-1.5 text-xs font-bold transition ${
+          filtering
+            ? 'border-cal bg-cal text-pista'
+            : `border-cal/10 bg-pista text-cal hover:border-cal/30 ${open ? 'border-cal/30' : ''}`
+        }`}
+      >
+        <span className="truncate">{selected.label}</span>
+        <svg
+          aria-hidden
+          viewBox="0 0 12 12"
+          className={`size-2.5 shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${
+            filtering ? 'text-pista' : 'text-ink-soft'
+          }`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 4.5 6 7.5 9 4.5" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          id={listId}
+          role="listbox"
+          aria-labelledby={labelId}
+          className={`absolute top-full z-30 mt-2 w-56 max-w-[calc(100vw-2.5rem)] rounded-2xl border border-cal/10 bg-vidrio-alto p-1.5 [box-shadow:0_18px_40px_rgba(0,0,0,0.55)] ${position}`}
+        >
+          {options.map((option, index) => {
+            const isSelected = index === selectedIndex;
+            return (
+              <button
+                key={option.label}
+                ref={(element) => {
+                  items.current[index] = element;
+                }}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onClick={() => choose(option.value)}
+                onKeyDown={(event) => onItemKeyDown(event, index)}
+                className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-cal/[0.06] focus:bg-cal/[0.06] focus:outline-none ${
+                  isSelected ? 'text-cal' : 'text-ink-soft hover:text-cal'
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold">{option.label}</span>
+                  <span className="mt-0.5 block text-xs text-ink-mute">{option.hint}</span>
+                </span>
+                {isSelected && (
+                  <svg
+                    aria-hidden
+                    viewBox="0 0 16 16"
+                    className="size-4 shrink-0 text-ladrillo-claro"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

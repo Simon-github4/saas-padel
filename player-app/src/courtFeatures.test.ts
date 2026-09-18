@@ -23,12 +23,12 @@ describe('featuresSummary', () => {
     ]);
   });
 
-  it('solo menciona el piso si alguna cancha no tiene alfombra', () => {
-    expect(featuresSummary(['WALL'], ['NO_CARPET'], ['OUTDOOR'])).toEqual(['Al aire libre', 'Pared', 'Sin alfombra']);
+  it('solo menciona el piso si alguna cancha es de cemento', () => {
+    expect(featuresSummary(['WALL'], ['NO_CARPET'], ['OUTDOOR'])).toEqual(['Al aire libre', 'Pared', 'Cemento']);
     expect(featuresSummary(['GLASS', 'WALL'], ['CARPET', 'NO_CARPET'], ['COVERED'])).toEqual([
       'Techada',
       'Blindex y pared',
-      'Con y sin alfombra',
+      'Alfombra y cemento',
     ]);
   });
 });
@@ -40,6 +40,11 @@ describe('parámetros de la URL', () => {
     expect(surfaceFromParam(surfaceParam('NO_CARPET'))).toBe('NO_CARPET');
     expect(roofFromParam(roofParam('COVERED'))).toBe('COVERED');
     expect(roofFromParam(roofParam('OUTDOOR'))).toBe('OUTDOOR');
+    expect(surfaceParam('NO_CARPET')).toBe('cemento');
+  });
+
+  it('los links viejos con ?piso=sin-alfombra siguen filtrando por cemento', () => {
+    expect(surfaceFromParam('sin-alfombra')).toBe('NO_CARPET');
   });
 
   it('un valor desconocido o ausente es "me da igual"', () => {

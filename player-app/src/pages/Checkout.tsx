@@ -395,7 +395,7 @@ function Booked({
   );
 }
 
-/** "Techada · Blindex", o "Al aire libre · Pared · Sin alfombra": el piso solo cuando no es el de siempre. */
+/** "Techada · Blindex", o "Al aire libre · Pared · Cemento": el piso solo cuando no es el de siempre. */
 function courtFeatures(court: CourtAvailability): string {
   const parts = [ROOF_LABEL[court.roof], WALL_LABEL[court.wall]];
   if (court.surface === 'NO_CARPET') {
