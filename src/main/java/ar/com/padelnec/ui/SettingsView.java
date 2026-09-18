@@ -38,6 +38,7 @@ import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.ColumnTextAlign;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Input;
@@ -107,6 +108,9 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
     private static final Locale CLOCK = Locale.forLanguageTag("es-ES");
 
     /** Texto del boton de portada cuando el club no escribe uno propio. */
+    /** Pantalla de MercadoPago donde el vendedor elige el plazo de acreditacion y su comision. */
+    private static final String MP_RELEASE_OPTIONS_URL = "https://www.mercadopago.com.ar/settings/release-options";
+
     private static final String DEFAULT_HERO_CTA = "Ver horarios";
 
     /** Oscurecido por defecto de la foto de portada, en porcentaje. */
@@ -1365,6 +1369,34 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
             mercadoPagoSection.add(warning);
         }
         mercadoPagoSection.add(buttons);
+        if (connected) {
+            mercadoPagoSection.add(releaseTermBlock());
+        }
+    }
+
+    /**
+     * Donde elegir cuando se cobra la plata de las senas.
+     *
+     * <p>El plazo, y con el la comision, se configura en la cuenta de MercadoPago
+     * del club: la API no deja elegirlo por cobro ni cambiarlo desde afuera, asi que
+     * lo unico que se puede hacer desde aca es llevarlo a esa pantalla. No se
+     * muestran los porcentajes a proposito: MercadoPago los cambia, y un numero
+     * fijo aca terminaria diciendo algo distinto de lo que le cobran.
+     */
+    private VerticalLayout releaseTermBlock() {
+        Paragraph explanation = new Paragraph("Vos elegís cuándo recibís la plata de las señas: "
+                + "cuanto más esperás, menos comisión te cobra MercadoPago.");
+        explanation.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.FontSize.SMALL,
+                LumoUtility.Margin.NONE);
+
+        Anchor choose = new Anchor(MP_RELEASE_OPTIONS_URL, new Button("Elegir plazo en Mercado Pago"));
+        choose.setTarget("_blank");
+
+        VerticalLayout block = new VerticalLayout(explanation, choose);
+        block.setPadding(false);
+        block.setSpacing(false);
+        block.addClassNames(LumoUtility.Gap.SMALL, LumoUtility.Margin.Top.MEDIUM);
+        return block;
     }
 
     private String connectionStatusText(boolean connected) {
