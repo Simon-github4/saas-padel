@@ -143,7 +143,13 @@ export function GoogleSignInButton({
 
   return (
     <div className={className}>
-      <div ref={buttonRef} className="flex w-full justify-center" />
+      {/*
+        color-scheme claro solo para el iframe de Google: la app declara oscuro
+        en <html>, y cuando el iframe y su documento no coinciden el navegador le
+        pinta un fondo blanco opaco, que asomaba como un rectángulo alrededor de
+        la píldora en el botón personalizado ("Continuar como ...").
+      */}
+      <div ref={buttonRef} className="flex w-full justify-center [color-scheme:light]" />
       {rendered && separator && (
         <div className="mt-5 flex items-center gap-3 text-xs text-ink-mute">
           <span aria-hidden className="h-px flex-1 bg-cal/10" />
