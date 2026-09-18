@@ -3,21 +3,25 @@ package ar.com.padelnec;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
+import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.domain.enums.PaymentStatus;
+import ar.com.padelnec.payment.DepositPayer;
 import ar.com.padelnec.payment.MercadoPagoGateway;
 import ar.com.padelnec.payment.MercadoPagoGateway.ApprovedPayment;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
 import ar.com.padelnec.repository.PaymentRepository;
+import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.BookingService.NewBooking;
 import ar.com.padelnec.service.BookingService.PaymentChoice;
@@ -34,6 +38,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -76,6 +81,7 @@ class PaymentServiceTest {
     @Autowired private BookingService bookingService;
     @Autowired private BookingRepository bookingRepository;
     @Autowired private PaymentRepository paymentRepository;
+    @Autowired private PlayerAccountRepository playerAccountRepository;
     @Autowired private OperationalAlertRepository alertRepository;
     @Autowired private ClubFixture fixture;
     @Autowired private Clock clock;
@@ -96,7 +102,7 @@ class PaymentServiceTest {
         court = fixture.court("Cancha 1", 1);
         fixture.allDayPrice(DayOfWeek.TUESDAY, "20000");
 
-        when(gateway.createDepositCheckout(any(), any()))
+        when(gateway.createDepositCheckout(any(), any(), any()))
                 .thenReturn(new MercadoPagoGateway.Checkout(MP_ORDER_ID, "https://mp.test/checkout"));
     }
 
@@ -235,6 +241,69 @@ class PaymentServiceTest {
     }
 
     // ------------------------------------------------------------ utilidades
+
+    @Test
+    @DisplayName("La sena de un invitado viaja con su nombre, telefono e IP, sin mail real")
+    void guestDepositCarriesWhatIsKnownOfThePayer() {
+        Booking booking = draftBooking();
+
+        paymentService.startDepositCheckout(club, booking, "190.2.3.4");
+
+        DepositPayer payer = sentPayer();
+        assertThat(payer.firstName()).isEqualTo("Simon");
+        assertThat(payer.lastName()).isEqualTo("Diaz");
+        assertThat(payer.phoneAreaCode()).isEqualTo("2262");
+        assertThat(payer.phoneNumber()).isEqualTo("415000");
+        assertThat(payer.ipAddress()).isEqualTo("190.2.3.4");
+        // Sin cuenta no hay mail que mandar: el gateway pone el sintetico.
+        assertThat(payer.email()).isNull();
+        assertThat(payer.registeredAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("Con cuenta verificada, la sena viaja con el mail real y el alta de la cuenta")
+    void accountDepositCarriesTheVerifiedEmail() {
+        PlayerAccount account = account("jugador@example.com", true);
+        Booking booking = draftBooking(account);
+
+        paymentService.startDepositCheckout(club, booking, "190.2.3.4");
+
+        DepositPayer payer = sentPayer();
+        assertThat(payer.email()).isEqualTo("jugador@example.com");
+        assertThat(payer.registeredAt()).isEqualTo(
+                playerAccountRepository.findById(account.getId()).orElseThrow().getCreatedAt());
+    }
+
+    @Test
+    @DisplayName("Un mail sin verificar no viaja: puede no ser de quien paga")
+    void unverifiedEmailIsNotSent() {
+        Booking booking = draftBooking(account("sin-verificar@example.com", false));
+
+        paymentService.startDepositCheckout(club, booking, "190.2.3.4");
+
+        assertThat(sentPayer().email()).isNull();
+    }
+
+    private DepositPayer sentPayer() {
+        ArgumentCaptor<DepositPayer> captor = ArgumentCaptor.forClass(DepositPayer.class);
+        verify(gateway).createDepositCheckout(any(), any(), captor.capture());
+        return captor.getValue();
+    }
+
+    private PlayerAccount account(String email, boolean verified) {
+        PlayerAccount account = new PlayerAccount();
+        account.setEmail(email);
+        account.setEmailVerified(verified);
+        account.setDisplayName("Simon Diaz");
+        return playerAccountRepository.saveAndFlush(account);
+    }
+
+    private Booking draftBooking(PlayerAccount account) {
+        return bookingService.create(club, new NewBooking(
+                court.getId(),
+                TODAY.atTime(18, 30).atZone(ZONE).toInstant(),
+                "Simon Diaz", "2262415000", PaymentChoice.DEPOSIT_ONLINE, account.getId()));
+    }
 
     private Booking draftBooking() {
         return bookingService.create(club, new NewBooking(

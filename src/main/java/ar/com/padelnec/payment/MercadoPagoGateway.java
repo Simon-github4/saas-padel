@@ -3,12 +3,15 @@ package ar.com.padelnec.payment;
 import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Tenant;
+import com.mercadopago.client.common.PhoneRequest;
+import com.mercadopago.client.order.AdditionalInfoRequest;
 import com.mercadopago.client.order.OrderClient;
 import com.mercadopago.client.order.OrderConfigRequest;
 import com.mercadopago.client.order.OrderCreateRequest;
 import com.mercadopago.client.order.OrderItemRequest;
 import com.mercadopago.client.order.OrderOnlineConfig;
 import com.mercadopago.client.order.OrderPayerRequest;
+import com.mercadopago.client.order.PayerInfo;
 import com.mercadopago.core.MPRequestOptions;
 import com.mercadopago.exceptions.MPApiException;
 import com.mercadopago.exceptions.MPException;
@@ -18,6 +21,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +47,13 @@ public class MercadoPagoGateway {
     /** Piso defensivo: una order con 0 o negativo de vigencia no tiene sentido pedirsela a MercadoPago. */
     private static final Duration MIN_EXPIRATION = Duration.ofMinutes(1);
 
+    /** Categoria de la lista estandar de MercadoPago que corresponde a alquilar una cancha. */
+    private static final String ITEM_CATEGORY = "services";
+
+    /** Fechas como las muestran los ejemplos de MercadoPago: {@code 2026-09-18T20:00:00.000-03:00}. */
+    private static final DateTimeFormatter MP_DATE_TIME =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
+
     private final AppProperties properties;
     private final Clock clock;
 
@@ -63,7 +74,7 @@ public class MercadoPagoGateway {
      * plataforma ({@code app.mail.from}): si MercadoPago llega a mandar algo ahi,
      * cae en una casilla que existe de verdad en vez de rebotar.
      */
-    public Checkout createDepositCheckout(Tenant club, Booking booking) {
+    public Checkout createDepositCheckout(Tenant club, Booking booking, DepositPayer payer) {
         // Sin external_code: MercadoPago lo limita a 30 caracteres y un UUID tiene
         // 36. external_reference a nivel order ya ata el pago a la reserva.
         OrderItemRequest item = OrderItemRequest.builder()
@@ -72,10 +83,10 @@ public class MercadoPagoGateway {
                         booking.getStartTime().atZone(club.zoneId()).toLocalDateTime()))
                 .unitPrice(booking.getDepositAmount().toPlainString())
                 .quantity(1)
-                .build();
-
-        OrderPayerRequest payer = OrderPayerRequest.builder()
-                .email(syntheticPayerEmail(booking))
+                // Un turno de cancha es un servicio con fecha: el antifraude pondera
+                // distinto una reserva para esta noche que una compra sin fecha.
+                .categoryId(ITEM_CATEGORY)
+                .eventDate(MP_DATE_TIME.format(booking.getStartTime().atZone(club.zoneId())))
                 .build();
 
         OrderOnlineConfig online = OrderOnlineConfig.builder()
@@ -94,7 +105,8 @@ public class MercadoPagoGateway {
                 // llega el webhook.
                 .externalReference(booking.getId().toString())
                 .totalAmount(booking.getDepositAmount().toPlainString())
-                .payer(payer)
+                .payer(payerRequest(booking, payer))
+                .additionalInfo(additionalInfo(club, payer))
                 .items(List.of(item))
                 .config(OrderConfigRequest.builder().online(online).build())
                 .expirationTime(expirationTime(club, booking))
@@ -169,6 +181,42 @@ public class MercadoPagoGateway {
                     || "canceled".equalsIgnoreCase(status)
                     || "expired".equalsIgnoreCase(status);
         }
+    }
+
+    /**
+     * Quien paga, con todo lo que se sepa de el.
+     *
+     * <p>El mail real solo sale si la cuenta lo tiene verificado; si no, va el
+     * sintetico. Un mail que no coincide con quien paga es de las senales que mas
+     * suman para el antifraude, pero uno sin verificar puede no ser de el.
+     */
+    private OrderPayerRequest payerRequest(Booking booking, DepositPayer payer) {
+        OrderPayerRequest.OrderPayerRequestBuilder request = OrderPayerRequest.builder()
+                .email(payer.email() != null ? payer.email() : syntheticPayerEmail(booking))
+                .firstName(payer.firstName())
+                .lastName(payer.lastName());
+        if (payer.phoneNumber() != null) {
+            request.phone(PhoneRequest.builder()
+                    .areaCode(payer.phoneAreaCode())
+                    .number(payer.phoneNumber())
+                    .build());
+        }
+        return request.build();
+    }
+
+    /** Contexto de la compra que no entra en {@code payer}: desde donde y con que cuenta. */
+    private AdditionalInfoRequest additionalInfo(Tenant club, DepositPayer payer) {
+        boolean hasAccount = payer.registeredAt() != null;
+        return AdditionalInfoRequest.builder()
+                .payer(PayerInfo.builder()
+                        .ipAddress(payer.ipAddress())
+                        // Solo el que tiene cuenta se autentico; del invitado no se sabe nada.
+                        .authenticationType(hasAccount ? "WEB" : null)
+                        .registrationDate(hasAccount
+                                ? MP_DATE_TIME.format(payer.registeredAt().atZone(club.zoneId()))
+                                : null)
+                        .build())
+                .build();
     }
 
     private String syntheticPayerEmail(Booking booking) {

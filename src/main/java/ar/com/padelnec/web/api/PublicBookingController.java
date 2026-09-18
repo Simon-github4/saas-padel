@@ -193,7 +193,8 @@ public class PublicBookingController {
                 request.fullName(),
                 request.phoneNumber(),
                 PaymentChoice.valueOf(request.paymentChoice().name()),
-                playerAccountId(authorization)));
+                playerAccountId(authorization)),
+                httpRequest.getRemoteAddr());
 
         return new CreateBookingResponse(
                 result.booking().getId(),

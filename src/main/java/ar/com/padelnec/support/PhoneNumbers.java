@@ -5,6 +5,7 @@ import com.google.i18n.phonenumbers.NumberParseException;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
 import com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberFormat;
 import com.google.i18n.phonenumbers.Phonenumber.PhoneNumber;
+import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 /**
@@ -87,6 +88,40 @@ public class PhoneNumbers {
      */
     public String forWhatsAppChannel(String e164) {
         return e164.startsWith(MOBILE_PREFIX) ? "+54" + e164.substring(MOBILE_PREFIX.length()) : e164;
+    }
+
+    /** Telefono partido en codigo de area y abonado, ej. {@code 2262} y {@code 415000}. */
+    public record AreaCodeAndNumber(String areaCode, String number) {
+    }
+
+    /**
+     * Separa el codigo de area del resto, como lo piden los formularios que no
+     * aceptan E.164 (MercadoPago, por ejemplo).
+     *
+     * <p>En Argentina el codigo de area va de 2 a 4 digitos segun la ciudad, asi que
+     * no se puede cortar a ojo: lo decide libphonenumber con las reglas de linea
+     * fija, previa quita del 9 de celular, que no es parte del codigo de area.
+     *
+     * @return vacio si el numero no se puede leer; con codigo de area nulo si se
+     *         lee pero no tiene uno reconocible
+     */
+    public Optional<AreaCodeAndNumber> splitAreaCode(String e164) {
+        PhoneNumber parsed;
+        try {
+            parsed = util.parse(e164, DEFAULT_REGION);
+        } catch (NumberParseException ex) {
+            return Optional.empty();
+        }
+        String national = String.valueOf(parsed.getNationalNumber());
+        if (parsed.getCountryCode() == ARGENTINA && national.length() == 11 && national.startsWith("9")) {
+            national = national.substring(1);
+            parsed = new PhoneNumber().setCountryCode(ARGENTINA).setNationalNumber(Long.parseLong(national));
+        }
+        int length = util.getLengthOfGeographicalAreaCode(parsed);
+        if (length <= 0 || length >= national.length()) {
+            return Optional.of(new AreaCodeAndNumber(null, national));
+        }
+        return Optional.of(new AreaCodeAndNumber(national.substring(0, length), national.substring(length)));
     }
 
     /** Link de WhatsApp para que el jugador escriba al club con un toque. */

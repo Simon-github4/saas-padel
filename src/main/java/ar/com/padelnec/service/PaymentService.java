@@ -33,6 +33,7 @@ public class PaymentService {
     private final BookingRepository bookingRepository;
     private final BuffetOrderRepository buffetOrderRepository;
     private final MercadoPagoGateway gateway;
+    private final DepositPayerResolver payerResolver;
     private final AlertService alertService;
     private final ApplicationEventPublisher events;
 
@@ -45,8 +46,9 @@ public class PaymentService {
      * un sabado a la tarde.
      */
     @Transactional
-    public String startDepositCheckout(Tenant club, Booking booking) {
-        MercadoPagoGateway.Checkout checkout = gateway.createDepositCheckout(club, booking);
+    public String startDepositCheckout(Tenant club, Booking booking, String payerIp) {
+        MercadoPagoGateway.Checkout checkout = gateway.createDepositCheckout(
+                club, booking, payerResolver.resolve(booking, payerIp));
 
         Payment payment = new Payment();
         payment.setBooking(booking);

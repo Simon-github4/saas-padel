@@ -45,7 +45,11 @@ public class CheckoutService {
         }
     }
 
-    public CheckoutResult checkout(Tenant club, NewBooking request) {
+    /**
+     * @param payerIp IP desde la que reserva el jugador; viaja a MercadoPago para
+     *                su antifraude
+     */
+    public CheckoutResult checkout(Tenant club, NewBooking request, String payerIp) {
         Booking booking = bookingService.create(club, request);
 
         if (booking.getStatus() != BookingStatus.DRAFT) {
@@ -54,7 +58,7 @@ public class CheckoutService {
         }
 
         try {
-            return new CheckoutResult(booking, paymentService.startDepositCheckout(club, booking));
+            return new CheckoutResult(booking, paymentService.startDepositCheckout(club, booking, payerIp));
         } catch (PaymentGatewayException ex) {
             // Sin link de pago la reserva no tiene futuro. Se libera la cancha ahora
             // en vez de dejarla bloqueada diez minutos esperando algo que no va a pasar.
