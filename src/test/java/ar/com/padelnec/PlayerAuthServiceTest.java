@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ar.com.padelnec.domain.PendingPlayerSignup;
 import ar.com.padelnec.domain.PlayerSession;
+import ar.com.padelnec.notification.EmailMessage;
 import ar.com.padelnec.notification.EmailSender;
 import ar.com.padelnec.support.TokenHash;
 import ar.com.padelnec.repository.PendingPlayerSignupRepository;
@@ -80,10 +81,10 @@ class PlayerAuthServiceTest {
         }
 
         @Override
-        public SendResult send(String toAddress, String subject, String plainBody) {
+        public SendResult send(String toAddress, EmailMessage message) {
             lastTo = toAddress;
-            lastSubject = subject;
-            lastBody = plainBody;
+            lastSubject = message.subject();
+            lastBody = message.text();
             return SendResult.ok();
         }
     }

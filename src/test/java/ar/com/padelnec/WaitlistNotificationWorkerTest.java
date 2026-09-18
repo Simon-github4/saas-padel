@@ -93,7 +93,7 @@ class WaitlistNotificationWorkerTest {
         // Sin proveedor de verdad tampoco: asi el WhatsApp "apagado" sigue dando
         // "atendido" en los tests de siempre, igual que antes de que existiera
         // este respaldo. Los tests del propio respaldo pisan esto.
-        when(emailSender.send(any(), any(), any())).thenReturn(EmailSender.SendResult.failed("sin smtp en el test"));
+        when(emailSender.send(any(), any())).thenReturn(EmailSender.SendResult.failed("sin smtp en el test"));
 
         club = fixture.club("club-necochea");
         TenantContext.set(club.getId());
@@ -176,7 +176,7 @@ class WaitlistNotificationWorkerTest {
         when(sender.send(any(), any(), any(), any())).thenReturn(WhatsAppSender.SendResult.failed("boom"));
         // Explicito y no solo el default de setUp: es la condicion exacta que
         // este test quiere probar, no una casualidad heredada.
-        when(emailSender.send(any(), any(), any())).thenReturn(EmailSender.SendResult.failed("smtp caido"));
+        when(emailSender.send(any(), any())).thenReturn(EmailSender.SendResult.failed("smtp caido"));
 
         int notified = worker.notifyFreedSlots(club);
 
@@ -194,14 +194,14 @@ class WaitlistNotificationWorkerTest {
         WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
         bookingService.cancelByClub(club, taking.getId(), "Se cayo el grupo");
         // sender ya esta "skipped" por el default de setUp (WhatsApp apagado).
-        when(emailSender.send(any(), any(), any())).thenReturn(EmailSender.SendResult.ok());
+        when(emailSender.send(any(), any())).thenReturn(EmailSender.SendResult.ok());
 
         int notified = worker.notifyFreedSlots(club);
 
         assertThat(notified).isEqualTo(1);
         WaitlistEntry reloaded = waitlistEntryRepository.findById(entry.getId()).orElseThrow();
         assertThat(reloaded.isNotified()).isTrue();
-        verify(emailSender).send(eq("jugador@test.com"), any(), any());
+        verify(emailSender).send(eq("jugador@test.com"), any());
     }
 
     @Test
@@ -212,7 +212,7 @@ class WaitlistNotificationWorkerTest {
         WaitlistEntry entry = waitlistService.join(club, startTime, "2262415111", "Jugador anotado", player);
         bookingService.cancelByClub(club, taking.getId(), "Se cayo el grupo");
         when(sender.send(any(), any(), any(), any())).thenReturn(WhatsAppSender.SendResult.failed("boom"));
-        when(emailSender.send(any(), any(), any())).thenReturn(EmailSender.SendResult.ok());
+        when(emailSender.send(any(), any())).thenReturn(EmailSender.SendResult.ok());
 
         int notified = worker.notifyFreedSlots(club);
 
@@ -238,7 +238,7 @@ class WaitlistNotificationWorkerTest {
         // El turno que tapaba el horario ya mando sus propios WhatsApp (pedido de
         // confirmacion, confirmado): lo que no tiene que salir es el de la lista.
         verify(sender, never()).send(any(), eq(NotificationTemplate.WAITLIST_SLOT_FREED), any(), any());
-        verify(emailSender, never()).send(any(), any(), any());
+        verify(emailSender, never()).send(any(), any());
         assertThat(waitlistEntryRepository.findById(entry.getId()).orElseThrow().isNotified()).isFalse();
         assertThat(waitlistEntryRepository.findPending(clock.instant())).isEmpty();
     }

@@ -4,7 +4,9 @@ import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.PendingPlayerSignup;
 import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.PlayerSession;
+import ar.com.padelnec.notification.EmailMessage;
 import ar.com.padelnec.notification.EmailSender;
+import ar.com.padelnec.notification.EmailTemplates;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.PendingPlayerSignupRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
@@ -111,9 +113,7 @@ public class PlayerAuthService {
         }
 
         String link = properties.getBaseUrl() + "/api/public/player/verify-email?token=" + confirmToken;
-        String body = ("Tu código para confirmar la cuenta es %s (vale por 10 minutos).\n"
-                + "También podés tocar este link: %s").formatted(code, link);
-        sendBestEffort(email, "Confirmá tu cuenta", body);
+        sendBestEffort(email, EmailTemplates.signupCode(code, link));
     }
 
     /**
@@ -285,10 +285,7 @@ public class PlayerAuthService {
         playerAccountRepository.save(account);
 
         String link = properties.getBaseUrl() + "/reset-password/" + token;
-        String body = ("Para elegir una contraseña nueva, tocá este link: %s\nVale por 1 hora. "
-                + "Si no lo pediste vos, ignorá este mensaje.")
-                .formatted(link);
-        sendBestEffort(account.getEmail(), "Recuperar contraseña", body);
+        sendBestEffort(account.getEmail(), EmailTemplates.passwordReset(link));
     }
 
     /** Cambia la contrasena y cierra toda otra sesion activa de la cuenta. */
@@ -309,9 +306,9 @@ public class PlayerAuthService {
         playerSessionRepository.revokeAllForPlayer(account.getId(), clock.instant());
     }
 
-    private void sendBestEffort(String toAddress, String subject, String body) {
+    private void sendBestEffort(String toAddress, EmailMessage message) {
         try {
-            emailSender.send(toAddress, subject, body);
+            emailSender.send(toAddress, message);
         } catch (RuntimeException ex) {
             // Un proveedor caido no puede tumbar el registro ni el pedido de reset: el
             // token ya quedo guardado, y el jugador puede pedirlo de nuevo.

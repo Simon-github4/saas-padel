@@ -220,15 +220,11 @@ public class NotificationService {
      * espera exige sesion de jugador, y esa cuenta siempre tiene un mail.
      */
     public EmailSender.SendResult waitlistSlotFreedEmail(Tenant club, WaitlistEntry entry) {
-        String name = firstName(entry.getCustomer().getFullName());
-        String link = waitlistLink(club, entry);
-        String body = """
-                Hola %s, se liberó un turno en %s el %s a las %s hs.
-                Reservalo antes de que se lo lleve otro: %s"""
-                .formatted(name, club.getName(), date(club, entry.getStartsAt()),
-                        time(club, entry.getStartsAt()), link);
+        EmailMessage message = EmailTemplates.waitlistSlotFreed(
+                firstName(entry.getCustomer().getFullName()), club.getName(),
+                date(club, entry.getStartsAt()), time(club, entry.getStartsAt()), waitlistLink(club, entry));
         try {
-            return emailSender.send(entry.getEmail(), "Se liberó un turno en " + club.getName(), body);
+            return emailSender.send(entry.getEmail(), message);
         } catch (RuntimeException ex) {
             // Mismo criterio que el WhatsApp de al lado: un proveedor caido no
             // puede tumbar el barrido entero, la entrada queda pendiente para

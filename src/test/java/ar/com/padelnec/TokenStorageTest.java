@@ -2,6 +2,7 @@ package ar.com.padelnec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import ar.com.padelnec.notification.EmailMessage;
 import ar.com.padelnec.notification.EmailSender;
 import ar.com.padelnec.repository.PendingPlayerSignupRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
@@ -61,8 +62,8 @@ class TokenStorageTest {
         }
 
         @Override
-        public SendResult send(String toAddress, String subject, String plainBody) {
-            lastBody = plainBody;
+        public SendResult send(String toAddress, EmailMessage message) {
+            lastBody = message.text();
             return SendResult.ok();
         }
     }

@@ -12,7 +12,8 @@ public interface EmailSender {
     /** Nombre del adaptador, para dejarlo asentado en el log. */
     String providerName();
 
-    SendResult send(String toAddress, String subject, String plainBody);
+    /** Manda el mail con sus dos cuerpos: el HTML y el texto de respaldo (ver {@link EmailMessage}). */
+    SendResult send(String toAddress, EmailMessage message);
 
     /** Resultado del intento de envio. Nunca lanza: un mail caido no puede tumbar un registro. */
     record SendResult(boolean delivered, String error) {

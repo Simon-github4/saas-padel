@@ -27,16 +27,17 @@ public class LoggingEmailSender implements EmailSender {
         return "log";
     }
 
+    /** Escribe el texto y no el HTML: es el que trae los links a la vista, listos para pegar. */
     @Override
-    public SendResult send(String toAddress, String subject, String plainBody) {
+    public SendResult send(String toAddress, EmailMessage message) {
         log.info("""
 
-                +--- Email simulado ----------------------------------------
+                +--- Email simulado (sale tambien en HTML) ------------------
                 | Para:    {}
                 | Asunto:  {}
                 | Mensaje: {}
                 +-----------------------------------------------------------""",
-                toAddress, subject, plainBody);
+                toAddress, message.subject(), message.text());
         return SendResult.ok();
     }
 }
