@@ -1,7 +1,10 @@
 package ar.com.padelnec.web;
 
+import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.repository.TenantRepository;
+import jakarta.servlet.http.HttpServletRequest;
+import java.net.URI;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -32,17 +35,20 @@ public class SpaForwardingController {
 
     private final TenantRepository tenantRepository;
     private final SeoPageRenderer seoPageRenderer;
+    private final AppProperties properties;
 
     /** Portada. */
     @GetMapping("/")
-    public ResponseEntity<String> root() {
-        return page(HttpStatus.OK, seoPageRenderer.landingMeta());
+    public ResponseEntity<String> root(HttpServletRequest request) {
+        return canonicalHostRedirect(request)
+                .orElseGet(() -> page(HttpStatus.OK, seoPageRenderer.landingMeta()));
     }
 
     /** Busqueda global de canchas libres. */
     @GetMapping("/buscar")
-    public ResponseEntity<String> search() {
-        return page(HttpStatus.OK, seoPageRenderer.searchMeta());
+    public ResponseEntity<String> search(HttpServletRequest request) {
+        return canonicalHostRedirect(request)
+                .orElseGet(() -> page(HttpStatus.OK, seoPageRenderer.searchMeta()));
     }
 
     /**
@@ -51,11 +57,13 @@ public class SpaForwardingController {
      * ruta por una pagina real (sin esto, cualquier {@code /club/loquesea} era un 200).
      */
     @GetMapping("/club/{slug}")
-    public ResponseEntity<String> club(@PathVariable String slug) {
-        Optional<Tenant> club = tenantRepository.findBySlugIgnoreCaseAndActiveTrue(slug);
-        return club
-                .map(found -> page(HttpStatus.OK, seoPageRenderer.clubMeta(found)))
-                .orElseGet(() -> page(HttpStatus.NOT_FOUND, seoPageRenderer.unknownClubMeta()));
+    public ResponseEntity<String> club(@PathVariable String slug, HttpServletRequest request) {
+        return canonicalHostRedirect(request).orElseGet(() -> {
+            Optional<Tenant> club = tenantRepository.findBySlugIgnoreCaseAndActiveTrue(slug);
+            return club
+                    .map(found -> page(HttpStatus.OK, seoPageRenderer.clubMeta(found)))
+                    .orElseGet(() -> page(HttpStatus.NOT_FOUND, seoPageRenderer.unknownClubMeta()));
+        });
     }
 
     /**
@@ -69,6 +77,15 @@ public class SpaForwardingController {
             "/privacidad", "/terminos"})
     public String appRoutes() {
         return INDEX;
+    }
+
+    /** 301 al dominio propio si el pedido llego por el host de Render. Ver {@link CanonicalHost}. */
+    private Optional<ResponseEntity<String>> canonicalHostRedirect(HttpServletRequest request) {
+        return CanonicalHost.redirectTarget(request.getServerName(), properties.getBaseUrl(),
+                        request.getRequestURI(), request.getQueryString())
+                .map(target -> ResponseEntity.status(HttpStatus.MOVED_PERMANENTLY)
+                        .location(URI.create(target))
+                        .build());
     }
 
     private ResponseEntity<String> page(HttpStatus status, SeoPageRenderer.PageMeta meta) {

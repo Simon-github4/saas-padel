@@ -54,6 +54,7 @@ public class SeoPageRenderer {
      * @param largeImage  si la imagen es una foto apaisada (portada de club) y no un icono
      * @param noindex     que los buscadores no indexen esta respuesta
      * @param structured  datos estructurados JSON-LD, o nulo
+     * @param noscript    contenido en HTML para quien no ejecuta JS (ver {@code <noscript>}), o nulo
      */
     public record PageMeta(
             String title,
@@ -62,7 +63,8 @@ public class SeoPageRenderer {
             String image,
             boolean largeImage,
             boolean noindex,
-            Map<String, Object> structured) {}
+            Map<String, Object> structured,
+            String noscript) {}
 
     /** Devuelve vacio si el build de la app del jugador no esta en el classpath. */
     public Optional<String> render(PageMeta meta) {
@@ -79,7 +81,11 @@ public class SeoPageRenderer {
         } else {
             html = insertBeforeHeadEnd(html, descriptionTag);
         }
-        return Optional.of(insertBeforeHeadEnd(html, extraTags(meta)));
+        html = insertBeforeHeadEnd(html, extraTags(meta));
+        if (meta.noscript() != null) {
+            html = insertBeforeBodyEnd(html, "    <noscript>" + meta.noscript() + "</noscript>\n  ");
+        }
+        return Optional.of(html);
     }
 
     /** Metadatos de la pagina de un club. Los textos son los mismos que pone ClubPage.tsx. */
@@ -129,8 +135,18 @@ public class SeoPageRenderer {
             ld.put("sameAs", List.of(instagram));
         }
 
+        StringBuilder text = new StringBuilder("<h1>").append(escape(club.getName())).append("</h1>")
+                .append("<p>").append(escape(description)).append("</p>");
+        if (hasText(club.getAddress()) || hasText(club.getCity())) {
+            String place = hasText(club.getAddress()) && hasText(club.getCity())
+                    ? club.getAddress() + ", " + club.getCity()
+                    : hasText(club.getAddress()) ? club.getAddress() : club.getCity();
+            text.append("<p>").append(escape(place)).append("</p>");
+        }
+        text.append("<p><a href=\"/buscar\">Buscar canchas de pádel libres en todos los clubes</a></p>");
+
         return new PageMeta(club.getName() + " — Reservá tu cancha de pádel", description, path,
-                image, image != null, false, ld);
+                image, image != null, false, ld, text.toString());
     }
 
     /** Portada comercial: la que ve el dueno de un club que evalua el sistema. */
@@ -156,15 +172,24 @@ public class SeoPageRenderer {
         ld.put("@context", "https://schema.org");
         ld.put("@graph", List.of(organization, software));
 
+        String text = "<h1>Reservas online para clubes de pádel</h1>"
+                + "<p>" + escape(description) + "</p>"
+                + "<ul>"
+                + "<li>Tus jugadores ven las canchas libres y reservan desde un link, sin escribirte por WhatsApp.</li>"
+                + "<li>Cobrás la seña online con Mercado Pago, directo en tu cuenta.</li>"
+                + "<li>Manejás la agenda, las tarifas y la caja desde un panel.</li>"
+                + "</ul>"
+                + "<p><a href=\"/buscar\">Buscar canchas de pádel libres</a></p>";
+
         return new PageMeta("Reservas online para tu club — " + SITE_NAME, description, "/",
-                LOGO_PATH, false, false, ld);
+                LOGO_PATH, false, false, ld, text);
     }
 
     /** Buscador global de canchas libres. Mismos textos que SearchPage.tsx. */
     public PageMeta searchMeta() {
         return new PageMeta("Buscar cancha de pádel — todos los clubes",
                 "Buscá canchas de pádel libres hoy en todos los clubes a la vez, por día y horario, sin elegir club primero.",
-                "/buscar", LOGO_PATH, false, false, null);
+                "/buscar", LOGO_PATH, false, false, null, null);
     }
 
     /**
@@ -174,7 +199,7 @@ public class SeoPageRenderer {
      */
     public PageMeta unknownClubMeta() {
         return new PageMeta("Club no encontrado — " + SITE_NAME,
-                "Este club no existe o ya no está disponible.", null, null, false, true, null);
+                "Este club no existe o ya no está disponible.", null, null, false, true, null, null);
     }
 
     private String extraTags(PageMeta meta) {
@@ -226,6 +251,14 @@ public class SeoPageRenderer {
             log.warn("No se pudo leer static/index.html para armar los metadatos SEO: {}", e.toString());
             return null;
         }
+    }
+
+    private static String insertBeforeBodyEnd(String html, String tags) {
+        int end = html.indexOf("</body>");
+        if (end < 0) {
+            return html;
+        }
+        return html.substring(0, end) + tags + html.substring(end);
     }
 
     private static String insertBeforeHeadEnd(String html, String tags) {

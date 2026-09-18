@@ -68,6 +68,7 @@ class SeoPagesIntegrationTest {
                 .contains("Canchas de cristal. Reservá tu cancha de pádel online en Necochea con Necochea &amp; Padel")
                 .contains("<script type=\"application/ld+json\" data-server-seo>")
                 .contains("\"@type\":\"SportsClub\"")
+                .contains("<noscript><h1>Necochea &amp; Padel</h1>")
                 .doesNotContain("<title>test</title>");
         assertThat(html).containsOnlyOnce("<title>").containsOnlyOnce("name=\"description\"");
     }
@@ -123,7 +124,8 @@ class SeoPagesIntegrationTest {
         assertThat(body("/"))
                 .contains("<title>Reservas online para tu club — TurnosPadel</title>")
                 .contains("<link rel=\"canonical\" href=\"http://localhost:8080/\" />")
-                .contains("\"@type\":\"SoftwareApplication\"");
+                .contains("\"@type\":\"SoftwareApplication\"")
+                .containsPattern("<noscript><h1>Reservas online para clubes de pádel</h1>");
         assertThat(body("/buscar"))
                 .contains("<title>Buscar cancha de pádel — todos los clubes</title>")
                 .contains("<link rel=\"canonical\" href=\"http://localhost:8080/buscar\" />");
