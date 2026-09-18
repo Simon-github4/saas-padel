@@ -47,12 +47,13 @@ class PlayerAssetsCacheIntegrationTest {
     }
 
     @Test
-    @DisplayName("Los iconos de la pestaña se sirven sin sesion, no el login del panel")
+    @DisplayName("Los iconos y logos de public/ se sirven sin sesion, no el login del panel")
     void iconsArePublic() {
         String[][] icons = {
                 {"/favicon.ico", "image/"},
                 {"/favicon.svg", "image/svg+xml"},
                 {"/apple-touch-icon.png", "image/png"},
+                {"/marcas/mercado-pago-blanco.svg", "image/svg+xml"},
         };
         for (String[] icon : icons) {
             client.get().uri(icon[0])

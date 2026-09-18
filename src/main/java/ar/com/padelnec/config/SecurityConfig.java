@@ -132,6 +132,9 @@ public class SecurityConfig {
                         // Iconos de la pestaña y del acceso directo del celular: sin
                         // esto caen en la cadena del panel y redirigen al login.
                         "/favicon.ico", "/favicon.svg", "/apple-touch-icon.png",
+                        // Logos de otras marcas que muestra la landing (Mercado Pago):
+                        // misma razon, sin esto la imagen llega como el login del panel.
+                        "/marcas/**",
                         "/robots.txt", "/sitemap.xml",
                         // Archivo de verificacion de Google Search Console: hay que poder
                         // pedirlo sin sesion, y el nombre trae un id al azar que cambia
