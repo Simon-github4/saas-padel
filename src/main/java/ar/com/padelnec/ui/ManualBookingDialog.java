@@ -150,6 +150,11 @@ class ManualBookingDialog extends Dialog {
         player.setHelperText("Elegí uno del club o escribí un jugador nuevo");
         player.setItemLabelGenerator(PlayerOption::name);
         player.setRenderer(new ComponentRenderer<>(this::optionRow));
+        // El filtro corre en el servidor (hace falta para buscar por telefono y sin
+        // tildes, ver `matches`), asi que cada pausa al tipear es un viaje de ida y
+        // vuelta. 500ms es el default de Vaadin para justamente esto -sin el, se
+        // siente un pedido por letra en vez de por pausa.
+        player.setFilterTimeout(500);
         player.setItems(ManualBookingDialog::matches, options);
 
         player.addCustomValueSetListener(event -> {
