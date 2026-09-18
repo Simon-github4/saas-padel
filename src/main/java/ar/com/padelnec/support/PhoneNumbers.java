@@ -130,7 +130,11 @@ public class PhoneNumbers {
         if (presetMessage == null || presetMessage.isBlank()) {
             return "https://wa.me/" + digits;
         }
+        // URLEncoder es para formularios y deja los espacios como "+": algunas
+        // versiones de WhatsApp los muestran tal cual ("Hola+Juan"). %20 lo lee
+        // bien cualquiera, y un "+" de verdad en el mensaje ya viene como %2B.
         return "https://wa.me/" + digits + "?text="
-                + java.net.URLEncoder.encode(presetMessage, java.nio.charset.StandardCharsets.UTF_8);
+                + java.net.URLEncoder.encode(presetMessage, java.nio.charset.StandardCharsets.UTF_8)
+                        .replace("+", "%20");
     }
 }

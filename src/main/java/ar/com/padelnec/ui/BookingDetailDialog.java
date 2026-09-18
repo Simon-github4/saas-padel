@@ -177,8 +177,7 @@ class BookingDetailDialog extends Dialog {
     private Anchor whatsappLink() {
         String phone = booking.getCustomer().getPhoneNumber();
         Anchor link = new Anchor(phoneNumbers.whatsappLink(phone,
-                "Hola %s, te escribimos de %s por tu turno."
-                        .formatted(booking.displayName(), club.getName())),
+                notificationService.contactMessage(club, booking)),
                 phoneNumbers.forDisplay(phone));
         link.setTarget("_blank");
         return link;

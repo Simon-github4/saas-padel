@@ -13,6 +13,7 @@ public interface OperationalAlertRepository extends JpaRepository<OperationalAle
             SELECT a FROM OperationalAlert a
             LEFT JOIN FETCH a.booking b
             LEFT JOIN FETCH b.customer
+            LEFT JOIN FETCH b.court
             WHERE a.resolved = false
             ORDER BY a.createdAt DESC
             """)

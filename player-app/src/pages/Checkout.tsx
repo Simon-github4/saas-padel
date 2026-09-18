@@ -16,7 +16,7 @@ import {
 import { track, trackNow } from '../analytics';
 import { usePlayerAuth } from '../auth/AuthContext';
 import { ROOF_LABEL, SURFACE_LABEL, WALL_LABEL, courtMatches } from '../courtFeatures';
-import { clockTime, durationMinutes, longDate, money, perPerson, shareBooking } from '../format';
+import { clockTime, durationMinutes, longDate, money, perPerson, shareBooking, slotLine, whatsappLink } from '../format';
 import { rememberGuestBooking } from '../guestBookings';
 import { Alert, Button, Card, Field, SummaryCard, WhatsappLink } from '../components/Ui';
 
@@ -322,9 +322,7 @@ function Booked({
             variant="secondary"
             onClick={() =>
               shareBooking(
-                `Turno confirmado en ${club.name}, cancha ${court.courtName}, ` +
-                  `${longDate(slot.startsAt, club.timeZone)} a las ` +
-                  `${clockTime(slot.startsAt, club.timeZone)} hs.`,
+                `✅ Turno confirmado en *${club.name}*\n${slotLine(court.courtName, slot.startsAt, club.timeZone)}`,
                 booking.shareUrl,
               )
             }
@@ -354,7 +352,13 @@ function Booked({
             Ver mi turno
           </Link>
         )}
-        <WhatsappLink href={`https://wa.me/${club.whatsappNumber.replace(/[^0-9]/g, '')}`}>
+        <WhatsappLink
+          href={whatsappLink(
+            club.whatsappNumber,
+            `Hola, te escribo por el turno que reservé:\n` +
+              `${slotLine(court.courtName, slot.startsAt, club.timeZone)}\n\nMi turno:\n${booking.shareUrl}`,
+          )}
+        >
           Escribirle al club
         </WhatsappLink>
       </div>

@@ -3,6 +3,7 @@ package ar.com.padelnec.ui;
 import ar.com.padelnec.domain.OperationalAlert;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
+import ar.com.padelnec.notification.NotificationService;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.AlertService;
 import ar.com.padelnec.service.TenantService;
@@ -48,6 +49,7 @@ public class AlertsView extends VerticalLayout {
     private final AlertService alertService;
     private final TenantService tenantService;
     private final PhoneNumbers phoneNumbers;
+    private final NotificationService notificationService;
     private final transient AuthenticationContext authenticationContext;
 
     private final Grid<OperationalAlert> grid = new Grid<>();
@@ -56,10 +58,12 @@ public class AlertsView extends VerticalLayout {
     private Tenant club;
 
     public AlertsView(AlertService alertService, TenantService tenantService,
-                      PhoneNumbers phoneNumbers, AuthenticationContext authenticationContext) {
+                      PhoneNumbers phoneNumbers, NotificationService notificationService,
+                      AuthenticationContext authenticationContext) {
         this.alertService = alertService;
         this.tenantService = tenantService;
         this.phoneNumbers = phoneNumbers;
+        this.notificationService = notificationService;
         this.authenticationContext = authenticationContext;
 
         setSizeFull();
@@ -156,7 +160,7 @@ public class AlertsView extends VerticalLayout {
         }
         String phone = alert.getBooking().getCustomer().getPhoneNumber();
         Anchor link = new Anchor(phoneNumbers.whatsappLink(phone,
-                "Hola, te escribimos de %s por tu turno.".formatted(club.getName())),
+                notificationService.contactMessage(club, alert.getBooking())),
                 phoneNumbers.forDisplay(phone));
         link.setTarget("_blank");
         return link;

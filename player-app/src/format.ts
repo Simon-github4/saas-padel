@@ -82,6 +82,14 @@ export function monthName(date: Date): string {
   return new Intl.DateTimeFormat(LOCALE, { month: 'long' }).format(date);
 }
 
+/**
+ * El turno en una línea, igual que en los WhatsApp que manda el sistema:
+ * "🎾 Cancha 2 · sábado 20 de septiembre · 21:00 hs".
+ */
+export function slotLine(courtName: string, startsAt: string, timeZone: string): string {
+  return `🎾 ${courtName} · ${longDate(startsAt, timeZone)} · ${clockTime(startsAt, timeZone)} hs`;
+}
+
 /** Link para escribirle al club por WhatsApp. */
 export function whatsappLink(phone: string, message?: string): string {
   const digits = phone.replace(/[^0-9]/g, '');
@@ -105,5 +113,6 @@ export async function shareBooking(text: string, url: string): Promise<void> {
     }
     return;
   }
-  window.open(whatsappLink('', `${text} ${url}`), '_blank', 'noreferrer');
+  // El link en su propia línea: WhatsApp le arma la vista previa.
+  window.open(whatsappLink('', `${text}\n${url}`), '_blank', 'noreferrer');
 }

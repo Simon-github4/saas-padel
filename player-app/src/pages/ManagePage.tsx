@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, ApiError, type BookingDetail, type Cancellation } from '../api/client';
-import { clockTime, longDate, money, shareBooking, whatsappLink } from '../format';
+import { clockTime, longDate, money, shareBooking, slotLine, whatsappLink } from '../format';
 import { forgetGuestBooking } from '../guestBookings';
 import {
   Alert,
@@ -81,7 +81,7 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
   if (cancelled) {
     return (
       <Screen className="pt-6">
-        <Cancelled result={cancelled} />
+        <Cancelled result={cancelled} booking={booking} />
       </Screen>
     );
   }
@@ -132,9 +132,7 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
             variant="secondary"
             onClick={() =>
               shareBooking(
-                `Turno confirmado en ${booking.clubName}, cancha ${booking.courtName}, ` +
-                  `${longDate(booking.startTime)} a las ` +
-                  `${clockTime(booking.startTime, Intl.DateTimeFormat().resolvedOptions().timeZone)} hs.`,
+                `✅ Turno confirmado en *${booking.clubName}*\n${slotLine(booking.courtName, booking.startTime, BROWSER_TIME_ZONE)}`,
                 booking.shareUrl,
               )
             }
@@ -177,10 +175,7 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
             <>
               <Alert tone="info">{booking.cancellationHint}</Alert>
               <WhatsappLink
-                href={whatsappLink(
-                  booking.clubWhatsapp,
-                  `Hola, necesito cancelar mi turno de ${booking.courtName}.`,
-                )}
+                href={whatsappLink(booking.clubWhatsapp, aboutBooking('Hola, necesito cancelar este turno', booking))}
               >
                 Escribirle al club
               </WhatsappLink>
@@ -204,7 +199,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /** El sistema no mueve plata para atras: la devolucion la coordina una persona. */
-function Cancelled({ result }: { result: Cancellation }) {
+function Cancelled({ result, booking }: { result: Cancellation; booking: BookingDetail | null }) {
   return (
     <div className="pt-10 text-center">
       <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-cal/[0.06] text-3xl text-ink-soft">
@@ -218,7 +213,9 @@ function Cancelled({ result }: { result: Cancellation }) {
           <WhatsappLink
             href={whatsappLink(
               result.clubWhatsapp,
-              'Hola, cancelé mi turno y quería coordinar la devolución de la seña.',
+              booking
+                ? aboutBooking('Hola, cancelé este turno y quería coordinar la devolución de la seña', booking)
+                : 'Hola, cancelé mi turno y quería coordinar la devolución de la seña.',
             )}
           >
             Coordinar la devolución
@@ -226,5 +223,23 @@ function Cancelled({ result }: { result: Cancellation }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * El turno no trae la zona horaria del club: se muestra en la del navegador, que
+ * para quien reserva en su ciudad es la misma.
+ */
+const BROWSER_TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+/**
+ * Mensaje al club sobre este turno: el pedido, el turno en una línea y el link de
+ * solo lectura, para que del otro lado sepan de qué turno se habla sin preguntar.
+ */
+function aboutBooking(request: string, booking: BookingDetail): string {
+  return (
+    `${request}:\n` +
+    `${slotLine(booking.courtName, booking.startTime, BROWSER_TIME_ZONE)}\n\n` +
+    `Mi turno:\n${booking.shareUrl}`
   );
 }

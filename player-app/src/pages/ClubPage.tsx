@@ -264,7 +264,12 @@ export function ClubPage() {
   }
 
   const club = data!.club;
-  const whatsapp = whatsappLink(club.whatsappNumber);
+  // Con saludo y el link de la página: del otro lado saben de dónde viene la
+  // consulta, sin que el jugador tenga que escribirlo.
+  const whatsapp = whatsappLink(
+    club.whatsappNumber,
+    `Hola, te escribo desde tu página de reservas:\n${window.location.origin}/club/${club.slug}`,
+  );
   const lastBookable = addDays(todayIso(), club.bookingHorizonDays);
   const instagram: ClubInstagram | null =
     club.instagramHandle && club.instagramUrl

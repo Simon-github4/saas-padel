@@ -11,6 +11,7 @@ import ar.com.padelnec.notification.whatsapp.WhatsAppSender;
 import ar.com.padelnec.repository.NotificationLogRepository;
 import ar.com.padelnec.service.SlotGenerator;
 import ar.com.padelnec.support.Masking;
+import ar.com.padelnec.support.PhoneNumbers;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.Instant;
@@ -33,6 +34,12 @@ import org.springframework.transaction.annotation.Transactional;
  * ya reservado no se cae con el. Lo que si queda es el registro, porque cuando el
  * jugador dice que nunca le llego el link, esa tabla es la unica forma de saber si
  * el mensaje salio.
+ *
+ * <p>Todos los mensajes tienen la misma forma, para que se lean de un vistazo en
+ * el celular: primero que paso, despues el turno en una linea (cancha, dia y
+ * hora), la plata si hay, y al final un link a la pagina en su propia linea,
+ * siempre, aunque el mensaje no lo necesite: si el jugador tiene una duda, ahi
+ * esta todo. Negritas con asteriscos, que es como las marca WhatsApp.
  */
 @Service
 @RequiredArgsConstructor
@@ -48,6 +55,7 @@ public class NotificationService {
     private final NotificationLogRepository notificationLogRepository;
     private final AppProperties properties;
     private final SlotGenerator slotGenerator;
+    private final PhoneNumbers phoneNumbers;
 
     // ------------------------------------------------------------- mensajes
 
@@ -64,11 +72,14 @@ public class NotificationService {
                 link);
 
         dispatch(club, booking, NotificationTemplate.CONFIRMATION_REQUEST, variables, """
-                ¡Hola %s! Estás por reservar %s en %s para el %s a las %s hs.
-                Confirmá tocando este link, tenés %d minutos: %s
-                Si no confirmás, la cancha vuelve a quedar libre."""
-                .formatted(firstName(booking), booking.getCourt().getName(), club.getName(),
-                        date(club, booking), time(club, booking),
+                ¡Hola %s! Tu turno en *%s* está casi listo:
+                %s
+
+                Confirmalo en los próximos %d minutos tocando acá:
+                %s
+
+                Si no lo confirmás, la cancha vuelve a quedar libre."""
+                .formatted(firstName(booking), club.getName(), slotLine(club, booking),
                         club.getConfirmationTtlMinutes(), link));
     }
 
@@ -76,6 +87,7 @@ public class NotificationService {
     public void bookingConfirmedUnpaid(Tenant club, Booking booking) {
         List<String> variables = List.of(
                 firstName(booking),
+                club.getName(),
                 booking.getCourt().getName(),
                 date(club, booking),
                 time(club, booking),
@@ -92,12 +104,14 @@ public class NotificationService {
      */
     public String confirmedUnpaidMessage(Tenant club, Booking booking) {
         return """
-                Listo %s, tu turno quedó confirmado.
-                %s - %s a las %s hs.
-                Se abona %s en el club.
-                Podés ver o cancelar tu turno acá: %s"""
-                .formatted(firstName(booking), booking.getCourt().getName(), date(club, booking),
-                        time(club, booking), money(booking.getTotalPrice()), managementLink(booking));
+                ✅ ¡Listo %s! Tu turno en *%s* quedó confirmado.
+                %s
+                💵 Se abona %s en el club.
+
+                Ver o cancelar tu turno:
+                %s"""
+                .formatted(firstName(booking), club.getName(), slotLine(club, booking),
+                        money(booking.getTotalPrice()), managementLink(booking));
     }
 
     /** Sena acreditada por MercadoPago. */
@@ -105,6 +119,7 @@ public class NotificationService {
         String link = managementLink(booking);
         List<String> variables = List.of(
                 firstName(booking),
+                club.getName(),
                 booking.getCourt().getName(),
                 date(club, booking),
                 time(club, booking),
@@ -112,53 +127,69 @@ public class NotificationService {
                 link);
 
         dispatch(club, booking, NotificationTemplate.BOOKING_CONFIRMED_PAID, variables, """
-                Pago acreditado, %s. Tu turno quedó confirmado.
-                %s - %s a las %s hs.
-                Saldo a pagar en el club: %s
-                Podés ver o cancelar tu turno acá: %s"""
-                .formatted(firstName(booking), booking.getCourt().getName(), date(club, booking),
-                        time(club, booking), money(booking.balanceDue()), link));
+                ✅ ¡Seña acreditada, %s! Tu turno en *%s* quedó confirmado.
+                %s
+                💵 %s
+
+                Ver o cancelar tu turno:
+                %s"""
+                .formatted(firstName(booking), club.getName(), slotLine(club, booking),
+                        balanceLine(booking), link));
     }
 
     /** Vencio el plazo de confirmacion y la cancha volvio a la grilla. */
     public void confirmationExpired(Tenant club, Booking booking) {
+        String link = bookSlotLink(club, booking.getStartTime());
         List<String> variables = List.of(
                 firstName(booking),
+                club.getName(),
                 booking.getCourt().getName(),
                 date(club, booking),
-                time(club, booking));
+                time(club, booking),
+                link);
 
         dispatch(club, booking, NotificationTemplate.CONFIRMATION_EXPIRED, variables, """
-                Hola %s, no llegamos a confirmar tu turno de %s el %s a las %s hs,
-                así que la cancha volvió a quedar disponible.
-                Si todavía querés jugar, podés reservarla de nuevo."""
-                .formatted(firstName(booking), booking.getCourt().getName(),
-                        date(club, booking), time(club, booking)));
+                Hola %s, tu turno en *%s* no se confirmó a tiempo y la cancha volvió a quedar libre.
+                %s
+
+                Si todavía querés jugar, reservalo de nuevo acá:
+                %s"""
+                .formatted(firstName(booking), club.getName(), slotLine(club, booking), link));
     }
 
     /** El club dio de baja el turno desde el panel. */
     public void cancelledByClub(Tenant club, Booking booking) {
+        String link = clubDayLink(club, booking.getStartTime());
+        String phone = phoneNumbers.forDisplay(club.getWhatsappNumber());
         List<String> variables = List.of(
                 firstName(booking),
+                club.getName(),
                 booking.getCourt().getName(),
                 date(club, booking),
                 time(club, booking),
-                club.getWhatsappNumber());
+                link,
+                phone);
 
         dispatch(club, booking, NotificationTemplate.BOOKING_CANCELLED_BY_CLUB, variables, """
-                Hola %s, tuvimos que dar de baja tu turno de %s el %s a las %s hs.
-                Escribinos a %s y lo reprogramamos."""
-                .formatted(firstName(booking), booking.getCourt().getName(), date(club, booking),
-                        time(club, booking), club.getWhatsappNumber()));
+                Hola %s, tuvimos que dar de baja tu turno en *%s*. Disculpá las molestias.
+                %s
+
+                Elegí otro horario acá:
+                %s
+
+                O escribinos al %s y lo reprogramamos."""
+                .formatted(firstName(booking), club.getName(), slotLine(club, booking), link, phone));
     }
 
     public void reminder(Tenant club, Booking booking) {
         List<String> variables = List.of(
                 firstName(booking),
+                club.getName(),
                 booking.getCourt().getName(),
                 date(club, booking),
                 time(club, booking),
-                money(booking.balanceDue()));
+                money(booking.balanceDue()),
+                managementLink(booking));
 
         dispatch(club, booking, NotificationTemplate.BOOKING_REMINDER, variables, reminderMessage(club, booking));
     }
@@ -166,13 +197,34 @@ public class NotificationService {
     /**
      * Mismo texto que manda el WhatsApp automatico de {@link #reminder}, expuesto aparte para
      * armar a mano un link de wa.me desde el panel mientras WhatsApp esta en stand by.
+     *
+     * <p>Sin "mañana": desde el panel se manda cuando el mostrador quiere, y el dia
+     * ya va escrito en la linea del turno.
      */
     public String reminderMessage(Tenant club, Booking booking) {
         return """
-                Hola %s, te esperamos mañana en %s, %s a las %s hs.
-                Saldo a pagar en el club: %s"""
-                .formatted(firstName(booking), booking.getCourt().getName(), date(club, booking),
-                        time(club, booking), money(booking.balanceDue()));
+                🔔 Hola %s, te recordamos tu turno en *%s*:
+                %s
+                💵 %s
+
+                Ver o cancelar tu turno:
+                %s"""
+                .formatted(firstName(booking), club.getName(), slotLine(club, booking),
+                        balanceLine(booking), managementLink(booking));
+    }
+
+    /**
+     * El saludo con el que el mostrador abre un chat por un turno (alertas y detalle
+     * del turno en el panel): quien escribe, por que turno, y el link para verlo.
+     */
+    public String contactMessage(Tenant club, Booking booking) {
+        return """
+                Hola %s, te escribimos de *%s* por tu turno:
+                %s
+
+                Ver tu turno:
+                %s"""
+                .formatted(firstName(booking), club.getName(), slotLine(club, booking), managementLink(booking));
     }
 
     /**
@@ -191,8 +243,10 @@ public class NotificationService {
                 name, club.getName(), date(club, entry.getStartsAt()), time(club, entry.getStartsAt()), link);
 
         return dispatch(club, phone, null, NotificationTemplate.WAITLIST_SLOT_FREED, variables, """
-                Hola %s, se liberó un turno en %s el %s a las %s hs.
-                Reservalo antes de que se lo lleve otro: %s"""
+                🎾 Hola %s, se liberó un turno en *%s*: %s a las %s hs.
+
+                Reservalo antes que otro acá:
+                %s"""
                 .formatted(name, club.getName(), date(club, entry.getStartsAt()),
                         time(club, entry.getStartsAt()), link));
     }
@@ -204,9 +258,11 @@ public class NotificationService {
      */
     public String waitlistManualMessage(Tenant club, WaitlistEntry entry) {
         return """
-                Hola %s, te escribimos de %s. Se liberó una cancha el %s a las %s hs, \
+                Hola %s, te escribimos de *%s*. Se liberó una cancha el %s a las %s hs, \
                 el horario en el que te anotaste en la lista de espera.
-                Si todavía lo querés, reservalo acá: %s"""
+
+                Si todavía la querés, reservala acá:
+                %s"""
                 .formatted(firstName(entry.getCustomer().getFullName()), club.getName(),
                         date(club, entry.getStartsAt()), time(club, entry.getStartsAt()),
                         waitlistLink(club, entry));
@@ -308,8 +364,32 @@ public class NotificationService {
                 + "?fecha=" + day + "&hora=" + local.format(TIME);
     }
 
+    /**
+     * La portada del club en el dia del turno, sin horario elegido: para cuando el
+     * club dio de baja ese turno y el jugador tiene que buscar otro.
+     */
+    public String clubDayLink(Tenant club, Instant startsAt) {
+        ZonedDateTime local = startsAt.atZone(club.zoneId());
+        LocalDate day = slotGenerator.resolve(club, startsAt)
+                .map(SlotGenerator.ResolvedSlot::operatingDate)
+                .orElse(local.toLocalDate());
+        return properties.getBaseUrl() + "/club/" + club.getSlug() + "?fecha=" + day;
+    }
+
     private String waitlistLink(Tenant club, WaitlistEntry entry) {
         return bookSlotLink(club, entry.getStartsAt());
+    }
+
+    /** El turno en una linea: {@code 🎾 Cancha 2 · sábado 20 de septiembre · 21:00 hs}. */
+    private String slotLine(Tenant club, Booking booking) {
+        return "🎾 %s · %s · %s hs".formatted(booking.getCourt().getName(), date(club, booking), time(club, booking));
+    }
+
+    /** Lo que falta pagar, o que no falta nada: "Saldo a pagar en el club: $ 0" no dice nada. */
+    private String balanceLine(Booking booking) {
+        return booking.balanceDue().signum() > 0
+                ? "Saldo a pagar en el club: " + money(booking.balanceDue())
+                : "Ya está todo pago.";
     }
 
     private String firstName(Booking booking) {
