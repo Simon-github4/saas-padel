@@ -363,7 +363,8 @@ export function SearchPage() {
 /**
  * Los próximos días como pastillas que se deslizan de costado: hoy y mañana
  * con nombre, el resto con el día de la semana. Para ir más lejos está el
- * calendario. La elegida se centra sola en la tira.
+ * calendario. Si la elegida queda fuera de la vista, la tira se corre hasta
+ * mostrarla.
  */
 function DayStrip({
   selected,
@@ -378,23 +379,36 @@ function DayStrip({
   const today = todayIso();
   const list = Array.from({ length: Math.max(days, 1) }, (_, index) => addDays(today, index));
 
+  // La tira se mueve solo si el día elegido no se ve entero (vino de la URL o
+  // del calendario), y lo justo para mostrarlo. Antes lo centraba siempre: tocar
+  // un día de la mitad para la derecha corría la tira y "Hoy" quedaba afuera.
   useEffect(() => {
     const container = strip.current;
     const pill = container?.querySelector<HTMLElement>('[aria-pressed="true"]');
     if (!container || !pill) {
       return;
     }
-    // scrollTo sobre la tira y no scrollIntoView: ese mueve también la página.
-    container.scrollTo({
-      left: pill.offsetLeft - container.clientWidth / 2 + pill.clientWidth / 2,
-      behavior: 'smooth',
-    });
+    const edge = parseFloat(getComputedStyle(container).paddingLeft);
+    const box = container.getBoundingClientRect();
+    const pillBox = pill.getBoundingClientRect();
+    const hiddenLeft = box.left + edge - pillBox.left;
+    const hiddenRight = pillBox.right - (box.right - edge);
+    // scrollBy sobre la tira y no scrollIntoView: ese mueve también la página. El
+    // pixel de tolerancia es por los decimales: un scroll de 0,000002 px no mueve
+    // nada a la vista, pero despierta el encastre y la tira salta de lugar.
+    if (hiddenLeft > 1) {
+      container.scrollBy({ left: -hiddenLeft, behavior: 'smooth' });
+    } else if (hiddenRight > 1) {
+      container.scrollBy({ left: hiddenRight, behavior: 'smooth' });
+    }
   }, [selected]);
 
+  // scroll-px-5: el encastre respeta el margen. Sin esto, al cargar la tira
+  // saltaba 20px para pegar "Hoy" al borde de la pantalla.
   return (
     <div
       ref={strip}
-      className="-mx-5 flex snap-x gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="-mx-5 flex snap-x scroll-px-5 gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {list.map((day, index) => {
         const active = day === selected;
