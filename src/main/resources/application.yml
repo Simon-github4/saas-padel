@@ -6,6 +6,12 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/padel}
     username: ${DB_USER:padel}
     password: ${DB_PASSWORD:padel}
+    hikari:
+      # El default de Hikari es 10 conexiones: sobra para 2-3 personas en el panel,
+      # y en una instancia de 512MB cada conexion ociosa reserva memoria que le
+      # hace falta al heap.
+      maximum-pool-size: 5
+      minimum-idle: 2
 
   jpa:
     open-in-view: false

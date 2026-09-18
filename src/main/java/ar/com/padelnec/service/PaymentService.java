@@ -46,9 +46,9 @@ public class PaymentService {
      * un sabado a la tarde.
      */
     @Transactional
-    public String startDepositCheckout(Tenant club, Booking booking, String payerIp) {
+    public String startDepositCheckout(Tenant club, Booking booking) {
         MercadoPagoGateway.Checkout checkout = gateway.createDepositCheckout(
-                club, booking, payerResolver.resolve(booking, payerIp));
+                club, booking, payerResolver.resolve(booking));
 
         Payment payment = new Payment();
         payment.setBooking(booking);

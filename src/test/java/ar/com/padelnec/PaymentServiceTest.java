@@ -243,35 +243,29 @@ class PaymentServiceTest {
     // ------------------------------------------------------------ utilidades
 
     @Test
-    @DisplayName("La sena de un invitado viaja con su nombre, telefono e IP, sin mail real")
+    @DisplayName("La sena de un invitado viaja con su nombre y telefono, sin mail real")
     void guestDepositCarriesWhatIsKnownOfThePayer() {
         Booking booking = draftBooking();
 
-        paymentService.startDepositCheckout(club, booking, "190.2.3.4");
+        paymentService.startDepositCheckout(club, booking);
 
         DepositPayer payer = sentPayer();
         assertThat(payer.firstName()).isEqualTo("Simon");
         assertThat(payer.lastName()).isEqualTo("Diaz");
         assertThat(payer.phoneAreaCode()).isEqualTo("2262");
         assertThat(payer.phoneNumber()).isEqualTo("415000");
-        assertThat(payer.ipAddress()).isEqualTo("190.2.3.4");
         // Sin cuenta no hay mail que mandar: el gateway pone el sintetico.
         assertThat(payer.email()).isNull();
-        assertThat(payer.registeredAt()).isNull();
     }
 
     @Test
-    @DisplayName("Con cuenta verificada, la sena viaja con el mail real y el alta de la cuenta")
+    @DisplayName("Con cuenta verificada, la sena viaja con el mail real")
     void accountDepositCarriesTheVerifiedEmail() {
-        PlayerAccount account = account("jugador@example.com", true);
-        Booking booking = draftBooking(account);
+        Booking booking = draftBooking(account("jugador@example.com", true));
 
-        paymentService.startDepositCheckout(club, booking, "190.2.3.4");
+        paymentService.startDepositCheckout(club, booking);
 
-        DepositPayer payer = sentPayer();
-        assertThat(payer.email()).isEqualTo("jugador@example.com");
-        assertThat(payer.registeredAt()).isEqualTo(
-                playerAccountRepository.findById(account.getId()).orElseThrow().getCreatedAt());
+        assertThat(sentPayer().email()).isEqualTo("jugador@example.com");
     }
 
     @Test
@@ -279,7 +273,7 @@ class PaymentServiceTest {
     void unverifiedEmailIsNotSent() {
         Booking booking = draftBooking(account("sin-verificar@example.com", false));
 
-        paymentService.startDepositCheckout(club, booking, "190.2.3.4");
+        paymentService.startDepositCheckout(club, booking);
 
         assertThat(sentPayer().email()).isNull();
     }

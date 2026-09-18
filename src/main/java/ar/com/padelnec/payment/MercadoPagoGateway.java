@@ -4,14 +4,12 @@ import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Tenant;
 import com.mercadopago.client.common.PhoneRequest;
-import com.mercadopago.client.order.AdditionalInfoRequest;
 import com.mercadopago.client.order.OrderClient;
 import com.mercadopago.client.order.OrderConfigRequest;
 import com.mercadopago.client.order.OrderCreateRequest;
 import com.mercadopago.client.order.OrderItemRequest;
 import com.mercadopago.client.order.OrderOnlineConfig;
 import com.mercadopago.client.order.OrderPayerRequest;
-import com.mercadopago.client.order.PayerInfo;
 import com.mercadopago.core.MPRequestOptions;
 import com.mercadopago.exceptions.MPApiException;
 import com.mercadopago.exceptions.MPException;
@@ -106,7 +104,6 @@ public class MercadoPagoGateway {
                 .externalReference(booking.getId().toString())
                 .totalAmount(booking.getDepositAmount().toPlainString())
                 .payer(payerRequest(booking, payer))
-                //.additionalInfo(additionalInfo(club, payer))
                 .items(List.of(item))
                 .config(OrderConfigRequest.builder().online(online).build())
                 .expirationTime(expirationTime(club, booking))
@@ -202,21 +199,6 @@ public class MercadoPagoGateway {
                     .build());
         }
         return request.build();
-    }
-
-    /** Contexto de la compra que no entra en {@code payer}: desde donde y con que cuenta. */
-    private AdditionalInfoRequest additionalInfo(Tenant club, DepositPayer payer) {
-        boolean hasAccount = payer.registeredAt() != null;
-        return AdditionalInfoRequest.builder()
-                .payer(PayerInfo.builder()
-                        .ipAddress(payer.ipAddress())
-                        // Solo el que tiene cuenta se autentico; del invitado no se sabe nada.
-                        .authenticationType(hasAccount ? "WEB" : null)
-                        .registrationDate(hasAccount
-                                ? MP_DATE_TIME.format(payer.registeredAt().atZone(club.zoneId()))
-                                : null)
-                        .build())
-                .build();
     }
 
     private String syntheticPayerEmail(Booking booking) {

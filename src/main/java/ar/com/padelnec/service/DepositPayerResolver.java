@@ -22,7 +22,7 @@ public class DepositPayerResolver {
     private final PlayerAccountRepository playerAccountRepository;
     private final PhoneNumbers phoneNumbers;
 
-    public DepositPayer resolve(Booking booking, String ipAddress) {
+    public DepositPayer resolve(Booking booking) {
         Customer customer = booking.getCustomer();
         // El nombre que se escribio en esta reserva y no el del jugador: es quien
         // esta por pagar, aunque haya puesto el telefono de otro.
@@ -38,9 +38,7 @@ public class DepositPayerResolver {
                 names[1],
                 account.filter(PlayerAccount::isEmailVerified).map(PlayerAccount::getEmail).orElse(null),
                 phone.map(AreaCodeAndNumber::areaCode).orElse(null),
-                phone.map(AreaCodeAndNumber::number).orElse(null),
-                account.map(PlayerAccount::getCreatedAt).orElse(null),
-                ipAddress);
+                phone.map(AreaCodeAndNumber::number).orElse(null));
     }
 
     /**

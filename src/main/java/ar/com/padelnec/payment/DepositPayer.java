@@ -1,7 +1,5 @@
 package ar.com.padelnec.payment;
 
-import java.time.Instant;
-
 /**
  * Lo que se sabe de quien paga una sena, para mandarselo a MercadoPago.
  *
@@ -11,17 +9,14 @@ import java.time.Instant;
  * es opcional porque cada dato falta en algun camino (el invitado no tiene cuenta,
  * un telefono extranjero no siempre separa el codigo de area).
  *
- * @param email        mail verificado de la cuenta del jugador; null si reservo
- *                     como invitado, y ahi se usa el sintetico
- * @param registeredAt alta de la cuenta del jugador; null si es invitado
- * @param ipAddress    IP desde la que se hizo la reserva
+ * <p>No lleva la IP ni el alta de la cuenta del jugador: la API de Orders no tiene
+ * campo para la IP, y el alta va en {@code additional_info} con claves planas
+ * ({@code "payer.registration_date"}) que el SDK 3.7.0 no sabe armar -las anida,
+ * y MercadoPago rechaza la order entera con 400-.
+ *
+ * @param email mail verificado de la cuenta del jugador; null si reservo como
+ *              invitado, y ahi se usa el sintetico
  */
 public record DepositPayer(String firstName, String lastName, String email,
-                           String phoneAreaCode, String phoneNumber,
-                           Instant registeredAt, String ipAddress) {
-
-    /** Sin nada: la order sale solo con el mail sintetico, como antes. */
-    public static DepositPayer unknown() {
-        return new DepositPayer(null, null, null, null, null, null, null);
-    }
+                           String phoneAreaCode, String phoneNumber) {
 }
