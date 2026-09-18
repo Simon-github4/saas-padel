@@ -105,8 +105,8 @@ public class MercadoPagoGateway {
                 // llega el webhook.
                 .externalReference(booking.getId().toString())
                 .totalAmount(booking.getDepositAmount().toPlainString())
-                //.payer(payerRequest(booking, payer))
-                .additionalInfo(additionalInfo(club, payer))
+                .payer(payerRequest(booking, payer))
+                //.additionalInfo(additionalInfo(club, payer))
                 .items(List.of(item))
                 .config(OrderConfigRequest.builder().online(online).build())
                 .expirationTime(expirationTime(club, booking))
