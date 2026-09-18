@@ -130,7 +130,8 @@ export function LoginPage() {
                 onSignedIn={() => navigate(returnTo)}
                 onError={setError}
                 onWorkingChange={setWorking}
-                className="mb-5 flex justify-center"
+                separator="o con tu email"
+                className="mb-5"
               />
 
               <form className="space-y-5" onSubmit={submit}>

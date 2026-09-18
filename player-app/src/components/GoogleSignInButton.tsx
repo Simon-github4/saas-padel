@@ -1,13 +1,25 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePlayerAuth } from '../auth/AuthContext';
 import { ApiError, playerApi } from '../api/client';
+
+/** Opciones de renderButton que usamos: https://developers.google.com/identity/gsi/web/reference/js-reference */
+interface GoogleButtonOptions {
+  type: 'standard';
+  theme: 'outline' | 'filled_black';
+  size: 'large';
+  shape: 'pill';
+  text: 'continue_with' | 'signin_with';
+  width: number;
+  logo_alignment: 'left' | 'center';
+  locale: string;
+}
 
 /** Ventana mínima del SDK de Google Identity Services -- no hay paquete de tipos instalado para esto. */
 interface GoogleIdentityServices {
   accounts: {
     id: {
       initialize: (config: { client_id: string; callback: (response: { credential: string }) => void }) => void;
-      renderButton: (parent: HTMLElement, options: { type: string; width: number; text: string }) => void;
+      renderButton: (parent: HTMLElement, options: GoogleButtonOptions) => void;
     };
   };
 }
@@ -18,6 +30,9 @@ declare global {
   }
 }
 
+/** Lo más ancho que Google deja dibujar el botón. */
+const GOOGLE_MAX_WIDTH = 400;
+
 interface Props {
   /** A dónde seguir cuando la sesión quedó abierta. */
   onSignedIn: () => void;
@@ -26,6 +41,12 @@ interface Props {
   onWorkingChange?: (working: boolean) => void;
   /** Texto del botón: "Continuar con Google" o "Iniciar sesión con Google". */
   text?: 'continue_with' | 'signin_with';
+  /**
+   * Rótulo de la línea que separa el botón del formulario de abajo ("o con tu
+   * email"). Aparece solo si el botón se dibujó: sin Google configurado no
+   * queda una línea separando nada.
+   */
+  separator?: string;
   className?: string;
 }
 
@@ -36,6 +57,11 @@ interface Props {
  * a esa última llega quien no tiene contraseña que recuperar justamente porque
  * su cuenta es de Google, y el botón es la salida.
  *
+ * <p>Google lo dibuja adentro de un iframe, así que el CSS de la app no lo
+ * alcanza: lo que se ajusta es lo que su SDK deja elegir. Píldora como el resto
+ * de los botones, oscuro sobre el tema oscuro (el blanco de fábrica era un
+ * parche encendido en la tarjeta) y del ancho de los campos, medido al dibujarlo.
+ *
  * <p>No dibuja nada si la aplicación no tiene configurado el Client ID
  * ({@code GOOGLE_CLIENT_ID}): sin eso el login con Google no se ofrece.
  */
@@ -44,10 +70,12 @@ export function GoogleSignInButton({
   onError,
   onWorkingChange,
   text = 'continue_with',
-  className = 'flex justify-center',
+  separator,
+  className = '',
 }: Props) {
   const { loginWithGoogle } = usePlayerAuth();
   const buttonRef = useRef<HTMLDivElement>(null);
+  const [rendered, setRendered] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,7 +97,8 @@ export function GoogleSignInButton({
         playerApi.config().catch(() => null),
         waitForGoogleScript(),
       ]);
-      if (cancelled || !config?.googleClientId || !scriptReady || !window.google || !buttonRef.current) {
+      const parent = buttonRef.current;
+      if (cancelled || !config?.googleClientId || !scriptReady || !window.google || !parent) {
         return;
       }
       window.google.accounts.id.initialize({
@@ -86,12 +115,21 @@ export function GoogleSignInButton({
           }
         },
       });
-      buttonRef.current.innerHTML = '';
-      window.google.accounts.id.renderButton(buttonRef.current, {
+      parent.innerHTML = '';
+      // El tema del club vive en <html data-theme>: un club claro lleva el
+      // botón claro de Google, y todo lo demás, el oscuro.
+      const light = document.documentElement.getAttribute('data-theme') === 'light';
+      window.google.accounts.id.renderButton(parent, {
         type: 'standard',
-        width: 320,
+        theme: light ? 'outline' : 'filled_black',
+        size: 'large',
+        shape: 'pill',
         text,
+        width: Math.min(parent.clientWidth, GOOGLE_MAX_WIDTH),
+        logo_alignment: 'center',
+        locale: 'es-419',
       });
+      setRendered(true);
     }
 
     void renderGoogleButton();
@@ -103,5 +141,16 @@ export function GoogleSignInButton({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loginWithGoogle, text]);
 
-  return <div ref={buttonRef} className={className} />;
+  return (
+    <div className={className}>
+      <div ref={buttonRef} className="flex w-full justify-center" />
+      {rendered && separator && (
+        <div className="mt-5 flex items-center gap-3 text-xs text-ink-mute">
+          <span aria-hidden className="h-px flex-1 bg-cal/10" />
+          {separator}
+          <span aria-hidden className="h-px flex-1 bg-cal/10" />
+        </div>
+      )}
+    </div>
+  );
 }
