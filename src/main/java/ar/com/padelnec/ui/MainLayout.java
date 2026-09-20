@@ -3,6 +3,7 @@ package ar.com.padelnec.ui;
 import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.OperationalAlert;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.notification.NewBookingFeed;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.AlertService;
 import ar.com.padelnec.service.TenantService;
@@ -41,6 +42,7 @@ import jakarta.annotation.security.PermitAll;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Marco comun del panel: navegacion, usuario y el aviso de alertas pendientes.
@@ -68,7 +70,48 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
     /** Se rellena en cada navegacion con el nombre de la pantalla activa. */
     private final H1 viewTitle = new H1();
 
-    private static final int ALERT_POLL_MILLIS = 30_000;
+    /** Cada cuanto se pregunta por reservas nuevas (en memoria, no toca la base). */
+    private static final int POLL_MILLIS = 10_000;
+    /** Las alertas si consultan la base: una de cada tres pasadas, o sea cada 30 segundos. */
+    private static final int ALERTS_EVERY_N_POLLS = 3;
+
+    /**
+     * Acorde de dos notas con Web Audio, sin archivo de sonido. Los navegadores no
+     * dejan sonar nada hasta que la persona toca la pagina una vez, asi que el
+     * contexto de audio se destraba con el primer click o tecla: antes de eso el
+     * aviso aparece igual pero en silencio.
+     */
+    private static final String CHIME_SETUP = """
+            if (!window.padelChime) {
+              const AC = window.AudioContext || window.webkitAudioContext;
+              let ctx = null;
+              const unlock = () => {
+                try {
+                  ctx = ctx || new AC();
+                  if (ctx.state === 'suspended') { ctx.resume(); }
+                } catch (e) { /* sin audio: el aviso visual alcanza */ }
+              };
+              ['pointerdown', 'keydown', 'touchstart'].forEach(
+                  (name) => document.addEventListener(name, unlock, {passive: true}));
+              window.padelChime = () => {
+                if (!ctx || ctx.state !== 'running') { return; }
+                const now = ctx.currentTime;
+                [[880, 0], [1318.5, 0.16]].forEach(([freq, offset]) => {
+                  const osc = ctx.createOscillator();
+                  const gain = ctx.createGain();
+                  osc.type = 'sine';
+                  osc.frequency.value = freq;
+                  gain.gain.setValueAtTime(0.0001, now + offset);
+                  gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.02);
+                  gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.5);
+                  osc.connect(gain);
+                  gain.connect(ctx.destination);
+                  osc.start(now + offset);
+                  osc.stop(now + offset + 0.55);
+                });
+              };
+            }
+            """;
 
     private SideNavItem alertsNavItem;
     private final Span alertsBadge = new Span();
@@ -76,12 +119,21 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
     private Instant lastAlertSeen = Instant.now();
     private Registration alertPoll;
 
+    private final NewBookingFeed newBookingFeed;
+    private final UUID clubId;
+    /** Las reservas de antes de esto ya estaban cuando se abrio el panel. */
+    private Instant lastBookingSeen = Instant.now();
+    private int pollTicks;
+
     public MainLayout(AuthenticationContext authenticationContext, AlertService alertService,
-                      TenantService tenantService, AppProperties properties) {
+                      TenantService tenantService, AppProperties properties,
+                      NewBookingFeed newBookingFeed) {
         this.authenticationContext = authenticationContext;
         this.alertService = alertService;
+        this.newBookingFeed = newBookingFeed;
         Tenant club = tenantService.requireCurrent();
         this.clubName = club.getName();
+        this.clubId = club.getId();
         this.publicUrl = properties.getBaseUrl() + "/club/" + club.getSlug();
 
         setPrimarySection(Section.DRAWER);
@@ -353,15 +405,16 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
      * <p>El panel no tiene push: sin esto, el mostrador parado en la agenda no se
      * entera de que un jugador cancelo por la web un turno con gente en lista de
      * espera hasta que cambia de pantalla, y a esa altura el turno ya puede
-     * haberse perdido. Treinta segundos alcanzan para eso y es una consulta por
-     * pasada.
+     * haberse perdido. Las alertas se consultan cada treinta segundos, y las
+     * reservas nuevas cada diez (esas salen de memoria, ver {@link NewBookingFeed}).
      */
     @Override
     protected void onAttach(AttachEvent attachEvent) {
         super.onAttach(attachEvent);
         UI ui = attachEvent.getUI();
-        ui.setPollInterval(ALERT_POLL_MILLIS);
-        alertPoll = ui.addPollListener(event -> checkNewAlerts());
+        ui.setPollInterval(POLL_MILLIS);
+        ui.getPage().executeJs(CHIME_SETUP);
+        alertPoll = ui.addPollListener(event -> onPoll());
     }
 
     @Override
@@ -372,6 +425,43 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         }
         detachEvent.getUI().setPollInterval(-1);
         super.onDetach(detachEvent);
+    }
+
+    private void onPoll() {
+        checkNewBookings();
+        if (pollTicks++ % ALERTS_EVERY_N_POLLS == 0) {
+            checkNewAlerts();
+        }
+    }
+
+    /** Avisa con sonido las reservas que los jugadores hicieron por la web. */
+    private void checkNewBookings() {
+        List<NewBookingFeed.Entry> fresh = newBookingFeed.since(clubId, lastBookingSeen);
+        if (fresh.isEmpty()) {
+            return;
+        }
+        lastBookingSeen = fresh.getLast().at();
+
+        String text = fresh.size() == 1 ? fresh.getFirst().text() : fresh.size() + " reservas nuevas";
+        Notification notification = new Notification();
+        notification.setPosition(Notification.Position.TOP_END);
+        notification.setDuration(10_000);
+
+        Button open = new Button("Ver agenda", event -> {
+            notification.close();
+            UI.getCurrent().navigate(AgendaView.class);
+        });
+        open.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SMALL);
+
+        Span message = new Span(text);
+        message.getStyle().set("flex", "1 1 16rem");
+        HorizontalLayout content = new HorizontalLayout(message, open);
+        content.setAlignItems(HorizontalLayout.Alignment.CENTER);
+        content.addClassNames(LumoUtility.Gap.SMALL);
+        notification.add(content);
+        notification.open();
+
+        UI.getCurrent().getPage().executeJs("window.padelChime && window.padelChime()");
     }
 
     private void checkNewAlerts() {
