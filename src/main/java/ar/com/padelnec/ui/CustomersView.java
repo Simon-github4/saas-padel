@@ -14,6 +14,7 @@ import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.icon.Icon;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
@@ -21,6 +22,7 @@ import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
 import com.vaadin.flow.component.orderedlayout.FlexComponent.JustifyContentMode;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.shared.Tooltip;
 import com.vaadin.flow.component.textfield.TextField;
 import com.vaadin.flow.component.textfield.TextFieldVariant;
 import com.vaadin.flow.data.value.ValueChangeMode;
@@ -117,7 +119,9 @@ public class CustomersView extends VerticalLayout {
                 .setTextAlign(ColumnTextAlign.CENTER);
 
         grid.addComponentColumn(this::trustedToggle)
-                .setHeader("De confianza")
+                .setHeader(helpHeader("De confianza",
+                        "Puede reservar sin pagar seña aunque el club exija seña para reservar "
+                                + "online. Si el club ya acepta reservas de palabra, no cambia nada."))
                 .setAutoWidth(true)
                 .setFlexGrow(0)
                 .setTextAlign(ColumnTextAlign.CENTER);
@@ -133,12 +137,39 @@ public class CustomersView extends VerticalLayout {
                 .setPartNameGenerator(customer -> "tabular");
 
         grid.addComponentColumn(this::blockedToggle)
-                .setHeader("Bloqueado")
+                .setHeader(helpHeader("Bloqueado",
+                        "No puede reservar online: si lo intenta, la web le pide que se comunique "
+                                + "con el club. Tampoco se le pueden cargar turnos desde el panel "
+                                + "mientras siga bloqueado. Los turnos que ya tiene no se cancelan."))
                 .setAutoWidth(true)
                 .setFlexGrow(0)
                 .setTextAlign(ColumnTextAlign.CENTER);
 
         grid.setSizeFull();
+    }
+
+    /**
+     * Encabezado con un signo de ayuda y un tooltip que explica que hace la marca.
+     *
+     * <p>"De confianza" y "Bloqueado" cambian lo que el jugador puede hacer en la
+     * web, y por el nombre solo no se sabe cuanto: sin esto, el club las tocaba
+     * sin saber que estaba prendiendo.
+     */
+    private static Component helpHeader(String title, String help) {
+        Span label = new Span(title);
+        Icon icon = VaadinIcon.QUESTION_CIRCLE_O.create();
+        icon.setSize("0.9em");
+        icon.addClassNames(LumoUtility.TextColor.SECONDARY);
+
+        HorizontalLayout header = new HorizontalLayout(label, icon);
+        header.setPadding(false);
+        header.setSpacing(false);
+        header.setWidthFull();
+        header.setAlignItems(Alignment.CENTER);
+        header.setJustifyContentMode(JustifyContentMode.CENTER);
+        header.addClassNames(LumoUtility.Gap.XSMALL);
+        Tooltip.forComponent(header).setText(help);
+        return header;
     }
 
     /**
