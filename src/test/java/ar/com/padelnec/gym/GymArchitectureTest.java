@@ -10,6 +10,7 @@ import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.BaseEntity;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.TenantScopedEntity;
+import ar.com.padelnec.domain.enums.ThemeMode;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.support.TokenHash;
@@ -53,6 +54,8 @@ class GymArchitectureTest {
                                     // Multi-tenancy: el club en contexto y las entidades filtradas por club.
                                     TenantContext.class, BaseEntity.class, TenantScopedEntity.class,
                                     Tenant.class, TenantService.class,
+                                    // Marca del club (tema claro/oscuro) que el manifest y la app reflejan.
+                                    ThemeMode.class,
                                     // Sesiones: mismo esquema de tokens que el resto.
                                     Tokens.class, TokenHash.class,
                                     // Errores de negocio compartidos.

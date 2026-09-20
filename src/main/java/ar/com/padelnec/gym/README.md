@@ -91,7 +91,7 @@ Para probar sin cámara, pegar el link o el código en el campo del escáner.
    (agrega el grupo del menú).
 2. Este paquete solo usa el **núcleo compartido**, y la lista es cerrada:
    `TenantContext`, `BaseEntity`, `TenantScopedEntity`, `Tenant`, `TenantService`,
-   `Tokens`, `TokenHash`, `BusinessRuleException`, `ResourceNotFoundException`,
+   `ThemeMode`, `Tokens`, `TokenHash`, `BusinessRuleException`, `ResourceNotFoundException`,
    `UnauthorizedSessionException`, `MainLayout` y `ClubUserPrincipal`.
 
 Además, ninguna tabla de padel apunta a `gym_*`, y desde `gym_*` solo hay FKs a
