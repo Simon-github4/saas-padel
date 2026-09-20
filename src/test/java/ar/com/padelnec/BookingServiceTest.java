@@ -12,6 +12,7 @@ import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CancellationReason;
+import ar.com.padelnec.notification.NewBookingFeed;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CustomerRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
@@ -32,6 +33,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -70,6 +72,7 @@ class BookingServiceTest {
     @Autowired private BookingRepository bookingRepository;
     @Autowired private OperationalAlertRepository alertRepository;
     @Autowired private PlayerAccountRepository playerAccountRepository;
+    @Autowired private NewBookingFeed newBookingFeed;
     @Autowired private ClubFixture fixture;
     @Autowired private Clock clock;
 
@@ -399,6 +402,44 @@ class BookingServiceTest {
     }
 
     // ------------------------------------------------------ panel del club
+
+    @Test
+    @DisplayName("Una reserva hecha por la web queda en el aviso del panel, una sola vez")
+    void webBookingShowsUpInThePanelFeed() {
+        Instant before = Instant.parse(NOW).minusSeconds(1);
+
+        Booking booking = reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
+
+        List<NewBookingFeed.Entry> entries = newBookingFeed.since(club.getId(), before);
+        assertThat(entries).hasSize(1);
+        assertThat(entries.getFirst().bookingId()).isEqualTo(booking.getId());
+        assertThat(entries.getFirst().text()).contains("Cancha 1").contains("Simon Diaz");
+
+        // Confirmarla despues es otro evento de la misma reserva: no se avisa de nuevo.
+        bookingService.confirmByClub(club, booking.getId());
+        assertThat(newBookingFeed.since(club.getId(), before)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Lo que carga el club a mano no suena en el panel")
+    void manualBookingDoesNotShowUpInThePanelFeed() {
+        Instant before = Instant.parse(NOW).minusSeconds(1);
+
+        bookingService.createManual(club, court1.getId(),
+                slotAt(LocalTime.of(20, 0)), "Grupo del martes", "2262415000", null, null);
+
+        assertThat(newBookingFeed.since(club.getId(), before)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("El aviso del panel es de cada club")
+    void panelFeedIsPerClub() {
+        Instant before = Instant.parse(NOW).minusSeconds(1);
+
+        reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
+
+        assertThat(newBookingFeed.since(UUID.randomUUID(), before)).isEmpty();
+    }
 
     @Test
     @DisplayName("El club carga un turno a mano y nace confirmado")

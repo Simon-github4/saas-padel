@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@theme {
+  /* Misma marca que la app del jugador, duplicada a proposito: esta app es
+     independiente y no comparte paquete con ella (ver el aislamiento del modulo
+     de gimnasio). Fuentes empaquetadas con @fontsource, sin CDN en runtime. */
+  --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bebas Neue", "Archivo Variable", ui-sans-serif, sans-serif;
+
+  --color-pista: #0a0a0a;
+  --color-vidrio: #141414;
+  --color-vidrio-alto: #1c1c1c;
+  --color-cal: #ffffff;
+  --color-arena: #e5e5e5;
+
+  /* Dos tonos de ladrillo por contraste: el 600 solo rinde en texto grande, el
+     400 tambien en texto chico. */
+  --color-ladrillo: #ea580c;
+  --color-ladrillo-claro: #fb923c;
+
+  --color-ink-soft: #a0a0a0;
+  --color-ink-mute: #606060;
+
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.55);
+  --shadow-glow: 0 8px 24px color-mix(in srgb, var(--color-ladrillo) 28%, transparent);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  /* Que el navegador pinte oscuros los inputs y la barra del movil. */
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-pista text-cal antialiased;
+  font-family: var(--font-sans);
+}
+
+/* Bebas no tiene bold: pedirselo la ensucia con un negrita sintetico. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  /* Bebas mete las tildes bien arriba: por debajo de 1 se comen la A. */
+  line-height: 1;
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+}
+
+/* Rotulos, estados y metadatos: la misma Archivo pero angosta. */
+.eyebrow {
+  font-stretch: 85%;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+}

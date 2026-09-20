@@ -8,6 +8,22 @@
       "port": 5174
     },
     {
+      "name": "gym-app",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "gym-app"],
+      "port": 5175
+    },
+    {
+      "name": "backend-gimnasio",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5175"
+      ],
+      "port": 8080
+    },
+    {
       "name": "backend",
       "runtimeExecutable": "mvn",
       "runtimeArgs": [

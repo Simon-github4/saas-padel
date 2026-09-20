@@ -2,6 +2,8 @@ target/
 node_modules/
 player-app/node_modules/
 player-app/dist/
+gym-app/node_modules/
+gym-app/dist/
 .git/
 .claude/
 .idea/

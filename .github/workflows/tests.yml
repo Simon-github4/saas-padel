@@ -72,3 +72,29 @@ jobs:
         # Vitest no mira los tipos. Sin esto, un error de TypeScript pasaria
         # el CI y recien aparecería al desplegar.
         run: npm run build
+
+  gimnasio:
+    name: App del gimnasio
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: gym-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: gym-app/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Correr los tests
+        run: npm test
+
+      - name: Chequear tipos y que compile
+        run: npm run build

@@ -24,6 +24,8 @@
         <twilio.version>13.0.0</twilio.version>
         <embedded-postgres.version>2.2.2</embedded-postgres.version>
         <libphonenumber.version>9.0.38</libphonenumber.version>
+        <zxing.version>3.5.3</zxing.version>
+        <archunit.version>1.4.1</archunit.version>
         <frontend-plugin.version>2.0.2</frontend-plugin.version>
         <node.version>v24.15.0</node.version>
         <!--
@@ -151,6 +153,16 @@
             <version>${libphonenumber.version}</version>
         </dependency>
 
+        <!--
+          Dibuja el QR de la puerta del gimnasio en el panel (modulo gym). Solo el
+          core: el QR se entrega como SVG, sin java.awt ni imagenes.
+        -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>${zxing.version}</version>
+        </dependency>
+
         <!-- Postgres embebido para desarrollo local sin Docker -->
         <dependency>
             <groupId>io.zonky.test</groupId>
@@ -173,6 +185,13 @@
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Verifica que el modulo gym siga aislado del resto (GymArchitectureTest). -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -280,6 +299,37 @@
                                 </goals>
                                 <phase>prepare-package</phase>
                                 <configuration>
+                                    <arguments>run build</arguments>
+                                </configuration>
+                            </execution>
+                            <!--
+                              App del gimnasio (gym-app). Reusa el Node que ya instalo la
+                              ejecucion de arriba (installDirectory) y va DESPUES de
+                              build-app-jugador: aquel vacia target/classes/static antes de
+                              construir (emptyOutDir), y esta escribe solo en static/gym-app,
+                              asi que el orden importa. Dentro de una misma fase Maven respeta
+                              el orden en que estan declaradas.
+                            -->
+                            <execution>
+                                <id>npm-ci-gimnasio</id>
+                                <goals>
+                                    <goal>npm</goal>
+                                </goals>
+                                <configuration>
+                                    <workingDirectory>gym-app</workingDirectory>
+                                    <installDirectory>player-app</installDirectory>
+                                    <arguments>ci --no-audit --no-fund</arguments>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>build-app-gimnasio</id>
+                                <goals>
+                                    <goal>npm</goal>
+                                </goals>
+                                <phase>prepare-package</phase>
+                                <configuration>
+                                    <workingDirectory>gym-app</workingDirectory>
+                                    <installDirectory>player-app</installDirectory>
                                     <arguments>run build</arguments>
                                 </configuration>
                             </execution>

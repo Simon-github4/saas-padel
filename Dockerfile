@@ -6,6 +6,7 @@ WORKDIR /app
 COPY pom.xml .
 COPY src src
 COPY player-app player-app
+COPY gym-app gym-app
 RUN mvn -B package -Pproduction -DskipTests
 
 # Runtime liviano: solo el JRE y el jar ya armado. Los tests (que levantan
