@@ -146,7 +146,11 @@ vaadin-app-layout [slot="navbar"] vaadin-menu-bar {
 }
 
 vaadin-app-layout::part(drawer) {
-  background: var(--lumo-contrast-5pct);
+  /* Opaco a proposito: --lumo-contrast-5pct es un color con transparencia, y
+     con el panel angosto el drawer flota sobre el contenido (modo overlay), que
+     se le transparentaba. El tinte va como capa sobre el color base. */
+  background-color: var(--lumo-base-color);
+  background-image: linear-gradient(var(--lumo-contrast-5pct), var(--lumo-contrast-5pct));
   border-inline-end: 1px solid var(--lumo-contrast-10pct);
   /* 10% mas angosto que el default de Lumo (16rem): en un panel de mostrador,
      con items cortos, el ancho de fabrica dejaba aire de sobra a la derecha. */

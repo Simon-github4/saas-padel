@@ -85,7 +85,9 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         this.publicUrl = properties.getBaseUrl() + "/club/" + club.getSlug();
 
         setPrimarySection(Section.DRAWER);
-        addToNavbar(true, new DrawerToggle(), header());
+        // touchOptimized en false: con true, en pantallas chicas Vaadin manda la barra
+        // (y con ella el boton del menu) abajo de todo.
+        addToNavbar(false, new DrawerToggle(), header());
         addToDrawer(navigation());
     }
 
