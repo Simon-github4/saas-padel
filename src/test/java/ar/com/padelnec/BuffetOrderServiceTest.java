@@ -149,6 +149,49 @@ class BuffetOrderServiceTest {
     }
 
     @Test
+    @DisplayName("Cambiar el precio de un producto no toca lo ya vendido: la línea y el total conservan el de ese momento")
+    void changingAProductPriceLeavesExistingSalesAlone() {
+        BuffetOrder order = buffetOrderService.open("Marta", null);
+        productService.registerSale(order, agua, 2, null);
+
+        productService.updateProduct(agua.getId(), "Agua", new BigDecimal("2500"));
+
+        List<ProductSale> lines = productService.salesOfOrder(order.getId());
+        assertThat(lines).hasSize(1);
+        assertThat(lines.getFirst().getUnitPrice()).isEqualByComparingTo("1500");
+        assertThat(reload(order).getTotalPrice()).isEqualByComparingTo("3000");
+    }
+
+    @Test
+    @DisplayName("Las ventas nuevas usan el precio nuevo, y renombrar el producto no cambia el nombre de lo ya vendido")
+    void newSalesUseTheNewPriceAndOldSalesKeepTheOldName() {
+        BuffetOrder order = buffetOrderService.open("Marta", null);
+        productService.registerSale(order, agua, 1, null);
+
+        Product updated = productService.updateProduct(agua.getId(), "Agua mineral", new BigDecimal("2500"));
+        productService.registerSale(reload(order), updated, 1, null);
+
+        assertThat(productService.salesOfOrder(order.getId()))
+                .extracting(ProductSale::getProductName, sale -> sale.getUnitPrice().intValue())
+                .containsExactly(tuple("Agua", 1500), tuple("Agua mineral", 2500));
+        assertThat(reload(order).getTotalPrice()).isEqualByComparingTo("4000");
+    }
+
+    @Test
+    @DisplayName("Editar un producto valida el nombre, el precio y que el nombre no se repita")
+    void editingAProductValidatesItsData() {
+        assertThatThrownBy(() -> productService.updateProduct(agua.getId(), "  ", new BigDecimal("1500")))
+                .isInstanceOf(BusinessRuleException.class);
+        assertThatThrownBy(() -> productService.updateProduct(agua.getId(), "Agua", new BigDecimal("-1")))
+                .isInstanceOf(BusinessRuleException.class);
+        assertThatThrownBy(() -> productService.updateProduct(agua.getId(), "Café", new BigDecimal("1500")))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Ya hay un producto");
+        assertThat(productService.updateProduct(agua.getId(), "  Agua fría ", new BigDecimal("1500")).getName())
+                .isEqualTo("Agua fría");
+    }
+
+    @Test
     @DisplayName("El mostrador arma el pedido y lo cobra de una vez: una línea por producto y el total cobrado")
     void checkoutOpensAddsAndChargesAtOnce() {
         Checkout result = buffetOrderService.checkout(null, "Espectador", List.of(

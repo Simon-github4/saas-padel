@@ -15,6 +15,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -118,6 +119,35 @@ public class ProductService {
         product.setName(name);
         product.setUnitPrice(unitPrice);
         return productRepository.save(product);
+    }
+
+    /**
+     * Cambia el nombre y el precio de un producto del catalogo.
+     *
+     * <p>Vale para las ventas que se carguen de ahora en adelante. Las ya cargadas
+     * no se tocan: cada linea de venta guarda el nombre y el precio del momento
+     * ({@link ProductSale}), asi que subir o bajar un precio no reescribe la caja
+     * ni el total de ningun turno o pedido existente.
+     */
+    @Transactional
+    public Product updateProduct(UUID productId, String name, BigDecimal unitPrice) {
+        if (name == null || name.isBlank()) {
+            throw new BusinessRuleException("Poné un nombre para el producto");
+        }
+        if (unitPrice == null || unitPrice.compareTo(BigDecimal.ZERO) < 0) {
+            throw new BusinessRuleException("El precio tiene que ser mayor o igual a cero");
+        }
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("El producto no existe"));
+        product.setName(name.trim());
+        product.setUnitPrice(unitPrice);
+        try {
+            // saveAndFlush: el nombre es unico por club y esa restriccion se chequea
+            // al escribir, no al commit, que llegaria tarde para este catch.
+            return productRepository.saveAndFlush(product);
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessRuleException("Ya hay un producto con ese nombre");
+        }
     }
 
     @Transactional

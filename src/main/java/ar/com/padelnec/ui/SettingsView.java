@@ -33,6 +33,8 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
+import com.vaadin.flow.component.dialog.Dialog;
+import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.details.Details;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.grid.ColumnTextAlign;
@@ -1016,6 +1018,14 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
             return active;
         }).setHeader("Activo").setAutoWidth(true).setFlexGrow(0)
                 .setTextAlign(ColumnTextAlign.CENTER);
+        productGrid.addComponentColumn(product -> {
+            Button edit = new Button(VaadinIcon.PENCIL.create(), event -> openProductEditor(product));
+            edit.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_SMALL);
+            edit.setAriaLabel("Editar " + product.getName());
+            edit.getElement().setAttribute("title", "Editar nombre y precio");
+            return edit;
+        }).setHeader("").setAutoWidth(true).setFlexGrow(0)
+                .setTextAlign(ColumnTextAlign.CENTER);
 
         TextField newName = new TextField();
         newName.setPlaceholder("Nombre del producto");
@@ -1042,6 +1052,48 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         toolbar.setPadding(false);
         toolbar.addClassNames(LumoUtility.Gap.SMALL);
         return tabContent(toolbar, productGrid);
+    }
+
+    /**
+     * Cambiar el nombre o el precio de un producto.
+     *
+     * <p>El aviso del precio es a proposito: lo primero que se pregunta al subir un
+     * precio es que pasa con lo ya vendido, y la respuesta (nada) no se deduce de
+     * la pantalla.
+     */
+    private void openProductEditor(Product product) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Editar producto");
+
+        TextField name = new TextField("Nombre");
+        name.setValue(product.getName());
+        name.setMaxLength(80);
+        name.setWidthFull();
+
+        BigDecimalField price = new BigDecimalField("Precio");
+        price.setValue(product.getUnitPrice());
+        price.setWidthFull();
+        price.setHelperText("Vale para las ventas nuevas. Lo que ya se vendió conserva el precio de ese momento.");
+
+        Button save = new Button("Guardar", event -> {
+            try {
+                productService.updateProduct(product.getId(), name.getValue(), price.getValue());
+            } catch (BusinessRuleException ex) {
+                Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+                return;
+            }
+            dialog.close();
+            refreshProducts();
+            Notification.show("Producto actualizado");
+        });
+        save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        Button cancel = new Button("Cancelar", event -> dialog.close());
+        cancel.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+
+        dialog.add(new VerticalLayout(name, price));
+        dialog.getFooter().add(cancel, save);
+        dialog.setWidth("26rem");
+        dialog.open();
     }
 
     private void refreshProducts() {
