@@ -94,6 +94,9 @@ public class GoogleMapsLinkResolver {
     private static final Set<String> SHORT_LINK_HOSTS = Set.of("goo.gl", "maps.app.goo.gl");
 
     private static final int MAX_REDIRECTS = 5;
+
+    /** El largo de la columna tenant.google_maps_url: un link mas largo no se puede guardar. */
+    private static final int MAX_URL_LENGTH = 500;
     private static final Duration TIMEOUT = Duration.ofSeconds(4);
     private static final String USER_AGENT = "Mozilla/5.0 (compatible; PadelSaaS/1.0)";
 
@@ -245,16 +248,30 @@ public class GoogleMapsLinkResolver {
                 // matcheo el pedazo equivocado de la URL, no unas coordenadas.
                 return Optional.empty();
             }
-            return Optional.of(new Coordinates(lat, lng, mapsUrl));
+            // Ultima defensa: sea cual sea el camino que armo el link, si no entra en
+            // la columna se descarta. Sin link, Tenant.mapsUrl() arma uno con las
+            // coordenadas, asi que el mapa sigue andando.
+            String storable = mapsUrl != null && mapsUrl.length() > MAX_URL_LENGTH ? null : mapsUrl;
+            return Optional.of(new Coordinates(lat, lng, storable));
         } catch (NumberFormatException | ArithmeticException ex) {
             return Optional.empty();
         }
     }
 
-    /** La URL de Google Maps dentro del texto, tal cual, para reusarla como link. */
+    /**
+     * La URL de Google Maps dentro del texto, tal cual, para reusarla como link.
+     *
+     * <p>Un link pegado desde la foto del lugar, o con el rastreo de Google
+     * (entry=, g_ep=, skid=), puede pasar de los 500 caracteres de la columna. Ahi
+     * se cae al link de busqueda por nombre, que abre la misma ficha y es corto.
+     */
     private String reusableUrl(String text) {
         Matcher urlMatcher = FIRST_URL.matcher(text);
-        return urlMatcher.find() ? urlMatcher.group() : null;
+        if (!urlMatcher.find()) {
+            return null;
+        }
+        String url = urlMatcher.group();
+        return url.length() <= MAX_URL_LENGTH ? url : searchUrlFor(placeName(text));
     }
 
     /**

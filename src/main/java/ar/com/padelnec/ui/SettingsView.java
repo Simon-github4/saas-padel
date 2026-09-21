@@ -369,6 +369,19 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         googleMapsUrl.setValue(club.getGoogleMapsUrl() == null ? "" : club.getGoogleMapsUrl());
 
         Button save = new Button("Guardar Cambios", event -> {
+            // Los largos de las columnas de la base: pasarse tiraba un error de SQL
+            // en pantalla, y la direccion es donde mas pasaba (se pega un link).
+            String tooLong = firstTooLong(
+                    new FieldLimit(tagline, "La frase bajo el nombre", 160, false),
+                    new FieldLimit(heroImage, "La URL de la foto de portada", 500, true),
+                    new FieldLimit(heroHeadline, "El título de la portada", 80, false),
+                    new FieldLimit(heroCta, "El texto del botón", 40, false),
+                    new FieldLimit(address, "La dirección", 200, false),
+                    new FieldLimit(city, "La ciudad", 100, false));
+            if (tooLong != null) {
+                Notification.show(tooLong).addThemeVariants(NotificationVariant.LUMO_ERROR);
+                return;
+            }
             String primary = blankToNull(primaryColor.getValue());
             String secondary = blankToNull(secondaryColor.getValue());
             if (!isValidHexOrNull(primary) || !isValidHexOrNull(secondary)) {
@@ -726,6 +739,24 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private record FieldLimit(TextField field, String label, int max, boolean expectsUrl) {
+    }
+
+    /** El mensaje del primer campo que no entra en su columna, o nulo si todos entran. */
+    private static String firstTooLong(FieldLimit... limits) {
+        for (FieldLimit limit : limits) {
+            String value = limit.field().getValue();
+            if (value != null && value.trim().length() > limit.max()) {
+                String hint = !limit.expectsUrl() && value.trim().startsWith("http")
+                        ? " Parece un link: acá va el texto, no la dirección web."
+                        : "";
+                return "%s puede tener hasta %d caracteres y ahora tiene %d.%s"
+                        .formatted(limit.label(), limit.max(), value.trim().length(), hint);
+            }
+        }
+        return null;
     }
 
     /**

@@ -70,6 +70,36 @@ class GoogleMapsLinkResolverTest {
     }
 
     @Test
+    @DisplayName("Un link pegado que no entra en la columna (foto del lugar, rastreo de Google) cae al link de busqueda por nombre")
+    void aTooLongPlaceUrlFallsBackToTheNameSearchLink() {
+        String url = "https://www.google.com/maps/place/Sando+Padel+Quequ%C3%A9n/@-38.5718906,-58.6882966,3a,87.4y,90t/"
+                + "data=!3m8!1e2!3m6!1sCIABIhChXJaXqrMhaNiaVSryMrV!8m2!3d-38.5718422!4d-58.6880735"
+                + "?entry=tts&g_ep=" + "x".repeat(600);
+        assertThat(url.length()).isGreaterThan(500);
+
+        Optional<GoogleMapsLinkResolver.Coordinates> found = new GoogleMapsLinkResolver().resolve(url);
+
+        assertThat(found).isPresent();
+        assertThat(found.get().latitude()).isEqualByComparingTo("-38.571842");
+        assertThat(found.get().longitude()).isEqualByComparingTo("-58.688074");
+        assertThat(found.get().mapsUrl())
+                .isEqualTo("https://www.google.com/maps/search/?api=1&query=Sando+Padel+Quequ%C3%A9n")
+                .hasSizeLessThanOrEqualTo(500);
+    }
+
+    @Test
+    @DisplayName("Un link largo sin nombre de lugar no se guarda: sin link, el mapa se arma con las coordenadas")
+    void aTooLongUrlWithoutANameIsDropped() {
+        String url = "https://www.google.com/maps/@-38.5718906,-58.6882966,17z/data=!3d-38.5718422!4d-58.6880735"
+                + "?entry=tts&g_ep=" + "x".repeat(600);
+
+        Optional<GoogleMapsLinkResolver.Coordinates> found = new GoogleMapsLinkResolver().resolve(url);
+
+        assertThat(found).isPresent();
+        assertThat(found.get().mapsUrl()).isNull();
+    }
+
+    @Test
     @DisplayName("Sin pin ni nombre, usa el centro del mapa como coordenadas y no arma link a una ficha")
     void fallsBackToTheMapCenterWhenThereIsNoPin() {
         Optional<GoogleMapsLinkResolver.Coordinates> found = new GoogleMapsLinkResolver()
