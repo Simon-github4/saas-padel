@@ -747,7 +747,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
 
     private static String heroVariantLabel(HeroVariant variant) {
         return switch (variant) {
-            case CLASSIC -> "Actual";
+            case CLASSIC -> "Base";
             case SCOREBOARD -> "Marcador de cancha";
             case COURT_SPLIT -> "Vista de cancha partida";
         };
