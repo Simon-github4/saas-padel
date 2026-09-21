@@ -4,6 +4,7 @@ import ar.com.padelnec.domain.TenantScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -38,4 +39,11 @@ public class GymMember extends TenantScopedEntity {
 
     @Column(columnDefinition = "text")
     private String notes;
+
+    /**
+     * El dia en que empezo la primera cuota del socio: de ahi sale el dia de corte
+     * de todos sus meses. Lo fija el primer cobro y nunca cambia.
+     */
+    @Column(name = "billing_anchor")
+    private LocalDate billingAnchor;
 }

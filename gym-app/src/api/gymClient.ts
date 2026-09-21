@@ -43,7 +43,7 @@ export interface RecentCheckin {
 
 export interface Me {
   fullName: string;
-  /** La cuota vigente, o la ultima que tuvo si ya vencio. Null si nunca tuvo. */
+  /** La última cuota que pagó (su plan), o null si nunca tuvo una. */
   membership: Membership | null;
   /** Si la cuota vale hoy. */
   valid: boolean;
@@ -51,6 +51,21 @@ export interface Me {
   weekLimit: number;
   checkedInToday: boolean;
   recent: RecentCheckin[];
+  /** El día del mes en que arrancó su ciclo. Null si todavía no pagó ninguna cuota. */
+  cycleStart: string | null;
+  /** El mes corriente: el día en que arranca y el día en que termina (inclusive). */
+  periodStart: string;
+  periodEnd: string;
+  /** Hasta cuándo está paga la cuota: el fin del mes corriente o más allá si adelantó cuotas. */
+  paidUntil: string | null;
+  /** Si ya pagó la cuota corriente. */
+  paidCurrent: boolean;
+  /** Cuotas impagas consecutivas terminando en la corriente (0 = al día). */
+  monthsLate: number;
+  /** Si puede registrar ingresos hoy: con la corriente impaga entra, con 2 o más cuotas, no. */
+  canEnter: boolean;
+  /** Lo que debe, a valor de la tarifa de su plan. */
+  owedTotal: number;
 }
 
 export interface CheckInResult {

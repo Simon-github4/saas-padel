@@ -30,6 +30,7 @@ public final class GymNavigation {
         nav.addItem(new SideNavItem("Ingresos de hoy", GymTodayView.class, iconChip.apply(VaadinIcon.CHECK_CIRCLE_O)));
         if (canManage) {
             nav.addItem(new SideNavItem("Sedes y QR", GymSedesView.class, iconChip.apply(VaadinIcon.QRCODE)));
+            nav.addItem(new SideNavItem("Cuotas", GymTariffsView.class, iconChip.apply(VaadinIcon.MONEY)));
         }
         return nav;
     }

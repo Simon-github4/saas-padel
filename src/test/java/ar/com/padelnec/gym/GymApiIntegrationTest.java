@@ -7,13 +7,17 @@ import ar.com.padelnec.TestDatabaseConfig;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.gym.domain.GymSede;
+import ar.com.padelnec.gym.domain.PayMethod;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
 import ar.com.padelnec.gym.service.GymMemberService;
 import ar.com.padelnec.gym.service.GymMemberService.CreatedMember;
+import ar.com.padelnec.gym.service.GymMembershipService;
 import ar.com.padelnec.gym.service.GymRateLimits;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -46,6 +50,7 @@ class GymApiIntegrationTest {
     @Autowired private ClubFixture clubFixture;
     @Autowired private GymFixture gym;
     @Autowired private GymMemberService memberService;
+    @Autowired private GymMembershipService membershipService;
     @Autowired private GymCheckinRepository checkinRepository;
     // El limitador es un singleton compartido con el resto de la suite y todos los pedidos salen del
     // mismo origen local: sin mockearlo, el resultado dependeria del orden en que corren los tests.
@@ -265,6 +270,14 @@ class GymApiIntegrationTest {
 
         JsonNode before = get("los-troncos", "/me", token, 200);
         assertThat(before.get("valid").asBoolean()).isTrue();
+        assertThat(before.get("canEnter").asBoolean()).isTrue();
+        assertThat(before.get("paidCurrent").asBoolean()).isTrue();
+        assertThat(before.get("monthsLate").asInt()).isZero();
+        // Su ciclo arranco el dia de la primera cuota, y el mes corriente ya esta pagado.
+        assertThat(before.get("cycleStart").asText()).isEqualTo(LocalDate.now(ZONE).minusDays(1).toString());
+        assertThat(before.get("periodStart").asText()).isNotBlank();
+        // Sin adelantos, la cobertura llega hasta el fin del mes corriente.
+        assertThat(before.get("paidUntil").asText()).isEqualTo(before.get("periodEnd").asText());
         assertThat(before.get("weekUsed").asInt()).isZero();
         assertThat(before.get("weekLimit").asInt()).isEqualTo(3);
         assertThat(before.get("checkedInToday").asBoolean()).isFalse();
@@ -289,6 +302,28 @@ class GymApiIntegrationTest {
 
         assertThat(error.get("code").asText()).isEqualTo("RULE_VIOLATION");
         assertThat(error.get("message").asText()).contains("código QR no es válido");
+    }
+
+    @Test
+    @DisplayName("Con dos meses impagos el /me baja canEnter y el check-in se rechaza con la deuda")
+    void twoUnpaidMonthsBlockAtTheApi() {
+        CreatedMember carla = gym.member(club, "50333444", "Carla Díaz");
+        // Pagó una sola cuota hace tres meses: queden impagas al menos la que viene y la corriente,
+        // haga lo que haga el calendario.
+        LocalDate threeMonthsAgo = LocalDate.now(ZONE).minusDays(95);
+        TenantContext.runAs(club.getId(), () -> membershipService.charge(carla.id(), 1,
+                new BigDecimal("30000"), 3, PayMethod.CASH, sede.getId(), Set.of(sede.getId()), null, threeMonthsAgo));
+
+        String token = readyToken(carla);
+        JsonNode me = get("los-troncos", "/me", token, 200);
+        assertThat(me.get("canEnter").asBoolean()).isFalse();
+        assertThat(me.get("monthsLate").asInt()).isGreaterThanOrEqualTo(2);
+        assertThat(me.get("valid").asBoolean()).isFalse();
+        assertThat(me.get("paidUntil").isNull()).isTrue();
+
+        JsonNode error = post("los-troncos", "/checkin", token, Map.of("qrToken", qr()), 422);
+        assertThat(error.get("code").asText()).isEqualTo("RULE_VIOLATION");
+        assertThat(error.get("message").asText()).contains("Adeudás");
     }
 
     @Test

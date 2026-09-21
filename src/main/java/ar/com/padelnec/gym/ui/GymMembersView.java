@@ -1,26 +1,26 @@
 package ar.com.padelnec.gym.ui;
 
-import static ar.com.padelnec.gym.ui.GymViewSupport.DAY;
 import static ar.com.padelnec.gym.ui.GymViewSupport.SHORT_DAY;
 
 import ar.com.padelnec.gym.GymModule;
 import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.domain.PayMethod;
+import ar.com.padelnec.gym.service.GymBillingService;
+import ar.com.padelnec.gym.service.GymBillingService.Period;
 import ar.com.padelnec.gym.service.GymCheckinService;
 import ar.com.padelnec.gym.service.GymCheckinService.CheckInResult;
 import ar.com.padelnec.gym.service.GymMemberService;
 import ar.com.padelnec.gym.service.GymMemberService.CreatedMember;
 import ar.com.padelnec.gym.service.GymMembershipService;
-import ar.com.padelnec.gym.service.GymMembershipService.Sale;
 import ar.com.padelnec.gym.service.GymOverviewService;
 import ar.com.padelnec.gym.service.GymOverviewService.MemberRow;
 import ar.com.padelnec.gym.service.GymSedeService;
+import ar.com.padelnec.gym.service.GymTariffService;
 import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.CheckboxGroup;
-import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
@@ -45,6 +45,7 @@ import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
@@ -71,6 +72,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
     private final GymCheckinService checkinService;
     private final GymSedeService sedeService;
     private final GymOverviewService overviewService;
+    private final GymTariffService tariffService;
     private final transient AuthenticationContext authenticationContext;
 
     private final Grid<MemberRow> grid = new Grid<>();
@@ -85,6 +87,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
     public GymMembersView(GymModule gymModule, GymMemberService memberService,
                           GymMembershipService membershipService, GymCheckinService checkinService,
                           GymSedeService sedeService, GymOverviewService overviewService,
+                          GymTariffService tariffService,
                           AuthenticationContext authenticationContext) {
         this.gymModule = gymModule;
         this.memberService = memberService;
@@ -92,6 +95,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         this.checkinService = checkinService;
         this.sedeService = sedeService;
         this.overviewService = overviewService;
+        this.tariffService = tariffService;
         this.authenticationContext = authenticationContext;
 
         setSizeFull();
@@ -173,24 +177,29 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
     }
 
     private Component membershipCell(MemberRow row) {
-        if (row.endsOn() == null) {
-            return GymViewSupport.badge("Sin cuota", "contrast");
+        GymBillingService.Status billing = row.billing();
+        if (billing.plan() == null) {
+            return GymViewSupport.badge(billing.anchor() == null ? "Sin cuota" : "Sin cuota vigente", "contrast");
         }
-        if (row.current()) {
-            return GymViewSupport.badge("Vigente hasta " + SHORT_DAY.format(row.endsOn()), "success");
+        if (!billing.started()) {
+            return GymViewSupport.badge("Empieza el " + SHORT_DAY.format(billing.plan().getStartsOn()), "contrast");
         }
-        if (row.startsOn().isAfter(today)) {
-            return GymViewSupport.badge("Empieza el " + SHORT_DAY.format(row.startsOn()), "contrast");
+        if (billing.monthsLate() >= 2) {
+            return GymViewSupport.badge("Adeudás " + billing.monthsLate() + " cuotas", "error");
         }
-        return GymViewSupport.badge("Venció el " + SHORT_DAY.format(row.endsOn()), "error");
+        if (billing.paidCurrent()) {
+            LocalDate until = billing.paidUntil() != null ? billing.paidUntil() : billing.periodEnd();
+            return GymViewSupport.badge("Al día hasta " + SHORT_DAY.format(until), "success");
+        }
+        return GymViewSupport.badge("Debe el mes", "contrast");
     }
 
     private Component weekCell(MemberRow row) {
-        if (!row.current() || row.daysPerWeek() == null) {
+        if (row.billing().plan() == null || !row.billing().started()) {
             return new Span("—");
         }
-        Span usage = new Span(row.weekUsed() + " de " + row.daysPerWeek());
-        if (row.weekUsed() >= row.daysPerWeek()) {
+        Span usage = new Span(row.weekUsed() + " de " + row.billing().planDaysPerWeek());
+        if (row.weekUsed() >= row.billing().planDaysPerWeek()) {
             usage.getElement().getThemeList().add("badge contrast small");
         }
         return usage;
@@ -276,42 +285,73 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle("Cobrar cuota · " + row.fullName());
 
-        LocalDate start = row.current() && row.endsOn() != null ? row.endsOn().plusDays(1) : today;
-        DatePicker startsOn = new DatePicker("Desde");
-        startsOn.setValue(start);
-        startsOn.setWidthFull();
+        GymBillingService.Status billing = row.billing();
+        List<Period> pending = billing.pending();
 
-        IntegerField months = new IntegerField("Meses");
-        months.setMin(1);
-        months.setMax(12);
-        months.setValue(1);
-        months.setStepButtonsVisible(true);
-        months.setWidthFull();
+        // A donde apunta el ciclo, para que el mostrador sepa que esta cobrando
+        Span cycle = new Span();
+        cycle.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
+        if (billing.anchor() == null) {
+            cycle.setText("Todavía no pagó ninguna cuota. Este primer pago arranca su ciclo.");
+        } else if (billing.monthsLate() >= 2) {
+            cycle.setText("Adeudás " + billing.monthsLate()
+                    + " cuotas: se cobran de la más vieja a la más nueva.");
+        } else if (billing.monthsLate() == 1) {
+            cycle.setText("Le falta el mes corriente (vence el " + SHORT_DAY.format(billing.periodEnd()) + ").");
+        } else {
+            cycle.setText("Está al día. Podés pagar de a una cuota o adelantar de a varias.");
+        }
 
-        Span until = new Span();
-        until.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
-        Runnable refreshUntil = () -> until.setText(startsOn.getValue() != null && months.getValue() != null
-                ? "Vale hasta el " + DAY.format(GymMembershipService.endOfPeriod(startsOn.getValue(), months.getValue()))
-                : "");
-        startsOn.addValueChangeListener(event -> refreshUntil.run());
-        months.addValueChangeListener(event -> refreshUntil.run());
-        refreshUntil.run();
+        CheckboxGroup<Period> periods = new CheckboxGroup<>("Cuotas a cobrar");
+        periods.setItems(pending);
+        periods.setItemLabelGenerator(period -> {
+            LocalDate nextStart = billing.periodEnd().plusDays(1);
+            String state = period.end().isBefore(today) ? "Vencida"
+                    : !today.isBefore(period.start()) ? "Corriente"
+                    : period.start().equals(nextStart) ? "Próxima" : "Adelanto";
+            return state + " · del " + SHORT_DAY.format(period.start()) + " al "
+                    + SHORT_DAY.format(period.end());
+        });
+        // Por defecto se cobra la deuda entera (o la próxima cuota si está al día): el
+        // mostrador suma los adelantos marcando cuotas a futuro.
+        List<Period> owed = pending.stream().filter(period -> !period.start().isAfter(today)).toList();
+        periods.select(owed.isEmpty() ? Set.of(pending.getFirst()) : Set.copyOf(owed));
+        periods.setWidthFull();
 
+        BigDecimalField price = new BigDecimalField("Monto por cuota (opcional: usa la tarifa)");
+        price.setPrefixComponent(new Span("$"));
+        price.setWidthFull();
+
+        // El socio que arranca recien aca define sus dias por semana; la cuota se
+        // auto-completa con la tarifa de esos dias. El que ya pago conserva su plan.
+        boolean newPlan = billing.plan() == null;
         IntegerField days = new IntegerField("Días por semana");
         days.setMin(1);
         days.setMax(7);
-        days.setValue(row.daysPerWeek() != null ? row.daysPerWeek() : DEFAULT_DAYS_PER_WEEK);
+        days.setValue(newPlan ? DEFAULT_DAYS_PER_WEEK : billing.planDaysPerWeek());
         days.setStepButtonsVisible(true);
         days.setWidthFull();
+        days.setVisible(newPlan);
+        days.addValueChangeListener(event -> autofillPrice(price, days, billing));
+        periods.addValueChangeListener(event -> autofillPrice(price, days, billing));
+        autofillPrice(price, days, billing);
+
+        Span planHint = null;
+        if (!newPlan) {
+            int dpw = billing.planDaysPerWeek();
+            planHint = new Span("Su plan actual es de " + dpw + (dpw == 1 ? " día" : " días")
+                    + " por semana.");
+            planHint.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
+        }
+
+        Span total = new Span();
+        total.addClassNames(LumoUtility.FontSize.LARGE, LumoUtility.FontWeight.BOLD);
+        price.addValueChangeListener(event -> updateTotal(total, price, periods));
 
         CheckboxGroup<GymSede> sedeGroup = new CheckboxGroup<>("Vale en");
         sedeGroup.setItems(sedes);
         sedeGroup.setItemLabelGenerator(GymSede::getName);
         sedeGroup.select(sedes);
-
-        BigDecimalField price = new BigDecimalField("Monto cobrado");
-        price.setPrefixComponent(new Span("$"));
-        price.setWidthFull();
 
         Select<PayMethod> method = new Select<>();
         method.setLabel("Cómo pagó");
@@ -327,7 +367,15 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         collectedAt.setValue(sedes.getFirst());
         collectedAt.setWidthFull();
 
-        VerticalLayout body = new VerticalLayout(startsOn, months, until, days, sedeGroup, price, method);
+        VerticalLayout body = new VerticalLayout(cycle);
+        if (planHint != null) {
+            body.add(planHint);
+        }
+        body.add(periods, price);
+        if (days != null) {
+            body.add(days);
+        }
+        body.add(total, sedeGroup, method);
         if (sedes.size() > 1) {
             body.add(collectedAt);
         }
@@ -335,19 +383,21 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         dialog.add(body);
 
         Button save = new Button("Registrar cobro", event -> {
-            if (startsOn.getValue() == null || months.getValue() == null || days.getValue() == null) {
-                GymViewSupport.error("Completá desde cuándo, los meses y los días por semana.");
+            Set<Period> selected = periods.getSelectedItems();
+            if (selected.isEmpty() || price.getValue() == null) {
+                GymViewSupport.error("Elegí al menos una cuota y el monto.");
                 return;
             }
             Set<UUID> sedeIds = sedeGroup.getValue().stream().map(GymSede::getId).collect(Collectors.toSet());
             try {
-                membershipService.sell(new Sale(row.id(), startsOn.getValue(),
-                        GymMembershipService.endOfPeriod(startsOn.getValue(), months.getValue()),
-                        days.getValue(), price.getValue(), method.getValue(), collectedAt.getValue().getId(),
-                        sedeIds, GymViewSupport.currentUserId(authenticationContext).orElse(null)));
+                membershipService.charge(row.id(), selected.size(), price.getValue(),
+                        days == null ? null : days.getValue(), method.getValue(),
+                        collectedAt.getValue().getId(), sedeIds,
+                        GymViewSupport.currentUserId(authenticationContext).orElse(null), today);
                 dialog.close();
                 refresh();
-                GymViewSupport.ok("Cuota registrada");
+                GymViewSupport.ok(selected.size() == 1 ? "Cuota registrada"
+                        : selected.size() + " cuotas registradas");
             } catch (BusinessRuleException ex) {
                 GymViewSupport.error(ex.getMessage());
             }
@@ -356,6 +406,32 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), save);
         dialog.open();
         price.focus();
+    }
+
+    /** Si el mostrador no tipeo el monto, la tarifa de los dias por semana lo completa. */
+    private void autofillPrice(BigDecimalField price, IntegerField days, GymBillingService.Status billing) {
+        if (price.getValue() != null) {
+            return;
+        }
+        int dpw = billing.plan() != null ? billing.planDaysPerWeek()
+                : days == null || days.getValue() == null ? 0 : days.getValue();
+        if (dpw == 0) {
+            return;
+        }
+        BigDecimal tariff = tariffService.priceOf(dpw);
+        if (tariff != null) {
+            price.setValue(tariff);
+        }
+    }
+
+    private static void updateTotal(Span total, BigDecimalField price, CheckboxGroup<Period> periods) {
+        BigDecimal unit = price.getValue();
+        if (unit == null || periods.getSelectedItems().isEmpty()) {
+            total.setText("");
+            return;
+        }
+        BigDecimal sum = unit.multiply(BigDecimal.valueOf(periods.getSelectedItems().size()));
+        total.setText("Total: " + GymViewSupport.money(sum));
     }
 
     private void openManualCheckIn(MemberRow row) {

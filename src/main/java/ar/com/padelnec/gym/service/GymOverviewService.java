@@ -31,16 +31,18 @@ public class GymOverviewService {
     private final GymMemberRepository memberRepository;
     private final GymMembershipRepository membershipRepository;
     private final GymCheckinRepository checkinRepository;
+    private final GymBillingService billingService;
     private final TenantService tenantService;
     private final Clock clock;
 
     /**
-     * Un socio con su cuota vigente o, si no tiene, la ultima. {@code current} dice si
-     * vale hoy; {@code endsOn} y los demas datos de la cuota son null si nunca tuvo una.
+     * Un socio con su estado de cuotas. {@code billing} es el ciclo completo del
+     * socio: el periodo corriente, la deuda, si puede entrar y que le falta pagar.
+     * {@code sedes} son las sedes donde vale la ultima cuota paga.
      */
     public record MemberRow(UUID id, String dni, String fullName, String phone, boolean enabled,
-                            boolean mustChangePassword, boolean current, LocalDate startsOn, LocalDate endsOn,
-                            Integer daysPerWeek, int weekUsed, List<String> sedes) {
+                            boolean mustChangePassword, int weekUsed,
+                            GymBillingService.Status billing, List<String> sedes) {
     }
 
     public record DayCheckin(Instant at, String memberName, String dni, String sedeName, boolean override,
@@ -60,18 +62,13 @@ public class GymOverviewService {
     @Transactional(readOnly = true)
     public List<MemberRow> members() {
         LocalDate today = today();
-        Map<UUID, GymMembership> current = new HashMap<>();
-        membershipRepository.findAllCurrent(today).forEach(m -> current.put(m.getMember().getId(), m));
-        Map<UUID, GymMembership> latest = new HashMap<>();
-        membershipRepository.findLatestPerMember().forEach(m -> latest.put(m.getMember().getId(), m));
-
         GymWeek week = GymWeek.of(today);
         Map<UUID, Integer> weekUsed = new HashMap<>();
         checkinRepository.countByMemberBetween(week.monday(), week.sunday())
                 .forEach(row -> weekUsed.put(row.getMemberId(), (int) row.getTotal()));
 
         return memberRepository.findAllByOrderByFullNameAsc().stream()
-                .map(member -> row(member, current.get(member.getId()), latest.get(member.getId()),
+                .map(member -> row(member, billingService.status(member, today),
                         weekUsed.getOrDefault(member.getId(), 0)))
                 .toList();
     }
@@ -98,14 +95,12 @@ public class GymOverviewService {
         return tenantService.requireCurrent().zoneId();
     }
 
-    private static MemberRow row(GymMember member, GymMembership current, GymMembership latest, int weekUsed) {
-        GymMembership shown = current != null ? current : latest;
-        List<String> sedes = shown == null ? List.of() : shown.getSedes().stream()
+    private static MemberRow row(GymMember member, GymBillingService.Status billing, int weekUsed) {
+        GymMembership plan = billing.plan();
+        List<String> sedes = plan == null ? List.of() : plan.getSedes().stream()
                 .map(GymSede::getName).sorted(Comparator.naturalOrder()).toList();
         return new MemberRow(member.getId(), member.getDni(), member.getFullName(), member.getPhone(),
-                member.isEnabled(), member.isMustChangePassword(), current != null,
-                shown == null ? null : shown.getStartsOn(), shown == null ? null : shown.getEndsOn(),
-                shown == null ? null : shown.getDaysPerWeek(), weekUsed, sedes);
+                member.isEnabled(), member.isMustChangePassword(), weekUsed, billing, sedes);
     }
 
     private static DayCheckin dayCheckin(GymCheckin checkin) {

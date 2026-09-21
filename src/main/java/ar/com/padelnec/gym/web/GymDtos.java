@@ -91,12 +91,17 @@ public final class GymDtos {
     }
 
     public record MeResponse(String fullName, MembershipResponse membership, boolean valid, int weekUsed,
-                             int weekLimit, boolean checkedInToday, List<RecentCheckinResponse> recent) {
+                             int weekLimit, boolean checkedInToday, List<RecentCheckinResponse> recent,
+                             LocalDate cycleStart, LocalDate periodStart, LocalDate periodEnd,
+                             LocalDate paidUntil, boolean paidCurrent, int monthsLate, boolean canEnter,
+                             java.math.BigDecimal owedTotal) {
 
         static MeResponse of(Status status) {
             return new MeResponse(status.fullName(), MembershipResponse.of(status.membership()), status.valid(),
                     status.weekUsed(), status.weekLimit(), status.checkedInToday(),
-                    status.recent().stream().map(RecentCheckinResponse::of).toList());
+                    status.recent().stream().map(RecentCheckinResponse::of).toList(),
+                    status.cycleStart(), status.periodStart(), status.periodEnd(), status.paidUntil(),
+                    status.paidCurrent(), status.monthsLate(), status.canEnter(), status.owedTotal());
         }
     }
 }

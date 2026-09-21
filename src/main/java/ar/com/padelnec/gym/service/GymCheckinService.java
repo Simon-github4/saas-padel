@@ -42,6 +42,7 @@ public class GymCheckinService {
     private final GymMembershipRepository membershipRepository;
     private final GymMemberRepository memberRepository;
     private final GymSedeRepository sedeRepository;
+    private final GymBillingService billingService;
     private final TenantService tenantService;
     private final Clock clock;
 
@@ -102,18 +103,30 @@ public class GymCheckinService {
         Instant now = clock.instant();
         LocalDate today = now.atZone(zone).toLocalDate();
 
-        GymMembership membership = membershipRepository.findCurrent(member.getId(), today)
-                .orElseThrow(() -> noCurrentMembership(member, today));
+        GymBillingService.Status status = billingService.status(member, today);
+        GymMembership membership = status.plan();
+        if (membership == null) {
+            throw new BusinessRuleException("No tenés una cuota vigente. Consultá en el mostrador.");
+        }
+        if (!status.started()) {
+            throw new BusinessRuleException("Tu cuota empieza el " + DAY.format(membership.getStartsOn()) + ".");
+        }
+        if (!status.canEnter()) {
+            throw new BusinessRuleException("Adeudás " + status.monthsLate() + " cuotas. Renová en el mostrador.");
+        }
         if (!membership.allows(sede)) {
             throw new BusinessRuleException("Tu cuota no incluye " + sede.getName() + ".");
         }
+
+        // La cuota queda valida hasta fin de mes, o mas alla si el socio pago por adelantado.
+        LocalDate validUntil = status.paidUntil() != null ? status.paidUntil() : status.periodEnd();
 
         GymWeek week = GymWeek.of(today);
         Optional<GymCheckin> existing = checkinRepository.findByMemberIdAndLocalDate(member.getId(), today);
         long used = checkinRepository.countByMemberIdAndLocalDateBetween(
                 member.getId(), week.monday(), week.sunday());
         if (existing.isPresent()) {
-            return result(existing.get().getSede().getName(), true, used, membership);
+            return result(existing.get().getSede().getName(), true, used, membership, validUntil);
         }
 
         // Recien aca, cuando el ingreso es nuevo: escanear de nuevo lo que ya estaba registrado
@@ -140,7 +153,7 @@ public class GymCheckinService {
 
         // Si otro pedido se adelanto entre la lectura y el insert, el ingreso ya existe: es un
         // "ya registrado", no un error.
-        return result(sede.getName(), inserted == 0, used + inserted, membership);
+        return result(sede.getName(), inserted == 0, used + inserted, membership, validUntil);
     }
 
     /**
@@ -172,21 +185,8 @@ public class GymCheckinService {
     }
 
     private static CheckInResult result(String sedeName, boolean alreadyRegistered, long weekUsed,
-                                        GymMembership membership) {
+                                        GymMembership membership, LocalDate validUntil) {
         return new CheckInResult(sedeName, alreadyRegistered, (int) weekUsed, membership.getDaysPerWeek(),
-                membership.getEndsOn());
-    }
-
-    private BusinessRuleException noCurrentMembership(GymMember member, LocalDate today) {
-        Optional<GymMembership> latest =
-                membershipRepository.findFirstByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(member.getId());
-        if (latest.isPresent() && latest.get().getEndsOn().isBefore(today)) {
-            return new BusinessRuleException("Tu cuota venció el " + DAY.format(latest.get().getEndsOn())
-                    + ". Renovala en el mostrador.");
-        }
-        if (latest.isPresent() && latest.get().getStartsOn().isAfter(today)) {
-            return new BusinessRuleException("Tu cuota empieza el " + DAY.format(latest.get().getStartsOn()) + ".");
-        }
-        return new BusinessRuleException("No tenés una cuota vigente. Consultá en el mostrador.");
+                validUntil);
     }
 }

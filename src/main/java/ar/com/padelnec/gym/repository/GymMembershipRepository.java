@@ -55,4 +55,7 @@ public interface GymMembershipRepository extends JpaRepository<GymMembership, UU
             order by m.createdAt desc
             """)
     List<GymMembership> findCreatedBetween(@Param("from") Instant from, @Param("to") Instant to);
+
+    /** Todas las cuotas pagas del socio, para calcular su deuda y su plan vigente. */
+    List<GymMembership> findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(UUID memberId);
 }

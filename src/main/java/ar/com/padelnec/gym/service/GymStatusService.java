@@ -6,14 +6,13 @@ import ar.com.padelnec.gym.domain.GymMembership;
 import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
 import ar.com.padelnec.gym.repository.GymMemberRepository;
-import ar.com.padelnec.gym.repository.GymMembershipRepository;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.web.UnauthorizedSessionException;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,8 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class GymStatusService {
 
     private final GymMemberRepository memberRepository;
-    private final GymMembershipRepository membershipRepository;
     private final GymCheckinRepository checkinRepository;
+    private final GymBillingService billingService;
     private final TenantService tenantService;
     private final Clock clock;
 
@@ -37,11 +36,15 @@ public class GymStatusService {
     }
 
     /**
-     * {@code membership} es la cuota vigente, o la ultima que tuvo si ya vencio, o
-     * null si nunca tuvo. {@code valid} dice si vale hoy.
+     * {@code membership} es la ultima cuota paga del socio (su plan), o null si
+     * nunca pago. {@code valid} y {@code canEnter} dicen si puede entrar hoy:
+     * con la corriente impaga entra (gracia); con dos o mas cuotas, no.
      */
     public record Status(String fullName, MembershipView membership, boolean valid, int weekUsed,
-                         int weekLimit, boolean checkedInToday, List<RecentCheckin> recent) {
+                         int weekLimit, boolean checkedInToday, List<RecentCheckin> recent,
+                         LocalDate cycleStart, LocalDate periodStart, LocalDate periodEnd,
+                         LocalDate paidUntil, boolean paidCurrent, int monthsLate, boolean canEnter,
+                         BigDecimal owedTotal) {
     }
 
     @Transactional(readOnly = true)
@@ -49,11 +52,8 @@ public class GymStatusService {
         GymMember member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new UnauthorizedSessionException("Tu sesión venció. Volvé a iniciar sesión."));
         LocalDate today = clock.instant().atZone(tenantService.requireCurrent().zoneId()).toLocalDate();
-
-        Optional<GymMembership> current = membershipRepository.findCurrent(memberId, today);
-        Optional<GymMembership> shown = current.isPresent()
-                ? current
-                : membershipRepository.findFirstByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(memberId);
+        GymBillingService.Status billing = billingService.status(member, today);
+        GymMembership plan = billing.plan();
 
         GymWeek week = GymWeek.of(today);
         int weekUsed = (int) checkinRepository.countByMemberIdAndLocalDateBetween(
@@ -63,9 +63,12 @@ public class GymStatusService {
                 .map(checkin -> new RecentCheckin(checkin.getLocalDate(), checkin.getSede().getName()))
                 .toList();
 
-        return new Status(member.getFullName(), shown.map(GymStatusService::view).orElse(null),
-                current.isPresent(), weekUsed, current.map(GymMembership::getDaysPerWeek).orElse(0),
-                checkedInToday, recent);
+        boolean canEnter = billing.canEnter();
+        return new Status(member.getFullName(),
+                plan == null ? null : view(plan), canEnter, weekUsed,
+                plan == null ? 0 : plan.getDaysPerWeek(), checkedInToday, recent,
+                billing.anchor(), billing.periodStart(), billing.periodEnd(), billing.paidUntil(),
+                billing.paidCurrent(), billing.monthsLate(), canEnter, billing.owedTotal());
     }
 
     private static MembershipView view(GymMembership membership) {

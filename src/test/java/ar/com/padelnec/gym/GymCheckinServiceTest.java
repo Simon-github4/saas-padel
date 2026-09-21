@@ -133,13 +133,27 @@ class GymCheckinServiceTest {
     }
 
     @Test
-    @DisplayName("Con la cuota vencida, el mensaje dice cuando venció")
-    void expiredMembershipSaysWhen() {
+    @DisplayName("Con un mes impago entra: la deuda de un solo mes es gracia, no bloqueo")
+    void oneUnpaidMonthIsStillAllowed() {
         gym.sell(club, memberId, MONDAY.minusDays(40), MONDAY.minusDays(10), 3, necochea);
+
+        CheckInResult result = scan(necochea);
+
+        assertThat(result.alreadyRegistered()).isFalse();
+        // El plan (dias por semana) sigue siendo el de la ultima cuota paga.
+        assertThat(result.weekLimit()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("Con dos cuotas impagas no entra, y el mensaje dice cuántas adeuda")
+    void twoUnpaidMonthsAreBlocked() {
+        // Una cuota paga (julio, del 10 al 9) deja agosto y septiembre impagos.
+        LocalDate july = LocalDate.of(2026, 7, 10);
+        gym.sell(club, memberId, july, july.plusMonths(1).minusDays(1), 3, necochea);
 
         assertThatThrownBy(() -> scan(necochea))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("Tu cuota venció el 04/09/2026");
+                .hasMessageContaining("Adeudás 2 cuotas");
     }
 
     @Test

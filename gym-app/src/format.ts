@@ -30,3 +30,12 @@ export function firstName(fullName: string): string {
 export function weekUsage(used: number, limit: number): string {
   return `${used} de ${limit} ${limit === 1 ? 'día' : 'días'}`;
 }
+
+/** 150000 -> "$ 150.000". Los montos del backend vienen como decimales numericos. */
+export function money(value: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    maximumFractionDigits: value % 1 === 0 ? 0 : 2,
+  }).format(value);
+}
