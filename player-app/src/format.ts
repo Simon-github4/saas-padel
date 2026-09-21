@@ -90,12 +90,19 @@ export function slotLine(courtName: string, startsAt: string, timeZone: string):
   return `🎾 ${courtName} · ${longDate(startsAt, timeZone)} · ${clockTime(startsAt, timeZone)} hs`;
 }
 
-/** Link para escribirle al club por WhatsApp. */
+/**
+ * Link para escribirle al club por WhatsApp. Directo a api.whatsapp.com/send:
+ * el redirect de wa.me re-decoda el texto y rompe los emojis (los mostraba como "?").
+ */
 export function whatsappLink(phone: string, message?: string): string {
   const digits = phone.replace(/[^0-9]/g, '');
-  return message
-    ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
-    : `https://wa.me/${digits}`;
+  const base = 'https://api.whatsapp.com/send';
+  if (!message) {
+    return digits ? `${base}?phone=${digits}` : base;
+  }
+  return digits
+    ? `${base}?phone=${digits}&text=${encodeURIComponent(message)}`
+    : `${base}?text=${encodeURIComponent(message)}`;
 }
 
 /**

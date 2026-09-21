@@ -124,16 +124,22 @@ public class PhoneNumbers {
         return Optional.of(new AreaCodeAndNumber(national.substring(0, length), national.substring(length)));
     }
 
-    /** Link de WhatsApp para que el jugador escriba al club con un toque. */
+    /**
+     * Link de WhatsApp para que el jugador escriba al club con un toque.
+     *
+     * <p>Directo a {@code api.whatsapp.com/send} y no por {@code wa.me}: el
+     * redirect de {@code wa.me} re-decoda el texto y rompe los caracteres de 4
+     * bytes, asi que los emojis llegaban como "?".
+     */
     public String whatsappLink(String e164, String presetMessage) {
         String digits = e164.replaceAll("[^0-9]", "");
         if (presetMessage == null || presetMessage.isBlank()) {
-            return "https://wa.me/" + digits;
+            return "https://api.whatsapp.com/send?phone=" + digits;
         }
         // URLEncoder es para formularios y deja los espacios como "+": algunas
         // versiones de WhatsApp los muestran tal cual ("Hola+Juan"). %20 lo lee
         // bien cualquiera, y un "+" de verdad en el mensaje ya viene como %2B.
-        return "https://wa.me/" + digits + "?text="
+        return "https://api.whatsapp.com/send?phone=" + digits + "&text="
                 + java.net.URLEncoder.encode(presetMessage, java.nio.charset.StandardCharsets.UTF_8)
                         .replace("+", "%20");
     }

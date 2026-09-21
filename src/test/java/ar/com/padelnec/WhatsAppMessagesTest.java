@@ -28,8 +28,8 @@ import org.mockito.ArgumentCaptor;
 
 /**
  * Los WhatsApp que manda el sistema, y los que el panel deja listos para mandar
- * a mano por wa.me: todos dicen el turno en una linea y terminan con un link a
- * la pagina, para que el jugador tenga a donde ir si le queda una duda.
+ * a mano por WhatsApp: todos dicen el turno en una linea y terminan con un link
+ * a la pagina, para que el jugador tenga a donde ir si le queda una duda.
  */
 class WhatsAppMessagesTest {
 
@@ -119,11 +119,12 @@ class WhatsAppMessagesTest {
     }
 
     @Test
-    @DisplayName("El link de wa.me lleva los espacios como %20, no como '+'")
+    @DisplayName("El link de WhatsApp lleva los espacios como %20, no como '+'")
     void whatsappLinkEncodesSpacesAsPercent20() {
         String link = new PhoneNumbers().whatsappLink("+5492262111222", "Hola Juana, 1+1");
 
-        assertThat(link).isEqualTo("https://wa.me/5492262111222?text=Hola%20Juana%2C%201%2B1");
+        assertThat(link)
+                .isEqualTo("https://api.whatsapp.com/send?phone=5492262111222&text=Hola%20Juana%2C%201%2B1");
     }
 
     private void assertSent(Consumer<NotificationService> send, String link) {
