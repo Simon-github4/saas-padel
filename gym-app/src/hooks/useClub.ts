@@ -28,7 +28,6 @@ export function useClub(slug: string): ClubState {
           return;
         }
         document.title = `${config.clubName} · Gimnasio`;
-        applyClubIcons(config.heroImageUrl);
         setState({ status: 'ready', config });
       })
       .catch((error: unknown) => {
@@ -57,44 +56,4 @@ export function useClub(slug: string): ClubState {
   }, [slug]);
 
   return state;
-}
-
-/**
- * Icono de la pestana y de la instalacion: la portada del club que trae la API,
- * o las imagenes por defecto del index.html cuando el club no cargo portada.
- * Se reemplazan en runtime porque el slug del club no se conoce en el html.
- */
-function applyClubIcons(heroImageUrl: string | null) {
-  document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((link) => link.remove());
-
-  // El navegador cachea el favicon por URL: la portada no cambia la URL entre
-  // cargas, asi que con un query nuevo se fuerza a pedirla de vuelta.
-  const hero = heroImageUrl
-    ? `${heroImageUrl}${heroImageUrl.includes('?') ? '&' : '?'}v=${Date.now()}`
-    : null;
-
-  const links: Array<{ rel: string; type?: string; sizes?: string; href: string }> = hero
-    ? [
-        { rel: 'icon', type: 'image/png', href: hero },
-        { rel: 'icon', sizes: '192x192', href: hero },
-        { rel: 'icon', sizes: '512x512', href: hero },
-        { rel: 'apple-touch-icon', href: hero },
-      ]
-    : [
-        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
-        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
-      ];
-
-  for (const { rel, type, sizes, href } of links) {
-    const link = document.createElement('link');
-    link.rel = rel;
-    if (type) {
-      link.type = type;
-    }
-    if (sizes) {
-      link.sizes = sizes;
-    }
-    link.href = href;
-    document.head.appendChild(link);
-  }
 }
