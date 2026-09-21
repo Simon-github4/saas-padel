@@ -21,7 +21,10 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
 import java.util.EnumSet;
 import java.util.Optional;
 import java.util.Set;
@@ -116,7 +119,7 @@ public class BookingService {
 
         Customer customer = customerService.findOrCreate(
                 request.phoneNumber(), request.fullName(), request.playerAccountId());
-        validateQuota(club, customer, now);
+        validateQuota(club, customer, slot);
 
         boolean payAtClub = resolvePaymentMode(club, customer, request.paymentChoice());
 
@@ -521,14 +524,29 @@ public class BookingService {
         }
     }
 
-    private void validateQuota(Tenant club, Customer customer, Instant now) {
+    /**
+     * Techo de turnos por jugador, por semana (lunes a domingo, en la hora del
+     * club) y contando la semana del turno que quiere reservar, no la de hoy: asi
+     * reservar la semana que viene no cuenta contra esta.
+     *
+     * <p>Los turnos fijos no cuentan: los arma el club para un grupo, y un jugador
+     * con uno no puede quedar sin poder reservar ninguno mas.
+     */
+    private void validateQuota(Tenant club, Customer customer, ResolvedSlot slot) {
         if (customer.getId() == null) {
             return;
         }
-        long active = bookingRepository.countActiveUpcoming(customer.getId(), now, ACTIVE);
+        ZoneId zone = club.zoneId();
+        LocalDate monday = slot.slot().startsAt().atZone(zone).toLocalDate()
+                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        long active = bookingRepository.countActiveBetween(
+                customer.getId(),
+                monday.atStartOfDay(zone).toInstant(),
+                monday.plusWeeks(1).atStartOfDay(zone).toInstant(),
+                ACTIVE, BookingSource.RECURRING);
         if (active >= club.getMaxActiveBookings()) {
             throw new BusinessRuleException(
-                    ("Ya tenés %d turnos reservados. Cancelá alguno o escribinos a %s.")
+                    ("Ya tenés %d turnos reservados esa semana. Cancelá alguno o escribinos a %s.")
                             .formatted(active, club.getWhatsappNumber()));
         }
     }

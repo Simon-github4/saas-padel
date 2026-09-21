@@ -136,7 +136,11 @@ public class Tenant extends BaseEntity {
     @Column(name = "confirmation_ttl_minutes", nullable = false)
     private int confirmationTtlMinutes = 15;
 
-    /** Cuantos turnos futuros puede tener tomados un mismo telefono a la vez. */
+    /**
+     * Cuantos turnos puede reservar un mismo telefono por semana (lunes a domingo,
+     * la semana del turno que pide). Los turnos fijos no cuentan. El nombre de la
+     * columna es de cuando el techo era sobre todos los turnos futuros.
+     */
     @Column(name = "max_active_bookings", nullable = false)
     private int maxActiveBookings = 7;
 

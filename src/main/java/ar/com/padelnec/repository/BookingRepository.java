@@ -1,6 +1,7 @@
 package ar.com.padelnec.repository;
 
 import ar.com.padelnec.domain.Booking;
+import ar.com.padelnec.domain.enums.BookingSource;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -184,18 +185,24 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                                    @Param("from") Instant from);
 
     /**
-     * Reservas activas del mismo telefono en el futuro. Sirve para frenar al que
-     * bloquea media agenda sin intencion de pagar.
+     * Reservas activas del mismo telefono que empiezan en {@code [from, until)},
+     * sin contar las de un origen (los turnos fijos). Sirve para frenar al que
+     * bloquea media agenda sin intencion de pagar: el techo es por semana, y un
+     * turno fijo no es una reserva que el jugador haya sumado por su cuenta.
      */
     @Query("""
             SELECT count(b) FROM Booking b
             WHERE b.customer.id = :customerId
-              AND b.startTime > :now
+              AND b.startTime >= :from
+              AND b.startTime < :until
               AND b.status IN :statuses
+              AND b.source <> :excludedSource
             """)
-    long countActiveUpcoming(@Param("customerId") UUID customerId,
-                             @Param("now") Instant now,
-                             @Param("statuses") Collection<BookingStatus> statuses);
+    long countActiveBetween(@Param("customerId") UUID customerId,
+                            @Param("from") Instant from,
+                            @Param("until") Instant until,
+                            @Param("statuses") Collection<BookingStatus> statuses,
+                            @Param("excludedSource") BookingSource excludedSource);
 
     /**
      * Turnos que arrancan dentro de un rango, para agregar estadisticas del club.

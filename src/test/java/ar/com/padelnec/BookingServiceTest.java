@@ -10,6 +10,7 @@ import ar.com.padelnec.domain.Customer;
 import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
+import ar.com.padelnec.domain.enums.BookingSource;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CancellationReason;
 import ar.com.padelnec.notification.NewBookingFeed;
@@ -220,6 +221,73 @@ class BookingServiceTest {
     @DisplayName("Si el club acepta reservas de palabra, cualquier telefono puede pagar en el club")
     void canPayAtClubIsTrueForEveryoneWhenTheClubAcceptsUnpaidBookings() {
         assertThat(bookingService.canPayAtClub(club, "2262417000")).isTrue();
+    }
+
+    // ------------------------------------------- techo de turnos por semana
+
+    @Test
+    @DisplayName("El techo de turnos por jugador es por semana: se frena en esa semana, no en la siguiente")
+    void weeklyLimitAppliesPerWeek() {
+        club.setMaxActiveBookings(2);
+        club = fixture.save(club);
+        reserve(court1, LocalTime.of(8, 0), "2262415000", "Simon Diaz");
+        reserve(court1, LocalTime.of(9, 30), "2262415000", "Simon Diaz");
+
+        assertThatThrownBy(() -> reserve(court1, LocalTime.of(11, 0), "2262415000", "Simon Diaz"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("esa semana");
+
+        // La semana que viene tiene su propio cupo (mismo martes, siete dias despues).
+        Booking nextWeek = bookingService.create(club, new NewBooking(court1.getId(),
+                TODAY.plusWeeks(1).atTime(8, 0).atZone(ZONE).toInstant(),
+                "Simon Diaz", "2262415000", PaymentChoice.PAY_AT_CLUB));
+        assertThat(nextWeek.getStatus()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("La semana va de lunes a domingo: un turno el domingo no cuenta contra el lunes siguiente")
+    void theWeekRunsMondayToSunday() {
+        club.setMaxActiveBookings(1);
+        club = fixture.save(club);
+        fixture.allDayPrice(DayOfWeek.SUNDAY, "20000");
+        fixture.allDayPrice(DayOfWeek.MONDAY, "20000");
+        LocalDate sunday = TODAY.plusDays(5);
+        LocalDate nextMonday = TODAY.plusDays(6);
+
+        bookingService.create(club, new NewBooking(court1.getId(),
+                sunday.atTime(8, 0).atZone(ZONE).toInstant(), "Simon Diaz", "2262415000",
+                PaymentChoice.PAY_AT_CLUB));
+
+        Booking monday = bookingService.create(club, new NewBooking(court1.getId(),
+                nextMonday.atTime(8, 0).atZone(ZONE).toInstant(), "Simon Diaz", "2262415000",
+                PaymentChoice.PAY_AT_CLUB));
+        assertThat(monday.getStatus()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Los turnos fijos no cuentan para el techo: un jugador con uno igual puede reservar")
+    void recurringBookingsDoNotCountTowardsTheWeeklyLimit() {
+        club.setMaxActiveBookings(1);
+        club = fixture.save(club);
+        Customer regular = customerService.findOrCreate("2262415000", "Simon Diaz", null);
+        Booking fixed = new Booking();
+        fixed.setCourt(court2);
+        fixed.setCustomer(regular);
+        fixed.setStartTime(slotAt(LocalTime.of(20, 0)));
+        fixed.setEndTime(slotAt(LocalTime.of(21, 30)));
+        fixed.setTotalPrice(new BigDecimal("20000"));
+        fixed.setSource(BookingSource.RECURRING);
+        fixed.markConfirmed();
+        bookingRepository.saveAndFlush(fixed);
+
+        // Con el fijo ya cargado, el primer turno online entra...
+        Booking online = reserve(court1, LocalTime.of(18, 30), "2262415000", "Simon Diaz");
+        assertThat(online.getStatus()).isNotNull();
+
+        // ...y ahi si se agoto el cupo semanal de 1 (el fijo no lo gasto).
+        assertThatThrownBy(() -> reserve(court1, LocalTime.of(11, 0), "2262415000", "Simon Diaz"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("esa semana");
     }
 
     // --------------------------------------------------- reserva con sena

@@ -881,9 +881,10 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         IntegerField horizon = new IntegerField("Se reserva con (días de anticipación)");
         horizon.setValue(club.getBookingHorizonDays());
 
-        IntegerField maxActive = new IntegerField("Turnos futuros por jugador");
+        IntegerField maxActive = new IntegerField("Turnos por jugador por semana");
         maxActive.setValue(club.getMaxActiveBookings());
-        maxActive.setHelperText("Evita que un mismo teléfono bloquee la agenda entera");
+        maxActive.setHelperText("Cuántos turnos puede reservar un mismo teléfono en una semana (de lunes a "
+                + "domingo). Los turnos fijos no cuentan.");
 
         Button save = new Button("Guardar Cambios", event -> {
             club.setName(name.getValue());
