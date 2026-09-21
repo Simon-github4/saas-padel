@@ -546,8 +546,8 @@ public class BookingService {
                 ACTIVE, BookingSource.RECURRING);
         if (active >= club.getMaxActiveBookings()) {
             throw new BusinessRuleException(
-                    ("Ya tenés %d turnos reservados esa semana. Cancelá alguno o escribinos a %s.")
-                            .formatted(active, club.getWhatsappNumber()));
+                    "Llegaste al máximo de turnos por semana (escribinos al WhatsApp %s)"
+                            .formatted(club.getWhatsappNumber()));
         }
     }
 

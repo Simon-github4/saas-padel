@@ -235,7 +235,7 @@ class BookingServiceTest {
 
         assertThatThrownBy(() -> reserve(court1, LocalTime.of(11, 0), "2262415000", "Simon Diaz"))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("esa semana");
+                .hasMessageContaining("máximo de turnos por semana");
 
         // La semana que viene tiene su propio cupo (mismo martes, siete dias despues).
         Booking nextWeek = bookingService.create(club, new NewBooking(court1.getId(),
@@ -287,7 +287,7 @@ class BookingServiceTest {
         // ...y ahi si se agoto el cupo semanal de 1 (el fijo no lo gasto).
         assertThatThrownBy(() -> reserve(court1, LocalTime.of(11, 0), "2262415000", "Simon Diaz"))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("esa semana");
+                .hasMessageContaining("máximo de turnos por semana");
     }
 
     // --------------------------------------------------- reserva con sena
@@ -394,7 +394,7 @@ class BookingServiceTest {
         LocalTime eighth = slot;
         assertThatThrownBy(() -> reserve(court1, eighth, PaymentChoice.PAY_AT_CLUB))
                 .isInstanceOf(BusinessRuleException.class)
-                .hasMessageContaining("7 turnos");
+                .hasMessageContaining("máximo de turnos por semana");
     }
 
     @Test
