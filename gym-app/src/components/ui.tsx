@@ -18,7 +18,7 @@ export function Screen({ children, top }: { children: ReactNode; top?: ReactNode
 /** Barra fija con el nombre del club, que es lo unico que el socio necesita ver siempre. */
 export function TopBar({ name, action }: { name: string; action?: ReactNode }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-cal/10 bg-pista/90 pt-[env(safe-area-inset-top)] backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-borde-suave bg-pista/90 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-lg items-center justify-between gap-3 px-4">
         <p className="display truncate text-xl tracking-[0.14em]">{name}</p>
         {action}
@@ -29,7 +29,7 @@ export function TopBar({ name, action }: { name: string; action?: ReactNode }) {
 
 export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl border border-cal/10 bg-vidrio p-5 [box-shadow:var(--shadow-card)] ${className}`}>
+    <div className={`rounded-2xl border border-borde bg-vidrio p-5 [box-shadow:var(--shadow-card)] ${className}`}>
       {children}
     </div>
   );
@@ -53,7 +53,7 @@ export function Button({
   const styles = {
     primary: 'bg-cal text-pista hover:bg-arena',
     accent: 'bg-ladrillo text-cal hover:bg-ladrillo/90 [box-shadow:var(--shadow-glow)]',
-    secondary: 'border border-cal/10 bg-vidrio text-cal hover:border-cal/25 hover:bg-vidrio-alto',
+    secondary: 'border border-borde bg-vidrio text-cal hover:border-cal/30 hover:bg-vidrio-alto',
   }[variant];
 
   return (
@@ -97,7 +97,7 @@ export function Field({
         autoComplete={autoComplete}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-cal/10 bg-pista px-4 py-3 text-base text-cal outline-none transition placeholder:text-ink-mute focus:border-ladrillo focus:ring-2 focus:ring-ladrillo/25"
+        className="w-full rounded-xl border border-borde-suave bg-pista px-4 py-3 text-base text-cal outline-none transition placeholder:text-ink-mute focus:border-ladrillo focus:ring-2 focus:ring-ladrillo/25"
       />
       {hint && <span className="mt-1.5 block text-xs text-ink-soft">{hint}</span>}
     </label>
@@ -138,12 +138,13 @@ export function Badge({
   tone = 'neutral',
 }: {
   children: ReactNode;
-  tone?: 'neutral' | 'success' | 'warning';
+  tone?: 'neutral' | 'success' | 'warning' | 'danger';
 }) {
   const styles = {
     neutral: 'border-cal/10 bg-cal/[0.06] text-ink-soft',
     success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
     warning: 'border-ladrillo/30 bg-ladrillo/15 text-ladrillo-claro',
+    danger: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
   }[tone];
 
   return <span className={`eyebrow inline-flex items-center rounded-full border px-2.5 py-1 ${styles}`}>{children}</span>;

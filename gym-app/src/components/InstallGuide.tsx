@@ -126,7 +126,7 @@ export function InstallGuide() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="install-title"
-            className="max-h-full w-full max-w-lg overflow-y-auto rounded-2xl border border-cal/10 bg-pista p-5 [box-shadow:var(--shadow-card)]"
+            className="max-h-full w-full max-w-lg overflow-y-auto rounded-2xl border border-borde bg-pista p-5 [box-shadow:var(--shadow-card)]"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -187,7 +187,7 @@ function InstallImage({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false);
 
   return (
-    <div className="mt-5 overflow-hidden rounded-2xl border border-cal/10 bg-vidrio-alto p-3">
+    <div className="mt-5 overflow-hidden rounded-2xl border border-borde bg-vidrio-alto p-3">
       {failed ? (
         <div className="flex aspect-[9/16] w-full items-center justify-center rounded-xl border border-dashed border-cal/20 bg-pista px-6 text-center">
           <div>

@@ -109,7 +109,7 @@ export function ScanScreen({ onCode, onCancel }: { onCode: (token: string) => vo
       <h1 className="text-3xl">Escaneá el QR</h1>
       <p className="mt-2 text-sm text-ink-soft">Apuntá la cámara al cartel de la entrada.</p>
 
-      <div className="relative mt-6 aspect-square overflow-hidden rounded-2xl border border-cal/10 bg-vidrio">
+      <div className="relative mt-6 aspect-square overflow-hidden rounded-2xl border border-borde bg-vidrio">
         <video ref={videoRef} playsInline muted className="size-full object-cover" />
         {!cameraError && (
           <span className="pointer-events-none absolute inset-8 rounded-2xl border-2 border-ladrillo-claro/70" aria-hidden />

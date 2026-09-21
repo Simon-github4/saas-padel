@@ -93,7 +93,7 @@ export function HomeScreen({ onScan }: { onScan: () => void }) {
       {me.recent.length > 0 && (
         <section className="mt-10">
           <h2 className="text-xl">Tus últimos ingresos</h2>
-          <ul className="mt-3 divide-y divide-cal/10 rounded-2xl border border-cal/10 bg-vidrio">
+          <ul className="mt-3 divide-y divide-borde-suave rounded-2xl border border-borde bg-vidrio">
             {me.recent.map((checkin) => (
               <li key={checkin.date} className="flex items-center justify-between px-4 py-3 text-sm">
                 <span>{shortDay(checkin.date)}</span>
