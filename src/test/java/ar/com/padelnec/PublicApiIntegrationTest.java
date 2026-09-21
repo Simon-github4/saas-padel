@@ -3,9 +3,11 @@ package ar.com.padelnec;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ar.com.padelnec.config.TenantContext;
+import ar.com.padelnec.domain.Customer;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.TenantHeroImage;
 import ar.com.padelnec.repository.TenantHeroImageRepository;
+import ar.com.padelnec.service.CustomerService;
 import tools.jackson.databind.JsonNode;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -41,6 +43,7 @@ class PublicApiIntegrationTest {
     @LocalServerPort private int port;
     @Autowired private ClubFixture fixture;
     @Autowired private TenantHeroImageRepository tenantHeroImageRepository;
+    @Autowired private CustomerService customerService;
 
     private RestTestClient client;
     private LocalDate matchDay;
@@ -334,6 +337,28 @@ class PublicApiIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(bookingBody(slot))
                 .exchange();
+    }
+
+    @Test
+    @DisplayName("El checkout pregunta por telefono si puede pagar en el club: si, para uno de confianza aunque el club exija sena")
+    void paymentOptionsAreServedPerPhone() {
+        club.setAllowUnpaidBooking(false);
+        fixture.save(club);
+        TenantContext.set(club.getId());
+        Customer regular = customerService.findOrCreate("2262415000", "Grupo del martes", null);
+        customerService.setTrusted(regular, true);
+        TenantContext.clear();
+
+        assertThat(canPayAtClub("2262415000")).isTrue();
+        assertThat(canPayAtClub("2262416000")).isFalse();
+    }
+
+    private boolean canPayAtClub(String phone) {
+        return client.get().uri("/api/public/club-necochea/payment-options?phone=" + phone)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody().get("canPayAtClub").asBoolean();
     }
 
     private JsonNode availability() {

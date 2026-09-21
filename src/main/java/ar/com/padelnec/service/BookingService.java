@@ -534,6 +534,30 @@ public class BookingService {
     }
 
     /**
+     * Si este telefono puede reservar sin sena: el club acepta reservas de palabra,
+     * o el jugador esta marcado de confianza. Es lo mismo que decide
+     * {@link #resolvePaymentMode} al reservar; el checkout lo pregunta antes para
+     * saber si ofrecer "pagar en el club".
+     *
+     * <p>Un telefono que no se entiende da falso en vez de error: se esta
+     * escribiendo, y no hay nada que avisarle todavia.
+     *
+     * <p>Sin {@code @Transactional} a proposito: el telefono invalido lo rechaza
+     * {@code findByPhone} con una excepcion, y si esa excepcion cruzara una
+     * transaccion de este metodo la marcaria para rollback aunque se atrape aca.
+     */
+    public boolean canPayAtClub(Tenant club, String rawPhone) {
+        if (club.isAllowUnpaidBooking()) {
+            return true;
+        }
+        try {
+            return customerService.findByPhone(rawPhone).map(Customer::isTrusted).orElse(false);
+        } catch (BusinessRuleException ex) {
+            return false;
+        }
+    }
+
+    /**
      * @return true si la reserva va por el camino sin pago anticipado
      */
     private boolean resolvePaymentMode(Tenant club, Customer customer, PaymentChoice choice) {

@@ -26,6 +26,10 @@ public final class BookingDtos {
             @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice) {
     }
 
+    /** Si el telefono puede reservar y pagar en el club, aunque el club pida sena. */
+    public record PaymentOptionsResponse(boolean canPayAtClub) {
+    }
+
     public enum PaymentChoiceDto {
         /** Sena online por MercadoPago. */
         DEPOSIT_ONLINE,

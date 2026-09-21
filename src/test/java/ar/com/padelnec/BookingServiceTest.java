@@ -200,6 +200,28 @@ class BookingServiceTest {
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.AWAITING_CONFIRMATION);
     }
 
+    @Test
+    @DisplayName("El checkout ofrece pagar en el club a un jugador de confianza aunque el club exija sena")
+    void canPayAtClubIsTrueForTrustedPhonesEvenWhenTheClubRequiresDeposit() {
+        club.setAllowUnpaidBooking(false);
+        club = fixture.save(club);
+        Customer regular = customerService.findOrCreate("2262415000", "Grupo del martes", null);
+        customerService.setTrusted(regular, true);
+        customerService.findOrCreate("2262416000", "Alguien nuevo", null);
+
+        assertThat(bookingService.canPayAtClub(club, "2262415000")).isTrue();
+        // Conocido pero sin la marca, desconocido y un numero a medio escribir: no.
+        assertThat(bookingService.canPayAtClub(club, "2262416000")).isFalse();
+        assertThat(bookingService.canPayAtClub(club, "2262417000")).isFalse();
+        assertThat(bookingService.canPayAtClub(club, "2262")).isFalse();
+    }
+
+    @Test
+    @DisplayName("Si el club acepta reservas de palabra, cualquier telefono puede pagar en el club")
+    void canPayAtClubIsTrueForEveryoneWhenTheClubAcceptsUnpaidBookings() {
+        assertThat(bookingService.canPayAtClub(club, "2262417000")).isTrue();
+    }
+
     // --------------------------------------------------- reserva con sena
 
     @Test
