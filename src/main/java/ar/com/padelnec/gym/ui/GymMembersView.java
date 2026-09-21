@@ -369,12 +369,18 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         method.setValue(PayMethod.CASH);
         method.setWidthFull();
 
-        Select<GymSede> collectedAt = new Select<>();
-        collectedAt.setLabel("Cobrado en");
-        collectedAt.setItems(sedes);
-        collectedAt.setItemLabelGenerator(GymSede::getName);
-        collectedAt.setValue(sedes.getFirst());
-        collectedAt.setWidthFull();
+        // Con una sola sede no se pregunta dónde se cobró: se asigna esa. Con varias, sí.
+        final Select<GymSede> collectedAt;
+        if (sedes.size() > 1) {
+            collectedAt = new Select<>();
+            collectedAt.setLabel("Cobrado en");
+            collectedAt.setItems(sedes);
+            collectedAt.setItemLabelGenerator(GymSede::getName);
+            collectedAt.setValue(sedes.getFirst());
+            collectedAt.setWidthFull();
+        } else {
+            collectedAt = null;
+        }
 
         VerticalLayout body = new VerticalLayout(cycle);
         if (planHint != null) {
@@ -385,7 +391,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             body.add(days);
         }
         body.add(total, sedeGroup, method);
-        if (sedes.size() > 1) {
+        if (collectedAt != null) {
             body.add(collectedAt);
         }
         body.setPadding(false);
@@ -398,10 +404,11 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                 return;
             }
             Set<UUID> sedeIds = sedeGroup.getValue().stream().map(GymSede::getId).collect(Collectors.toSet());
+            UUID collectedSedeId = collectedAt == null ? sedeIds.iterator().next() : collectedAt.getValue().getId();
             try {
                 membershipService.charge(row.id(), selected.size(), price.getValue(),
                         days == null ? null : days.getValue(), method.getValue(),
-                        collectedAt.getValue().getId(), sedeIds,
+                        collectedSedeId, sedeIds,
                         GymViewSupport.currentUserId(authenticationContext).orElse(null), today);
                 dialog.close();
                 refresh();
