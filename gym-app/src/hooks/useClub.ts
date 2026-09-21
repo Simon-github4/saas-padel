@@ -67,12 +67,18 @@ export function useClub(slug: string): ClubState {
 function applyClubIcons(heroImageUrl: string | null) {
   document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((link) => link.remove());
 
-  const links: Array<{ rel: string; type?: string; sizes?: string; href: string }> = heroImageUrl
+  // El navegador cachea el favicon por URL: la portada no cambia la URL entre
+  // cargas, asi que con un query nuevo se fuerza a pedirla de vuelta.
+  const hero = heroImageUrl
+    ? `${heroImageUrl}${heroImageUrl.includes('?') ? '&' : '?'}v=${Date.now()}`
+    : null;
+
+  const links: Array<{ rel: string; type?: string; sizes?: string; href: string }> = hero
     ? [
-        { rel: 'icon', type: 'image/png', href: heroImageUrl },
-        { rel: 'icon', sizes: '192x192', href: heroImageUrl },
-        { rel: 'icon', sizes: '512x512', href: heroImageUrl },
-        { rel: 'apple-touch-icon', href: heroImageUrl },
+        { rel: 'icon', type: 'image/png', href: hero },
+        { rel: 'icon', sizes: '192x192', href: hero },
+        { rel: 'icon', sizes: '512x512', href: hero },
+        { rel: 'apple-touch-icon', href: hero },
       ]
     : [
         { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
