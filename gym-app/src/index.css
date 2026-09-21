@@ -7,33 +7,37 @@
   --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Bebas Neue", "Archivo Variable", ui-sans-serif, sans-serif;
 
-  --color-pista: #0a0a0a;
-  --color-vidrio: #1e1e1e;
-  --color-vidrio-alto: #2d2d2d;
-  --color-cal: #ffffff;
-  --color-arena: #e5e5e5;
+  /* Paleta unica clara (misma que la app del jugador en modo claro): el modo
+     oscuro forzado de Samsung Internet masha un sitio oscuro (grises contra el
+     negro) pero respeta la ruta claro->oscuro, asi que la app se pinta clara
+     en todos los navegadores. */
+  --color-pista: #f6f3ee;
+  --color-vidrio: #ffffff;
+  --color-vidrio-alto: #ece6dc;
+  --color-cal: #17140f;
+  --color-arena: #3f3a33;
 
-  /* Bordes solidos y no blancos traslucidos: el modo oscuro forzado de Samsung
-     Internet reescala las transparencias y aplana los grises contra el negro. */
-  --color-borde: #3a3a3a;
-  --color-borde-suave: #292929;
+  /* Bordes solidos: las transparencias se deforman bajo el modo oscuro forzado
+     de Samsung Internet. */
+  --color-borde: #d8d2c6;
+  --color-borde-suave: #e6e0d4;
 
   /* Dos tonos de ladrillo por contraste: el 600 solo rinde en texto grande, el
      400 tambien en texto chico. */
   --color-ladrillo: #ea580c;
   --color-ladrillo-claro: #fb923c;
 
-  --color-ink-soft: #ababab;
-  --color-ink-mute: #6e6e6e;
+  --color-ink-soft: #57524a;
+  --color-ink-mute: #8a8377;
 
-  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 24px rgba(0, 0, 0, 0.55);
-  --shadow-glow: 0 8px 24px color-mix(in srgb, var(--color-ladrillo) 28%, transparent);
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 24px rgba(23, 20, 15, 0.12);
+  --shadow-glow: 0 8px 24px color-mix(in srgb, var(--color-ladrillo) 18%, transparent);
 }
 
 html {
   -webkit-text-size-adjust: 100%;
-  /* Que el navegador pinte oscuros los inputs y la barra del movil. */
-  color-scheme: dark;
+  /* Que el navegador pinte claros los inputs y la barra del movil. */
+  color-scheme: light;
 }
 
 body {

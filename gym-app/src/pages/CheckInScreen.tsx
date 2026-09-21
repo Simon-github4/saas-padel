@@ -114,7 +114,7 @@ export function CheckInScreen({
   return (
     <>
       <div className="flex flex-col items-center pt-4 text-center">
-        <span className="grid size-20 place-items-center rounded-full bg-emerald-500/15 text-emerald-300">
+        <span className="grid size-20 place-items-center rounded-full bg-emerald-500/15 text-emerald-700">
           <svg viewBox="0 0 24 24" className="size-10" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M5 12.5l4.5 4.5L19 7.5" />
           </svg>

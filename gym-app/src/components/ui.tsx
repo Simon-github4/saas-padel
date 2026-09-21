@@ -112,9 +112,9 @@ export function Alert({
   tone?: 'error' | 'info' | 'success';
 }) {
   const styles = {
-    error: 'border-red-500/25 bg-red-500/10 text-red-300',
+    error: 'border-red-500/30 bg-red-500/10 text-red-700',
     info: 'border-cal/10 bg-cal/[0.04] text-ink-soft',
-    success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
+    success: 'border-emerald-600/30 bg-emerald-500/10 text-emerald-700',
   }[tone];
 
   return (
@@ -127,7 +127,7 @@ export function Alert({
 export function Loading({ label = 'Cargando…' }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-3 py-16 text-ink-soft">
-      <span className="size-5 animate-spin rounded-full border-2 border-cal/15 border-t-ladrillo" />
+      <span className="size-5 animate-spin rounded-full border-2 border-cal/25 border-t-ladrillo" />
       {label}
     </div>
   );
@@ -142,9 +142,9 @@ export function Badge({
 }) {
   const styles = {
     neutral: 'border-cal/10 bg-cal/[0.06] text-ink-soft',
-    success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
-    warning: 'border-ladrillo/30 bg-ladrillo/15 text-ladrillo-claro',
-    danger: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
+    success: 'border-emerald-600/30 bg-emerald-500/10 text-emerald-700',
+    warning: 'border-ladrillo/40 bg-ladrillo/15 text-[#a13d06]',
+    danger: 'border-rose-500/30 bg-rose-500/10 text-rose-700',
   }[tone];
 
   return <span className={`eyebrow inline-flex items-center rounded-full border px-2.5 py-1 ${styles}`}>{children}</span>;

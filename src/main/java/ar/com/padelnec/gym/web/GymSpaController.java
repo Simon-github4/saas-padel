@@ -2,7 +2,6 @@ package ar.com.padelnec.gym.web;
 
 import ar.com.padelnec.gym.GymModule;
 import ar.com.padelnec.domain.Tenant;
-import ar.com.padelnec.domain.enums.ThemeMode;
 import ar.com.padelnec.service.TenantService;
 import java.util.List;
 import java.util.Map;
@@ -80,7 +79,8 @@ public class GymSpaController {
         String shortName = clubName.length() <= 12 ? clubName : clubName.substring(0, 12).trim();
         String icon = hasText(club.getHeroImageUrl()) ? club.getHeroImageUrl() : "/gym-app/icon-512.png";
         String primary = colorOr(club.getPrimaryColor(), "#ea580c");
-        String background = club.getThemeMode() == ThemeMode.LIGHT ? "#ffffff" : "#0a0a0a";
+        // La app del socio es clara en todos los navegadores: el splash instalado usa ese mismo fondo.
+        String background = "#f6f3ee";
         Map<String, Object> manifest = Map.of(
                 "name", clubName + " · Gimnasio",
                 "short_name", shortName,
