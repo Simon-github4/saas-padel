@@ -62,6 +62,13 @@ final class GymViewSupport {
         return "$ " + format.format(amount);
     }
 
+    /** El numero a secas ("35.000"), para campos que ya llevan el "$" como prefijo. */
+    static String amount(BigDecimal value) {
+        NumberFormat format = NumberFormat.getNumberInstance(AR);
+        format.setMaximumFractionDigits(2);
+        return format.format(value);
+    }
+
     static Span badge(String text, String theme) {
         Span badge = new Span(text);
         badge.getElement().getThemeList().add("badge " + theme);

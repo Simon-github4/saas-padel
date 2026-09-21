@@ -114,12 +114,16 @@ public class GymMembershipService {
                     + (pending.size() == 1 ? "una cuota" : pending.size() + " cuotas") + " pendientes.");
         }
 
-        int effectiveDays = status.planDaysPerWeek();
-        if (status.plan() == null) {
-            if (daysPerWeek == null) {
-                throw new BusinessRuleException("Elegí la cantidad de días por semana del socio.");
+        int effectiveDays;
+        if (daysPerWeek != null) {
+            if (daysPerWeek < 1 || daysPerWeek > 7) {
+                throw new BusinessRuleException("Los días por semana van de 1 a 7.");
             }
             effectiveDays = daysPerWeek;
+        } else if (status.plan() != null) {
+            effectiveDays = status.planDaysPerWeek();
+        } else {
+            throw new BusinessRuleException("Elegí la cantidad de días por semana del socio.");
         }
         BigDecimal unit = price != null ? price : tariffService.priceOf(effectiveDays);
         if (price == null && unit == null) {

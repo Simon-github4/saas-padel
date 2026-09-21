@@ -327,8 +327,8 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         total.setReadOnly(true);
         total.setWidthFull();
 
-        // El socio que arranca recien aca define sus dias por semana; la cuota se
-        // auto-completa con la tarifa de esos dias. El que ya pago conserva su plan.
+        // El socio que arranca define acá sus días por semana; el que ya pagó los ve
+        // preseleccionados y puede cambiarlos: la próxima cuota marca el plan nuevo.
         boolean newPlan = billing.plan() == null;
         IntegerField days = new IntegerField("Días por semana");
         days.setMin(1);
@@ -336,28 +336,19 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         days.setValue(newPlan ? DEFAULT_DAYS_PER_WEEK : billing.planDaysPerWeek());
         days.setStepButtonsVisible(true);
         days.setWidthFull();
-        days.setVisible(newPlan);
 
         // La tarifa aparece como sugerencia (placeholder), no como monto cargado:
         // cambia solo si cambian los días por semana. El total usa la tarifa
         // cuando el mostrador no tipea el monto a mano.
         Runnable refresh = () -> {
-            BigDecimal tariff = tariffFor(newPlan, days, billing);
-            price.setPlaceholder(tariff == null ? null : GymViewSupport.money(tariff));
+            BigDecimal tariff = tariffFor(days);
+            price.setPlaceholder(tariff == null ? null : GymViewSupport.amount(tariff));
             updateTotal(total, price, periods, tariff);
         };
         days.addValueChangeListener(event -> refresh.run());
-        periods.addValueChangeListener(event -> updateTotal(total, price, periods, tariffFor(newPlan, days, billing)));
-        price.addValueChangeListener(event -> updateTotal(total, price, periods, tariffFor(newPlan, days, billing)));
+        periods.addValueChangeListener(event -> updateTotal(total, price, periods, tariffFor(days)));
+        price.addValueChangeListener(event -> updateTotal(total, price, periods, tariffFor(days)));
         refresh.run();
-
-        Span planHint = null;
-        if (!newPlan) {
-            int dpw = billing.planDaysPerWeek();
-            planHint = new Span("Su plan actual es de " + dpw + (dpw == 1 ? " día" : " días")
-                    + " por semana.");
-            planHint.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
-        }
 
         CheckboxGroup<GymSede> sedeGroup = new CheckboxGroup<>("Vale en");
         sedeGroup.setItems(sedes);
@@ -385,14 +376,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         }
 
         VerticalLayout body = new VerticalLayout(cycle);
-        if (planHint != null) {
-            body.add(planHint);
-        }
-        body.add(periods, price);
-        if (days != null) {
-            body.add(days);
-        }
-        body.add(total, sedeGroup, method);
+        body.add(periods, price, days, total, sedeGroup, method);
         if (collectedAt != null) {
             body.add(collectedAt);
         }
@@ -409,7 +393,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             UUID collectedSedeId = collectedAt == null ? sedeIds.iterator().next() : collectedAt.getValue().getId();
             try {
                 membershipService.charge(row.id(), selected.size(), price.getValue(),
-                        days == null ? null : days.getValue(), method.getValue(),
+                        days.getValue(), method.getValue(),
                         collectedSedeId, sedeIds,
                         GymViewSupport.currentUserId(authenticationContext).orElse(null), today);
                 dialog.close();
@@ -426,15 +410,14 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         price.focus();
     }
 
-    /** Los días por semana que definen la tarifa: los del plan, o los que elige el recién llegado. */
-    private static int effectiveDpw(boolean newPlan, IntegerField days, GymBillingService.Status billing) {
-        return !newPlan ? billing.planDaysPerWeek()
-                : days.getValue() == null ? 0 : days.getValue();
+    /** Los días por semana que definen la tarifa: los que muestra el campo. */
+    private static int effectiveDpw(IntegerField days) {
+        return days.getValue() == null ? 0 : days.getValue();
     }
 
     /** La tarifa que corresponde: null si no está fijada para esos días. */
-    private BigDecimal tariffFor(boolean newPlan, IntegerField days, GymBillingService.Status billing) {
-        int dpw = effectiveDpw(newPlan, days, billing);
+    private BigDecimal tariffFor(IntegerField days) {
+        int dpw = effectiveDpw(days);
         return dpw > 0 ? tariffService.priceOf(dpw) : null;
     }
 

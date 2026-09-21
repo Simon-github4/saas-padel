@@ -126,7 +126,7 @@ class GymBillingServiceTest {
         assertThat(status.canEnter()).isTrue();
         // La deuda primero, y despues los adelantos a futuro.
         assertThat(status.pending().getFirst().start()).isEqualTo(LocalDate.of(2026, 7, 15));
-        assertThat(status.pending()).hasSize(12);
+        assertThat(status.pending()).hasSize(GymBillingService.LOOK_AHEAD + 1);
         assertThat(status.paidUntil()).isNull();
     }
 
@@ -139,7 +139,7 @@ class GymBillingServiceTest {
         assertThat(status.monthsLate()).isEqualTo(2);
         assertThat(status.canEnter()).isFalse();
         // La deuda se cobra de la mas vieja a la mas nueva: julio y agosto.
-        assertThat(status.pending()).hasSize(13);
+        assertThat(status.pending()).hasSize(GymBillingService.LOOK_AHEAD + 2);
         assertThat(status.pending().get(0).start()).isEqualTo(LocalDate.of(2026, 7, 15));
         assertThat(status.pending().get(1).start()).isEqualTo(LocalDate.of(2026, 8, 15));
     }
@@ -205,6 +205,25 @@ class GymBillingServiceTest {
         assertThat(status.paidCurrent()).isTrue();
         assertThat(status.monthsLate()).isZero();
         assertThat(status.canEnter()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Al cobrar con más días por semana, la cuota nueva cambia el plan del socio")
+    void planCanChangeItsDaysPerWeek() {
+        LocalDate today = LocalDate.of(2026, 6, 15);
+        charge(1, new BigDecimal("30000"), 3, today);
+
+        // Pagó 3 días y ahora quiere ir 4: la próxima cuota sale con el plan nuevo.
+        membershipService.charge(memberId, 1, new BigDecimal("40000"), 4,
+                ar.com.padelnec.gym.domain.PayMethod.CASH,
+                sede.getId(), Set.of(sede.getId()), null, LocalDate.of(2026, 7, 20));
+
+        Status status = billing.status(memberId, LocalDate.of(2026, 7, 20));
+        assertThat(status.planDaysPerWeek()).isEqualTo(4);
+        // El plan lo marca la última cuota: la de 4 días es la más nueva.
+        assertThat(membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(memberId))
+                .extracting(GymMembership::getDaysPerWeek)
+                .containsExactly(4, 3);
     }
 
     @Test
