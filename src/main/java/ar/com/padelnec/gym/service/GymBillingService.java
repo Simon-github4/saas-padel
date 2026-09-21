@@ -34,7 +34,7 @@ public class GymBillingService {
     public static final int MAX_SCAN_BACK = 400;
 
     /** Cuantas cuotas a futuro se pueden pagar por adelantado (ademas de la corriente y las vencidas). */
-    public static final int LOOK_AHEAD = 11;
+    public static final int LOOK_AHEAD = 4;
 
     private final GymMemberRepository memberRepository;
     private final GymMembershipRepository membershipRepository;

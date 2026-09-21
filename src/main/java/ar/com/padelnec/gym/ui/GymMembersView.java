@@ -284,6 +284,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
 
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle("Cobrar cuota · " + row.fullName());
+        dialog.setWidth("250px");
 
         GymBillingService.Status billing = row.billing();
         List<Period> pending = billing.pending();
@@ -322,8 +323,9 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         price.setPrefixComponent(new Span("$"));
         price.setWidthFull();
 
-        Span total = new Span();
-        total.addClassNames(LumoUtility.FontSize.LARGE, LumoUtility.FontWeight.BOLD);
+        TextField total = new TextField("Total a cobrar");
+        total.setReadOnly(true);
+        total.setWidthFull();
 
         // El socio que arranca recien aca define sus dias por semana; la cuota se
         // auto-completa con la tarifa de esos dias. El que ya pago conserva su plan.
@@ -437,15 +439,15 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
     }
 
     /** Total = monto por cuota x cuotas; si no se tipeó el monto, se usa la tarifa. */
-    private void updateTotal(Span total, BigDecimalField price, CheckboxGroup<Period> periods,
+    private void updateTotal(TextField total, BigDecimalField price, CheckboxGroup<Period> periods,
                              BigDecimal tariffUnit) {
         BigDecimal unit = price.getValue() != null ? price.getValue() : tariffUnit;
         if (unit == null || periods.getSelectedItems().isEmpty()) {
-            total.setText("");
+            total.setValue("");
             return;
         }
         BigDecimal sum = unit.multiply(BigDecimal.valueOf(periods.getSelectedItems().size()));
-        total.setText("Total: " + GymViewSupport.money(sum));
+        total.setValue(GymViewSupport.money(sum));
     }
 
     private void openManualCheckIn(MemberRow row) {

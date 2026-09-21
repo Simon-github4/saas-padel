@@ -109,7 +109,7 @@ class GymBillingServiceTest {
         assertThat(status.periodEnd()).isEqualTo(LocalDate.of(2026, 7, 14));
         assertThat(status.paidCurrent()).isTrue();
         assertThat(status.monthsLate()).isZero();
-        // Al dia, lo que queda por cobrar es la proxima cuota y hasta 11 adelantos.
+        // Al dia, lo que queda por cobrar es la proxima cuota y hasta 4 adelantos.
         assertThat(status.pending()).hasSize(GymBillingService.LOOK_AHEAD);
         assertThat(status.pending().get(0).start()).isEqualTo(LocalDate.of(2026, 7, 15));
         assertThat(status.canEnter()).isTrue();
