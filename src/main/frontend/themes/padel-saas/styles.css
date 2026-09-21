@@ -395,16 +395,16 @@ vaadin-side-nav-item[current]::part(item) {
    texto del nombre) y no en una insignia aparte: una insignia le saca ancho
    al nombre, justo el dato que hace falta leer de un vistazo. Que significa
    cada color se explica una sola vez en la referencia de abajo del tablero
-   (.agenda-legend), no repetido en cada tarjeta. Violeta y azul son hex
+   (.agenda-legend), no repetido en cada tarjeta. Amarillo y azul son hex
    propios porque Lumo no trae esos dos matices; verde y rojo reusan los
    semanticos de siempre (success/error). */
 .agenda-card--pending {
-  background: rgba(124, 58, 237, 0.08);
-  border-left: 3px solid #7c3aed;
+  background: rgba(234, 179, 8, 0.14);
+  border-left: 3px solid #eab308;
 }
 
 .agenda-card--pending .agenda-card__button {
-  color: #6d28d9;
+  color: #854d0e;
 }
 
 .agenda-card--neutral {
@@ -451,7 +451,7 @@ vaadin-side-nav-item[current]::part(item) {
 }
 
 .agenda-legend__dot--pending {
-  background: #7c3aed;
+  background: #eab308;
 }
 
 .agenda-legend__dot--neutral {
