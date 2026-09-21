@@ -28,6 +28,7 @@ export function useClub(slug: string): ClubState {
           return;
         }
         document.title = `${config.clubName} · Gimnasio`;
+        applyClubIcons(config.heroImageUrl);
         setState({ status: 'ready', config });
       })
       .catch((error: unknown) => {
@@ -56,4 +57,38 @@ export function useClub(slug: string): ClubState {
   }, [slug]);
 
   return state;
+}
+
+/**
+ * Icono de la pestana y de la instalacion: la portada del club que trae la API,
+ * o las imagenes por defecto del index.html cuando el club no cargo portada.
+ * Se reemplazan en runtime porque el slug del club no se conoce en el html.
+ */
+function applyClubIcons(heroImageUrl: string | null) {
+  document.querySelectorAll('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((link) => link.remove());
+
+  const links: Array<{ rel: string; type?: string; sizes?: string; href: string }> = heroImageUrl
+    ? [
+        { rel: 'icon', type: 'image/png', href: heroImageUrl },
+        { rel: 'icon', sizes: '192x192', href: heroImageUrl },
+        { rel: 'icon', sizes: '512x512', href: heroImageUrl },
+        { rel: 'apple-touch-icon', href: heroImageUrl },
+      ]
+    : [
+        { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+        { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
+      ];
+
+  for (const { rel, type, sizes, href } of links) {
+    const link = document.createElement('link');
+    link.rel = rel;
+    if (type) {
+      link.type = type;
+    }
+    if (sizes) {
+      link.sizes = sizes;
+    }
+    link.href = href;
+    document.head.appendChild(link);
+  }
 }
