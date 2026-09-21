@@ -327,6 +327,8 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         TextField total = new TextField("Total a cobrar");
         total.setReadOnly(true);
         total.setWidthFull();
+        total.addClassNames(LumoUtility.FontSize.LARGE, LumoUtility.FontWeight.BOLD,
+                LumoUtility.TextColor.PRIMARY);
 
         // El socio que arranca define acá sus días por semana; el que ya pagó los ve
         // preseleccionados y puede cambiarlos: la próxima cuota marca el plan nuevo.
