@@ -63,7 +63,38 @@ export function Checkout({
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<BookingCreated | null>(null);
 
-  const canPayAtClub = club.allowUnpaidBooking || !club.acceptsOnlinePayments;
+  // Un club que exige seña igual deja reservar sin ella a sus jugadores de
+  // confianza, y eso depende del teléfono: se le pregunta al servidor cuando el
+  // número está completo, y si no contesta (o el número no es de confianza) queda
+  // el comportamiento de siempre.
+  const [trusted, setTrusted] = useState(false);
+  useEffect(() => {
+    if (club.allowUnpaidBooking || phone.replace(/\D/g, '').length < 10) {
+      setTrusted(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      api
+        .paymentOptions(slug, phone)
+        .then((options) => {
+          if (!cancelled) {
+            setTrusted(options.canPayAtClub);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setTrusted(false);
+          }
+        });
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [slug, phone, club.allowUnpaidBooking]);
+
+  const canPayAtClub = club.allowUnpaidBooking || !club.acceptsOnlinePayments || trusted;
   const deposit = Math.round((court.price * club.depositPercentage) / 100);
 
   async function submit(paymentChoice: PaymentChoice) {
@@ -241,6 +272,11 @@ export function Checkout({
       {error && <Alert>{error}</Alert>}
 
       <div className="space-y-2 pt-1">
+        {trusted && !club.allowUnpaidBooking && (
+          <p className="text-center text-xs text-ink-soft">
+            {club.name} te tiene como jugador de confianza: podés reservar sin pagar seña.
+          </p>
+        )}
         {club.acceptsOnlinePayments && (
           <Button variant="accent" onClick={() => submit('DEPOSIT_ONLINE')} disabled={sending}>
             Pagar seña de {money(deposit)}

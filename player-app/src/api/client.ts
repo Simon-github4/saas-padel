@@ -313,6 +313,14 @@ export const api = {
     request<Availability>(`/${slug}/availability?date=${date}`),
 
   /**
+   * Si este teléfono puede reservar y pagar en el club: el club acepta reservas
+   * de palabra, o el jugador está marcado de confianza. El checkout lo pregunta
+   * para ofrecer "pagar en el club" en un club que exige seña.
+   */
+  paymentOptions: (slug: string, phone: string) =>
+    request<{ canPayAtClub: boolean }>(`/${slug}/payment-options?phone=${encodeURIComponent(phone)}`),
+
+  /**
    * El token va cuando hay sesión iniciada, y es lo que hace que el turno
    * después aparezca en "mis turnos": la reserva queda atada a la cuenta. Sin
    * token se reserva igual, como invitado — nunca fue obligatorio tener cuenta.

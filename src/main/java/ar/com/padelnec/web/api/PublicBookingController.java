@@ -24,6 +24,7 @@ import ar.com.padelnec.web.dto.BookingDtos.BookingShareResponse;
 import ar.com.padelnec.web.dto.BookingDtos.CancellationResponse;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingRequest;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingResponse;
+import ar.com.padelnec.web.dto.BookingDtos.PaymentOptionsResponse;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.CourtSearchResponse;
 import ar.com.padelnec.web.dto.WaitlistDtos.JoinWaitlistRequest;
@@ -172,6 +173,23 @@ public class PublicBookingController {
         Tenant club = tenantService.activate(slug);
         waitlistService.join(club, request.startTime(), request.phoneNumber(), request.fullName(), account);
         return new JoinWaitlistResponse("Listo, te avisamos si se libera una cancha.");
+    }
+
+    /**
+     * Si este telefono puede reservar sin sena, para que el checkout ofrezca "pagar
+     * en el club" a un jugador de confianza en un club que exige sena.
+     *
+     * <p>Se limita por origen, con su propio cupo (el prefijo separa el balde del de
+     * las reservas): sin limite, esto deja probar telefonos y descubrir cuales el
+     * club marco de confianza.
+     */
+    @GetMapping("/{slug}/payment-options")
+    public PaymentOptionsResponse paymentOptions(@PathVariable String slug,
+                                                 @RequestParam String phone,
+                                                 HttpServletRequest httpRequest) {
+        rateLimiter.check("payment-options:" + httpRequest.getRemoteAddr());
+        Tenant club = tenantService.activate(slug);
+        return new PaymentOptionsResponse(bookingService.canPayAtClub(club, phone));
     }
 
     /** Alta de la reserva. Devuelve el link de pago o el aviso de confirmacion. */
