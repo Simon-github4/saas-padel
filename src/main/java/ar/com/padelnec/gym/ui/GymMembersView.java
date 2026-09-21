@@ -284,7 +284,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
 
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle("Cobrar cuota · " + row.fullName());
-        dialog.setWidth("50vw");
+        dialog.setWidth("65vw");
         dialog.setHeight("80vh");
 
         GymBillingService.Status billing = row.billing();
