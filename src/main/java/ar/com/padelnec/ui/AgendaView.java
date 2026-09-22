@@ -22,9 +22,9 @@ import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.datepicker.DatePicker;
+import com.vaadin.flow.component.details.Details;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
-import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
@@ -80,7 +80,8 @@ public class AgendaView extends VerticalLayout {
     private final DatePicker datePicker = new DatePicker();
     private final H2 dateHeading = new H2();
     private final Span summary = new Span();
-    private final VerticalLayout fixedList = new VerticalLayout();
+    private final Details fixedList = new Details();
+    private final VerticalLayout fixedListItems = new VerticalLayout();
     private final Div board = new Div();
 
     private Tenant club;
@@ -108,14 +109,23 @@ public class AgendaView extends VerticalLayout {
         this.authenticationContext = authenticationContext;
         this.clock = clock;
 
-        setSizeFull();
+        // Ancho completo, pero alto natural: el tablero tiene una fila por
+        // horario y quiere todo el alto que le corresponda. Con setSizeFull()
+        // quedaba encerrado en el alto de la pantalla y se aplastaba cuando
+        // "Turnos fijos" ocupaba varias lineas; asi, si no entra todo, scrollea
+        // la pagina en vez de compactar el tablero.
+        setWidthFull();
         board.addClassName("agenda-board");
-        fixedList.addClassName("agenda-fixed-list");
-        fixedList.setPadding(false);
-        fixedList.setSpacing(false);
+        fixedListItems.addClassName("agenda-fixed-list");
+        fixedListItems.setPadding(false);
+        fixedListItems.setSpacing(false);
+        fixedList.add(fixedListItems);
+        // Abierta por default -para verlos de un vistazo sin abrir nada-, pero
+        // se puede minimizar: con muchos turnos fijos, tapaba el tablero de abajo.
+        fixedList.setOpened(true);
+        fixedList.addClassName("agenda-fixed-details");
 
         add(header(), fixedList, board, legend());
-        setFlexGrow(1, board);
         addClassNames(LumoUtility.Gap.MEDIUM);
 
         this.club = tenantService.requireCurrent();
@@ -250,17 +260,14 @@ public class AgendaView extends VerticalLayout {
                 .sorted(Comparator.comparing(Booking::getStartTime))
                 .toList();
 
-        fixedList.removeAll();
+        fixedListItems.removeAll();
         fixedList.setVisible(!fixed.isEmpty());
         if (fixed.isEmpty()) {
             return;
         }
 
-        H3 heading = new H3("Turnos fijos de hoy");
-        heading.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.Margin.NONE,
-                LumoUtility.FontWeight.SEMIBOLD);
-        fixedList.add(heading);
-        fixed.forEach(booking -> fixedList.add(fixedRow(booking)));
+        fixedList.setSummaryText("Turnos fijos de hoy (%d)".formatted(fixed.size()));
+        fixed.forEach(booking -> fixedListItems.add(fixedRow(booking)));
     }
 
     private Component fixedRow(Booking booking) {

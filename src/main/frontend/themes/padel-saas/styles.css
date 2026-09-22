@@ -257,7 +257,12 @@ vaadin-side-nav-item[current]::part(item) {
      scroll vertical interminable para ver el dia completo. */
   --agenda-row-height: 3.5rem;
   display: grid;
-  overflow: auto;
+  /* Solo horizontal: con muchas canchas el tablero es mas ancho que la
+     pantalla y hace falta deslizarlo. Vertical no, para que el tablero tome
+     su alto natural (uno por horario) y sea la pagina la que scrollee -
+     comprimirlo en el alto que sobraba debajo de "Turnos fijos" lo dejaba
+     ilegible cuando habia varios turnos fijos ese dia. */
+  overflow-x: auto;
   gap: var(--lumo-space-xs);
   background: var(--lumo-contrast-5pct);
   border: 1px solid var(--lumo-contrast-10pct);
