@@ -53,6 +53,14 @@ public class ProductSale extends TenantScopedEntity {
     @Column(name = "registered_by")
     private UUID registeredBy;
 
+    /**
+     * Si esta línea ya se cobró: en un pedido de buffet, cuando alguien del
+     * grupo paga lo suyo y el resto de la cuenta sigue abierta. Se marca sola
+     * al cobrar, tildando o no lo que corresponde a cada cobro.
+     */
+    @Column(nullable = false)
+    private boolean paid;
+
     public BigDecimal subtotal() {
         return unitPrice.multiply(BigDecimal.valueOf(quantity));
     }

@@ -154,9 +154,15 @@ class BuffetOrderDialog extends Dialog {
 
             // Tildar productos arma el monto a cobrar solo: para cuando uno del
             // grupo se va y paga lo suyo, y el resto de la cuenta sigue abierta.
-            if (canPickForCharge) {
+            // Lo ya cobrado queda tildado y no se puede destildar: ese cobro ya
+            // se hizo, no hay nada que rearmar.
+            if (canPickForCharge || sale.isPaid()) {
                 Checkbox pick = new Checkbox();
-                pick.setValue(selectedForCharge.contains(sale.getId()));
+                pick.setValue(sale.isPaid() || selectedForCharge.contains(sale.getId()));
+                pick.setEnabled(!sale.isPaid());
+                if (sale.isPaid()) {
+                    pick.setTooltipText("Ya cobrado");
+                }
                 pick.addValueChangeListener(event -> {
                     if (Boolean.TRUE.equals(event.getValue())) {
                         selectedForCharge.add(sale.getId());
@@ -218,6 +224,16 @@ class BuffetOrderDialog extends Dialog {
                     : order.balanceDue();
             row = moneyRow("Cobrar en mostrador", suggested, "Registrar cobro", (value, method) -> {
                 paymentService.registerManualPayment(order, value, method, currentUserId);
+                // Lo tildado queda marcado como cobrado; sin nada tildado, se cobró
+                // todo el saldo y lo que faltaba pagar también queda cubierto.
+                if (!selectedForCharge.isEmpty()) {
+                    productService.markPaid(selectedForCharge);
+                } else {
+                    productService.markPaid(sales.stream()
+                            .filter(sale -> !sale.isPaid())
+                            .map(ProductSale::getId)
+                            .toList());
+                }
                 selectedForCharge.clear();
                 Notification.show("Cobro registrado");
             });

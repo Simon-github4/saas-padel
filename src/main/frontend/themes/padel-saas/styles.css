@@ -751,8 +751,20 @@ vaadin-side-nav-item[current]::part(item) {
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
+.buffet-line--pickable {
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+}
+
+.buffet-line--new.buffet-line--pickable {
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+}
+
 .buffet-line--saved {
   color: var(--lumo-secondary-text-color);
+}
+
+.buffet-line__pick {
+  margin: 0;
 }
 
 .buffet-line__qty {

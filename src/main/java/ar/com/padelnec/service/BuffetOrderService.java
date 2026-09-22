@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -89,6 +90,26 @@ public class BuffetOrderService {
     @Transactional
     public Checkout checkout(UUID orderId, String customerName, List<NewItem> items,
                              PaymentMethod chargeWith, UUID registeredBy) {
+        return checkout(orderId, customerName, items, chargeWith, null, Set.of(), Set.of(), registeredBy);
+    }
+
+    /**
+     * Igual que {@link #checkout}, pero para cobrar menos de lo que queda
+     * debiendo: lo que uno del grupo paga de lo suyo, dejando el resto en la
+     * cuenta para después.
+     *
+     * <p>Lo tildado en pantalla queda marcado como cobrado ({@link ProductSale#isPaid()}):
+     * si no, al reabrir el pedido no habría forma de saber qué línea ya se
+     * cobró, aunque el saldo total esté bien.
+     *
+     * @param chargeAmount      cuánto cobrar, o null para cobrar el saldo completo
+     * @param paidSaleIds       ventas ya guardadas que cubre este cobro
+     * @param paidItemProductIds productos de {@code items}, recién sumados, que cubre este cobro
+     */
+    @Transactional
+    public Checkout checkout(UUID orderId, String customerName, List<NewItem> items,
+                             PaymentMethod chargeWith, BigDecimal chargeAmount,
+                             Set<UUID> paidSaleIds, Set<UUID> paidItemProductIds, UUID registeredBy) {
         boolean unnamed = customerName == null || customerName.isBlank();
         if (orderId == null && chargeWith == null && unnamed) {
             throw new BusinessRuleException("Para dejarlo en la cuenta, poné a nombre de quién es");
@@ -102,6 +123,7 @@ public class BuffetOrderService {
         }
         Map<UUID, Product> products = productRepository.findAllById(quantities.keySet()).stream()
                 .collect(Collectors.toMap(Product::getId, Function.identity()));
+        Map<UUID, ProductSale> createdSales = new LinkedHashMap<>();
         quantities.forEach((productId, quantity) -> {
             Product product = products.get(productId);
             if (product == null) {
@@ -110,16 +132,30 @@ public class BuffetOrderService {
             if (!product.isActive()) {
                 throw new BusinessRuleException(product.getName() + " ya no está a la venta");
             }
-            productService.registerSale(order, product, quantity, registeredBy);
+            createdSales.put(productId, productService.registerSale(order, product, quantity, registeredBy));
         });
 
         BigDecimal charged = BigDecimal.ZERO;
         if (chargeWith != null) {
-            charged = order.balanceDue();
+            charged = chargeAmount != null ? chargeAmount : order.balanceDue();
             if (charged.signum() <= 0) {
                 throw new BusinessRuleException("Este pedido no tiene nada para cobrar");
             }
+            if (charged.compareTo(order.balanceDue()) > 0) {
+                throw new BusinessRuleException("No podés cobrar más de lo que debe");
+            }
             paymentService.registerManualPayment(order, charged, chargeWith, registeredBy);
+            if (!paidSaleIds.isEmpty()) {
+                List<ProductSale> toMark = productSaleRepository.findAllById(paidSaleIds);
+                toMark.forEach(sale -> sale.setPaid(true));
+                productSaleRepository.saveAll(toMark);
+            }
+            paidItemProductIds.forEach(productId -> {
+                ProductSale sale = createdSales.get(productId);
+                if (sale != null) {
+                    sale.setPaid(true);
+                }
+            });
         }
         return new Checkout(order, charged);
     }

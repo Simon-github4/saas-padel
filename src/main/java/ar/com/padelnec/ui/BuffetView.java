@@ -26,6 +26,7 @@ import com.vaadin.flow.component.Key;
 import com.vaadin.flow.component.Shortcuts;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.grid.ColumnTextAlign;
 import com.vaadin.flow.component.grid.Grid;
@@ -53,11 +54,14 @@ import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -127,6 +131,14 @@ public class BuffetView extends VerticalLayout {
     private OrderWithItems loaded;
     /** Lo que se suma ahora y todavía no se guardó: producto y cantidad. */
     private final Map<UUID, Integer> draft = new LinkedHashMap<>();
+
+    /**
+     * Productos tildados para cobrar ahora nomás, ej. lo que se lleva uno del
+     * grupo mientras el resto de la cuenta sigue abierta. Uno guarda ids de
+     * ventas ya guardadas, el otro ids de producto de lo recién sumado.
+     */
+    private final Set<UUID> selectedSaleIds = new LinkedHashSet<>();
+    private final Set<UUID> selectedDraftProductIds = new LinkedHashSet<>();
 
     // --- listas
     private final Span daySummary = new Span();
@@ -544,6 +556,7 @@ public class BuffetView extends VerticalLayout {
         int quantity = draft.getOrDefault(product.getId(), 0) + step;
         if (quantity <= 0) {
             draft.remove(product.getId());
+            selectedDraftProductIds.remove(product.getId());
         } else {
             draft.put(product.getId(), quantity);
         }
@@ -565,6 +578,8 @@ public class BuffetView extends VerticalLayout {
     private void resetTicket() {
         loaded = null;
         draft.clear();
+        selectedSaleIds.clear();
+        selectedDraftProductIds.clear();
         customerName.clear();
         customerName.setInvalid(false);
         paysWith.clear();
@@ -603,6 +618,8 @@ public class BuffetView extends VerticalLayout {
         if (!keepDraft) {
             draft.clear();
         }
+        selectedSaleIds.clear();
+        selectedDraftProductIds.clear();
         customerName.clear();
         paysWith.clear();
         lastCharge.setVisible(false);
@@ -619,10 +636,13 @@ public class BuffetView extends VerticalLayout {
         if (loaded != null) {
             try {
                 loaded = fresh(loaded.order().getId());
+                selectedSaleIds.retainAll(loaded.items().stream().map(ProductSale::getId).toList());
             } catch (ResourceNotFoundException ex) {
                 // Se borró desde el detalle.
                 loaded = null;
                 draft.clear();
+                selectedSaleIds.clear();
+                selectedDraftProductIds.clear();
             }
         }
         renderTicket();
@@ -671,18 +691,57 @@ public class BuffetView extends VerticalLayout {
                 warn("No sumaste nada a la cuenta");
                 return;
             }
-            BigDecimal given = method == PaymentMethod.CASH ? paysWith.getValue() : null;
-            if (given != null && given.compareTo(toCharge) < 0) {
-                warn("Con %s no alcanza: son %s".formatted(Money.format(given), Money.format(toCharge)));
-                paysWith.focus();
-                return;
+
+            // Con algo tildado, «Paga con» deja de ser el vuelto y pasa a ser
+            // cuánto se cobra ahora: el resto sigue debiéndose en la cuenta.
+            boolean partial = method != null && selectedSubtotal().signum() > 0;
+            BigDecimal chargeAmount = null;
+            BigDecimal given = null;
+            if (partial) {
+                chargeAmount = paysWith.getValue();
+                if (chargeAmount == null || chargeAmount.signum() <= 0) {
+                    warn("Poné cuánto cobrás de lo tildado");
+                    paysWith.focus();
+                    return;
+                }
+                if (chargeAmount.compareTo(toCharge) > 0) {
+                    warn("No podés cobrar más de lo que debe: son %s".formatted(Money.format(toCharge)));
+                    paysWith.focus();
+                    return;
+                }
+            } else if (method == PaymentMethod.CASH) {
+                given = paysWith.getValue();
+                if (given != null && given.compareTo(toCharge) < 0) {
+                    warn("Con %s no alcanza: son %s".formatted(Money.format(given), Money.format(toCharge)));
+                    paysWith.focus();
+                    return;
+                }
+            }
+
+            // Lo tildado queda marcado como cobrado; sin nada tildado pero con
+            // método de pago, se cubre todo lo pendiente (lo que ya debía y lo
+            // que se suma ahora), así al reabrir el pedido se ve qué ya se cobró.
+            Set<UUID> paidSaleIds;
+            Set<UUID> paidProductIds;
+            if (method == null) {
+                paidSaleIds = Set.of();
+                paidProductIds = Set.of();
+            } else if (partial) {
+                paidSaleIds = Set.copyOf(selectedSaleIds);
+                paidProductIds = Set.copyOf(selectedDraftProductIds);
+            } else {
+                paidSaleIds = isNew ? Set.of() : loaded.items().stream()
+                        .filter(sale -> !sale.isPaid())
+                        .map(ProductSale::getId)
+                        .collect(Collectors.toSet());
+                paidProductIds = Set.copyOf(draft.keySet());
             }
 
             List<NewItem> items = draft.entrySet().stream()
                     .map(entry -> new NewItem(entry.getKey(), entry.getValue()))
                     .toList();
             Checkout result = buffetOrderService.checkout(isNew ? null : loaded.order().getId(),
-                    name, items, method, currentUserId);
+                    name, items, method, chargeAmount, paidSaleIds, paidProductIds, currentUserId);
             showLastCharge(result, method, given);
             resetTicket();
             refreshLists();
@@ -735,6 +794,39 @@ public class BuffetView extends VerticalLayout {
                 .map(entry -> productsById.get(entry.getKey()).getUnitPrice()
                         .multiply(BigDecimal.valueOf(entry.getValue())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** Lo que suman los productos tildados, guardados o recién agregados. */
+    private BigDecimal selectedSubtotal() {
+        BigDecimal fromSaved = loaded == null
+                ? BigDecimal.ZERO
+                : loaded.items().stream()
+                        .filter(sale -> selectedSaleIds.contains(sale.getId()))
+                        .map(ProductSale::subtotal)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal fromDraft = draft.entrySet().stream()
+                .filter(entry -> selectedDraftProductIds.contains(entry.getKey()))
+                .map(entry -> productsById.get(entry.getKey()).getUnitPrice()
+                        .multiply(BigDecimal.valueOf(entry.getValue())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return fromSaved.add(fromDraft);
+    }
+
+    /** Tilda o destilda un producto para cobrar solo eso, y arma «Paga con» con la suma. */
+    private void toggleSelection(boolean saved, UUID id, boolean picked) {
+        Set<UUID> target = saved ? selectedSaleIds : selectedDraftProductIds;
+        if (picked) {
+            target.add(id);
+        } else {
+            target.remove(id);
+        }
+        BigDecimal selected = selectedSubtotal();
+        if (selected.signum() > 0) {
+            paysWith.setValue(selected);
+        } else {
+            paysWith.clear();
+        }
+        renderTicket();
     }
 
     private void openDetail() {
@@ -845,9 +937,32 @@ public class BuffetView extends VerticalLayout {
         remove.setAriaLabel("Sacar " + sale.getProductName() + " de la cuenta");
         remove.setTooltipText("Sacar de la cuenta");
 
-        Div row = new Div(quantity, name, amount, remove);
+        Div row = new Div();
         row.addClassNames("buffet-line", "buffet-line--saved");
+        if (amountDue().signum() > 0 || sale.isPaid()) {
+            row.addClassName("buffet-line--pickable");
+            row.add(pickCheckbox(sale.getProductName(), sale.isPaid(),
+                    sale.isPaid() || selectedSaleIds.contains(sale.getId()),
+                    picked -> toggleSelection(true, sale.getId(), picked)));
+        }
+        row.add(quantity, name, amount, remove);
         return row;
+    }
+
+    /**
+     * El check para cobrar solo este producto ahora, y dejar el resto para
+     * después. Lo ya cobrado queda tildado y no se puede destildar: ese cobro
+     * ya se hizo, no hay nada que rearmar.
+     */
+    private Checkbox pickCheckbox(String productName, boolean paid, boolean picked, Consumer<Boolean> onPick) {
+        Checkbox checkbox = new Checkbox();
+        checkbox.addClassName("buffet-line__pick");
+        checkbox.setValue(picked);
+        checkbox.setEnabled(!paid);
+        checkbox.setAriaLabel((paid ? "Ya cobrado: " : "Cobrar ") + productName + (paid ? "" : " ahora"));
+        checkbox.setTooltipText(paid ? "Ya cobrado" : "Cobrar esto ahora, dejar el resto en la cuenta");
+        checkbox.addValueChangeListener(event -> onPick.accept(Boolean.TRUE.equals(event.getValue())));
+        return checkbox;
     }
 
     private Div draftLine(Product product, int quantity) {
@@ -865,8 +980,14 @@ public class BuffetView extends VerticalLayout {
         Span amount = new Span(Money.format(product.getUnitPrice().multiply(BigDecimal.valueOf(quantity))));
         amount.addClassNames("buffet-line__amount", "tabular");
 
-        Div row = new Div(stepper, name, amount);
+        Div row = new Div();
         row.addClassNames("buffet-line", "buffet-line--new");
+        if (amountDue().signum() > 0) {
+            row.addClassName("buffet-line--pickable");
+            row.add(pickCheckbox(product.getName(), false, selectedDraftProductIds.contains(product.getId()),
+                    picked -> toggleSelection(false, product.getId(), picked)));
+        }
+        row.add(stepper, name, amount);
         return row;
     }
 
@@ -881,6 +1002,14 @@ public class BuffetView extends VerticalLayout {
     private void renderChange() {
         BigDecimal given = paysWith.getValue();
         BigDecimal amount = amountDue();
+        boolean partial = selectedSubtotal().signum() > 0;
+        paysWith.setHelperText(partial ? "Cobra lo tildado, sin vuelto" : null);
+        if (partial) {
+            // Cobro parcial: lo que se puso es lo que se cobra, no hay vuelto que calcular.
+            change.setText("");
+            change.setVisible(false);
+            return;
+        }
         if (given == null || amount.signum() <= 0) {
             change.setText("");
             change.setVisible(false);

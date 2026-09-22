@@ -73,6 +73,20 @@ public class ProductService {
         productSaleRepository.delete(sale);
     }
 
+    /**
+     * Marca cobradas las líneas elegidas de un pedido de buffet: lo que tildó el
+     * mostrador para un cobro parcial, así al reabrir el pedido siguen tildadas.
+     */
+    @Transactional
+    public void markPaid(Collection<UUID> saleIds) {
+        if (saleIds.isEmpty()) {
+            return;
+        }
+        List<ProductSale> sales = productSaleRepository.findAllById(saleIds);
+        sales.forEach(sale -> sale.setPaid(true));
+        productSaleRepository.saveAll(sales);
+    }
+
     @Transactional(readOnly = true)
     public List<ProductSale> salesOf(UUID bookingId) {
         return productSaleRepository.findAllByBookingIdOrderByCreatedAtAsc(bookingId);
