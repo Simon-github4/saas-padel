@@ -12,6 +12,7 @@ import ar.com.padelnec.service.ProductService;
 import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Span;
@@ -25,8 +26,10 @@ import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -52,6 +55,9 @@ class BuffetOrderDialog extends Dialog {
     private final UUID currentUserId;
     private final Runnable onChange;
 
+    /** Productos tildados para cobrar ahora, ej. lo que se lleva uno del grupo. */
+    private final Set<UUID> selectedForCharge = new LinkedHashSet<>();
+
     BuffetOrderDialog(BuffetOrder order, Tenant club, BuffetOrderService buffetOrderService,
                       ProductService productService, PaymentService paymentService,
                       ProductRepository productRepository, UUID currentUserId, Runnable onChange) {
@@ -73,7 +79,9 @@ class BuffetOrderDialog extends Dialog {
                 : "Pedido de " + order.getCustomerName());
         removeAll();
         getFooter().removeAll();
-        add(details(), items(), payments());
+        List<ProductSale> sales = productService.salesOfOrder(order.getId());
+        selectedForCharge.retainAll(sales.stream().map(ProductSale::getId).toList());
+        add(details(), items(sales), payments(sales));
         getFooter().add(actions());
     }
 
@@ -117,18 +125,18 @@ class BuffetOrderDialog extends Dialog {
     }
 
     /** Los productos cargados y la fila para sumar otro. */
-    private VerticalLayout items() {
+    private VerticalLayout items(List<ProductSale> sales) {
         VerticalLayout layout = new VerticalLayout();
         layout.setPadding(false);
         layout.addClassNames(LumoUtility.Border.TOP, LumoUtility.BorderColor.CONTRAST_10,
                 LumoUtility.Padding.Top.MEDIUM, LumoUtility.Margin.Top.MEDIUM);
 
-        List<ProductSale> sales = productService.salesOfOrder(order.getId());
         if (sales.isEmpty()) {
             Span empty = new Span("Todavía no tiene productos.");
             empty.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
             layout.add(empty);
         }
+        boolean canPickForCharge = order.balanceDue().signum() > 0;
         for (ProductSale sale : sales) {
             Span label = new Span("%dx %s".formatted(sale.getQuantity(), sale.getProductName()));
             Span subtotal = amount(sale.subtotal(), false);
@@ -143,6 +151,22 @@ class BuffetOrderDialog extends Dialog {
             row.setAlignItems(HorizontalLayout.Alignment.CENTER);
             row.expand(label);
             row.addClassNames(LumoUtility.Gap.SMALL);
+
+            // Tildar productos arma el monto a cobrar solo: para cuando uno del
+            // grupo se va y paga lo suyo, y el resto de la cuenta sigue abierta.
+            if (canPickForCharge) {
+                Checkbox pick = new Checkbox();
+                pick.setValue(selectedForCharge.contains(sale.getId()));
+                pick.addValueChangeListener(event -> {
+                    if (Boolean.TRUE.equals(event.getValue())) {
+                        selectedForCharge.add(sale.getId());
+                    } else {
+                        selectedForCharge.remove(sale.getId());
+                    }
+                    rebuild();
+                });
+                row.addComponentAsFirst(pick);
+            }
             layout.add(row);
         }
 
@@ -179,14 +203,22 @@ class BuffetOrderDialog extends Dialog {
         return layout;
     }
 
-    private VerticalLayout payments() {
+    private VerticalLayout payments(List<ProductSale> sales) {
         VerticalLayout layout = new VerticalLayout();
         layout.setPadding(false);
 
         HorizontalLayout row;
         if (order.balanceDue().signum() > 0) {
-            row = moneyRow("Cobrar en mostrador", order.balanceDue(), "Registrar cobro", (value, method) -> {
+            BigDecimal selectedSubtotal = sales.stream()
+                    .filter(sale -> selectedForCharge.contains(sale.getId()))
+                    .map(ProductSale::subtotal)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal suggested = selectedSubtotal.signum() > 0
+                    ? selectedSubtotal.min(order.balanceDue())
+                    : order.balanceDue();
+            row = moneyRow("Cobrar en mostrador", suggested, "Registrar cobro", (value, method) -> {
                 paymentService.registerManualPayment(order, value, method, currentUserId);
+                selectedForCharge.clear();
                 Notification.show("Cobro registrado");
             });
         } else if (order.creditBalance().signum() > 0) {
