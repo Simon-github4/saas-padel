@@ -42,6 +42,7 @@ import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Div;
+import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.Input;
 import com.vaadin.flow.component.html.Paragraph;
@@ -192,8 +193,8 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         this.club = tenantService.requireCurrent();
 
         this.tabs = new TabSheet();
-        tabs.add(new Tab("Web Reservas"), profileForm());
         tabs.add(new Tab("Club"), clubForm());
+        tabs.add(new Tab("Web Reservas"), profileForm());
         tabs.add(new Tab("Canchas"), courtsTab());
         tabs.add(new Tab("Tarifas"), pricingTab());
         tabs.add(new Tab("Productos"), productsTab());
@@ -229,7 +230,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
             error.addThemeVariants(NotificationVariant.LUMO_ERROR);
         }
         // Volver de auth.mercadopago.com es una navegacion nueva: sin esto el
-        // TabSheet se reinicia en "Web Reservas" y el dueno pierde de vista el
+        // TabSheet se reinicia en "Club" y el dueno pierde de vista el
         // resultado de lo que acaba de hacer.
         if (paymentsTab != null) {
             tabs.setSelectedTab(paymentsTab);
@@ -422,20 +423,21 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
-        // Todo lo que define como se ve la pagina va plegado en un solo bloque: son
-        // muchos campos (nombre, portada, colores, ubicacion, servicios) para
-        // mostrarlos de entrada, y no son algo que se toque seguido. El botón de
-        // Guardar queda afuera, siempre a la vista, asi no depende de que el dueno
-        // haya abierto el bloque.
+        H2 lookHeading = new H2("Estética de la web de reservas");
+        lookHeading.addClassNames(LumoUtility.FontSize.LARGE, LumoUtility.Margin.NONE,
+                LumoUtility.FontWeight.SEMIBOLD);
+
+        // Cuatro grupos, en el orden en que el dueno los piensa: como se llama
+        // el club, como se ve su portada, con que paleta, y donde queda.
         return tabContent(
-                webLookSection(
-                        section("Identidad", tagline, instagram),
-                        section("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline,
-                                heroOverlay, heroCta),
-                        section("Apariencia", 3, theme, primaryColorField, secondaryColorField),
-                        section("Ubicación", address, city, mapsLinkField(latitude, longitude, googleMapsUrl)),
-                        servicesSection()),
-                actions(save));
+                lookHeading,
+                section("Identidad", tagline, instagram),
+                collapsibleSection("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline,
+                        heroOverlay, heroCta),
+                section("Apariencia", 3, theme, primaryColorField, secondaryColorField),
+                section("Ubicación", address, city, mapsLinkField(latitude, longitude, googleMapsUrl)),
+                actions(save),
+                servicesSection());
     }
 
     /**
@@ -694,25 +696,23 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
     }
 
     /**
-     * Varios grupos de campos (cada uno con su propio {@link #section}) plegados
-     * bajo un solo titulo. Sirve para lo que define como se ve la pagina publica:
-     * son un monton de campos que abruman mostrados todos de una, y ninguno hace
-     * falta a la vista todo el tiempo -al dueño le alcanza con saber que "diseño
-     * de la web" esta ahi, y abrirlo el dia que lo necesite. Empieza cerrado a
-     * proposito, al reves de un {@link #section} suelto.
+     * Igual que {@link #section}, pero pegable: Portada trae seis campos (imagen,
+     * variante, titulo, overlay, boton) que ocupan bastante alto y no hacen falta
+     * a la vista todo el tiempo. Empieza abierta para no esconder nada de entrada;
+     * quien la usa la achica a mano cuando le estorba.
      */
-    private static Details webLookSection(Component... groups) {
-        H3 heading = new H3("Estética de la web de reservas");
+    private static Details collapsibleSection(String title, Component... fields) {
+        H3 heading = new H3(title);
         heading.addClassNames(LumoUtility.FontSize.MEDIUM, LumoUtility.Margin.NONE,
                 LumoUtility.FontWeight.SEMIBOLD);
 
-        VerticalLayout content = new VerticalLayout(groups);
-        content.setPadding(false);
-        content.setWidthFull();
-        content.addClassNames(LumoUtility.Gap.XLARGE);
+        FormLayout form = new FormLayout(fields);
+        form.setResponsiveSteps(
+                new FormLayout.ResponsiveStep("0", 1),
+                new FormLayout.ResponsiveStep("30em", 2));
 
-        Details details = new Details(heading, content);
-        details.setOpened(false);
+        Details details = new Details(heading, form);
+        details.setOpened(true);
         details.setWidthFull();
         return details;
     }
