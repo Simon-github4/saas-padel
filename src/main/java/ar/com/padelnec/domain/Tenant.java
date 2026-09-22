@@ -10,6 +10,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalTime;
@@ -76,6 +77,15 @@ public class Tenant extends BaseEntity {
 
     @Column(name = "mp_account_email", length = 255)
     private String mpAccountEmail;
+
+    /**
+     * Bloqueo optimista: si dos guardados parten de la misma version, el segundo
+     * falla en vez de pisar al primero. Ver TenantService.update, que es como
+     * guarda Configuracion.
+     */
+    @Version
+    @Column(nullable = false)
+    private long version;
 
     /** Cuando vence el access token actual (180 dias desde que se emitio o se renovo). */
     @Column(name = "mp_token_expires_at")

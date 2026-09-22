@@ -1,0 +1,12 @@
+-- Bloqueo optimista para el club (Tenant.version).
+--
+-- Configuracion guardaba el club entero con lo que tenia cargado desde que se
+-- abrio la pantalla, y el tenant no tenia version: el ultimo en guardar pisaba
+-- todas las columnas, aunque solo hubiera tocado las de su pestana. Con una
+-- pantalla abierta de un dia para el otro, eso alcanzaba para volver a escribir
+-- los tokens de MercadoPago que el job de renovacion ya habia cambiado.
+--
+-- Configuracion ahora aplica cada pestana sobre el club recien leido
+-- (TenantService.update); la version cubre lo que queda, dos guardados en el
+-- mismo instante: el segundo falla con un aviso en vez de pisar al primero.
+ALTER TABLE tenant ADD COLUMN version BIGINT NOT NULL DEFAULT 0;

@@ -162,4 +162,13 @@ public class ClubFixture {
     public Tenant save(Tenant club) {
         return tenantRepository.saveAndFlush(club);
     }
+
+    /**
+     * El club como esta en la base. Despues de guardarlo, la copia de antes ya no
+     * sirve para volver a guardar: quedo con una version vieja (Tenant.version).
+     */
+    @Transactional(readOnly = true)
+    public Tenant reload(Tenant club) {
+        return tenantRepository.findById(club.getId()).orElseThrow();
+    }
 }

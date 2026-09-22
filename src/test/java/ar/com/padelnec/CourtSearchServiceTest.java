@@ -340,7 +340,8 @@ class CourtSearchServiceTest {
         } finally {
             TenantContext.clear();
         }
-        return club;
+        // contents puede haber guardado el club: esta copia ya quedo vieja.
+        return fixture.reload(club);
     }
 
     private Customer saveCustomer() {

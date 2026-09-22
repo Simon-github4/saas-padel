@@ -18,7 +18,6 @@ import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.PricingRuleRepository;
 import ar.com.padelnec.repository.ProductRepository;
 import ar.com.padelnec.repository.TenantHeroImageRepository;
-import ar.com.padelnec.repository.TenantRepository;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.ClubUserService;
 import ar.com.padelnec.service.ProductService;
@@ -84,6 +83,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 /**
  * Configuracion del club: horarios, tarifas, canchas y cobros.
@@ -134,7 +134,6 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
             Set.of("image/jpeg", "image/png", "image/webp", "image/gif");
 
     private final TenantService tenantService;
-    private final TenantRepository tenantRepository;
     private final TenantHeroImageRepository tenantHeroImageRepository;
     private final CourtRepository courtRepository;
     private final PricingRuleRepository pricingRuleRepository;
@@ -167,7 +166,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
 
     private Tenant club;
 
-    public SettingsView(TenantService tenantService, TenantRepository tenantRepository,
+    public SettingsView(TenantService tenantService,
                         TenantHeroImageRepository tenantHeroImageRepository,
                         CourtRepository courtRepository, PricingRuleRepository pricingRuleRepository,
                         ClubAmenityRepository amenityRepository, ProductRepository productRepository,
@@ -176,7 +175,6 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
                         AuthenticationContext authenticationContext,
                         MercadoPagoOAuthService mercadoPagoOAuthService, Clock clock) {
         this.tenantService = tenantService;
-        this.tenantRepository = tenantRepository;
         this.tenantHeroImageRepository = tenantHeroImageRepository;
         this.courtRepository = courtRepository;
         this.pricingRuleRepository = pricingRuleRepository;
@@ -294,8 +292,12 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
                 image.setContentType(event.getMIMEType());
                 tenantHeroImageRepository.save(image);
 
-                club.setHeroImageUrl("/api/public/" + club.getSlug() + "/hero-image");
-                club = tenantRepository.save(club);
+                boolean saved = saveClub(c -> {
+                    c.setHeroImageUrl("/api/public/" + c.getSlug() + "/hero-image");
+                });
+                if (!saved) {
+                    return;
+                }
                 heroImage.setValue(club.getHeroImageUrl());
                 Notification.show("Imagen subida");
             } catch (IOException e) {
@@ -399,23 +401,27 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
                         .addThemeVariants(NotificationVariant.LUMO_ERROR);
                 return;
             }
-            club.setTagline(blankToNull(tagline.getValue()));
-            club.setInstagramHandle(instagramHandle.orElse(null));
-            club.setHeroImageUrl(blankToNull(heroImage.getValue()));
-            club.setHeroHeadline(blankToNull(heroHeadline.getValue()));
-            club.setHeroCtaLabel(blankToNull(heroCta.getValue()));
-            // El campo admite quedar vacio; ahi vuelve al valor por defecto.
-            club.setHeroOverlay(clampOverlay(heroOverlay.getValue()));
-            club.setHeroVariant(heroVariant.getValue());
-            club.setThemeMode(theme.getValue());
-            club.setPrimaryColor(primary);
-            club.setSecondaryColor(secondary);
-            club.setAddress(blankToNull(address.getValue()));
-            club.setCity(blankToNull(city.getValue()));
-            club.setLatitude(latitude.getValue());
-            club.setLongitude(longitude.getValue());
-            club.setGoogleMapsUrl(blankToNull(googleMapsUrl.getValue()));
-            club = tenantRepository.save(club);
+            boolean saved = saveClub(c -> {
+                c.setTagline(blankToNull(tagline.getValue()));
+                c.setInstagramHandle(instagramHandle.orElse(null));
+                c.setHeroImageUrl(blankToNull(heroImage.getValue()));
+                c.setHeroHeadline(blankToNull(heroHeadline.getValue()));
+                c.setHeroCtaLabel(blankToNull(heroCta.getValue()));
+                // El campo admite quedar vacio; ahi vuelve al valor por defecto.
+                c.setHeroOverlay(clampOverlay(heroOverlay.getValue()));
+                c.setHeroVariant(heroVariant.getValue());
+                c.setThemeMode(theme.getValue());
+                c.setPrimaryColor(primary);
+                c.setSecondaryColor(secondary);
+                c.setAddress(blankToNull(address.getValue()));
+                c.setCity(blankToNull(city.getValue()));
+                c.setLatitude(latitude.getValue());
+                c.setLongitude(longitude.getValue());
+                c.setGoogleMapsUrl(blankToNull(googleMapsUrl.getValue()));
+            });
+            if (!saved) {
+                return;
+            }
             // Se muestra como quedo guardado, no como se pego: si pegaron el link,
             // ven que el sistema entendio el usuario correcto.
             instagram.setValue(club.getInstagramHandle() == null ? "" : "@" + club.getInstagramHandle());
@@ -893,15 +899,19 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
                 + "domingo). Los turnos fijos no cuentan.");
 
         Button save = new Button("Guardar Cambios", event -> {
-            club.setName(name.getValue());
-            club.setWhatsappNumber(whatsapp.getValue());
-            club.setOpenTime(open.getValue());
-            club.setCloseTime(close.getValue());
-            club.setDefaultSlotDuration(duration.getValue());
-            club.setCancellationLimitHours(cancellation.getValue());
-            club.setBookingHorizonDays(horizon.getValue());
-            club.setMaxActiveBookings(maxActive.getValue());
-            club = tenantRepository.save(club);
+            boolean saved = saveClub(c -> {
+                c.setName(name.getValue());
+                c.setWhatsappNumber(whatsapp.getValue());
+                c.setOpenTime(open.getValue());
+                c.setCloseTime(close.getValue());
+                c.setDefaultSlotDuration(duration.getValue());
+                c.setCancellationLimitHours(cancellation.getValue());
+                c.setBookingHorizonDays(horizon.getValue());
+                c.setMaxActiveBookings(maxActive.getValue());
+            });
+            if (!saved) {
+                return;
+            }
             Notification.show("Configuración guardada");
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -1212,8 +1222,12 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         general.setValue(club.getGeneralPricePerPerson());
         general.setHelperText("%d por cancha".formatted(club.getPlayersPerCourt()));
         Button save = new Button("Guardar Cambios", event -> {
-            club.setGeneralPricePerPerson(general.getValue());
-            club = tenantRepository.save(club);
+            boolean saved = saveClub(c -> {
+                c.setGeneralPricePerPerson(general.getValue());
+            });
+            if (!saved) {
+                return;
+            }
             Notification.show("Tarifa general guardada");
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -1375,9 +1389,13 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         deposit.setValue(club.getDepositPercentage());
 
         Button save = new Button("Guardar Cambios", event -> {
-            club.setAllowUnpaidBooking(allowUnpaid.getValue());
-            club.setDepositPercentage(deposit.getValue());
-            club = tenantRepository.save(club);
+            boolean saved = saveClub(c -> {
+                c.setAllowUnpaidBooking(allowUnpaid.getValue());
+                c.setDepositPercentage(deposit.getValue());
+            });
+            if (!saved) {
+                return;
+            }
             Notification.show("Cobros actualizados");
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -1439,7 +1457,12 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
                 dialog.setConfirmText("Desconectar");
                 dialog.setConfirmButtonTheme(ButtonVariant.LUMO_ERROR.getVariantName());
                 dialog.addConfirmListener(confirmEvent -> {
-                    mercadoPagoOAuthService.disconnect(club);
+                    try {
+                        club = mercadoPagoOAuthService.disconnect(club);
+                    } catch (ObjectOptimisticLockingFailureException ex) {
+                        showSaveConflict();
+                        return;
+                    }
                     Notification.show("MercadoPago desconectado");
                     refreshMercadoPagoSection();
                 });
@@ -1487,6 +1510,29 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         block.setSpacing(false);
         block.addClassNames(LumoUtility.Gap.SMALL, LumoUtility.Margin.Top.MEDIUM);
         return block;
+    }
+
+    /**
+     * Guarda lo que toca una pestana sobre el club como esta en la base ahora
+     * (ver TenantService.update), no sobre la copia que se cargo al abrir la
+     * pantalla, y deja en {@code club} como quedo.
+     *
+     * @return false si otro guardado se cruzo justo: no se guardo nada y ya se le
+     *         aviso al dueno, que vuelve a tocar Guardar.
+     */
+    private boolean saveClub(Consumer<Tenant> changes) {
+        try {
+            club = tenantService.update(club.getId(), changes);
+            return true;
+        } catch (ObjectOptimisticLockingFailureException ex) {
+            showSaveConflict();
+            return false;
+        }
+    }
+
+    private static void showSaveConflict() {
+        Notification.show("Justo se guardó otro cambio del club. Tocá Guardar de nuevo.")
+                .addThemeVariants(NotificationVariant.LUMO_ERROR);
     }
 
     private String connectionStatusText(boolean connected) {

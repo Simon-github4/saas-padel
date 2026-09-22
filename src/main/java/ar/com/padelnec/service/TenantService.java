@@ -5,8 +5,10 @@ import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.repository.TenantRepository;
 import ar.com.padelnec.web.ResourceNotFoundException;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import lombok.RequiredArgsConstructor;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,5 +49,29 @@ public class TenantService {
     @Transactional(readOnly = true)
     public Tenant requireCurrent() {
         return activate(TenantContext.require());
+    }
+
+    /**
+     * Guarda cambios de configuracion del club aplicandolos sobre como esta en la
+     * base ahora, no sobre la copia que se cargo al abrir la pantalla.
+     *
+     * <p>Configuracion carga el club una vez y cada pestana toca solo sus campos.
+     * Guardar esa copia entera volvia a escribir tambien todo lo demas tal como
+     * estaba al abrir: lo que otra pestana o el otro dueno guardo mientras tanto,
+     * y los tokens de MercadoPago que el job de renovacion cambio a la madrugada.
+     * Asi, cada guardado solo cambia lo que {@code changes} toca.
+     *
+     * <p>Si otro guardado entra justo entre la lectura y la escritura, la version
+     * del club ({@link Tenant#getVersion()}) lo detecta y esto lanza
+     * {@link ObjectOptimisticLockingFailureException} en vez de pisarlo.
+     *
+     * @return el club como quedo guardado
+     */
+    @Transactional
+    public Tenant update(UUID clubId, Consumer<Tenant> changes) {
+        Tenant club = tenantRepository.findById(clubId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el club " + clubId));
+        changes.accept(club);
+        return tenantRepository.saveAndFlush(club);
     }
 }
