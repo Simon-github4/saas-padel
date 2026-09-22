@@ -122,7 +122,7 @@ export function HeroClassic({
           <img
             src={heroImageUrl}
             alt=""
-            className="portada-foto absolute inset-0 h-full w-full object-contain [filter:grayscale(35%)_contrast(1.05)_brightness(0.9)]"
+            className="portada-foto absolute inset-0 h-full w-full object-contain object-top [filter:grayscale(35%)_contrast(1.05)_brightness(0.9)]"
             loading="eager"
             fetchPriority="high"
           />
