@@ -422,16 +422,20 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
-        // Cuatro grupos, en el orden en que el dueno los piensa: como se llama
-        // el club, como se ve su portada, con que paleta, y donde queda.
+        // Todo lo que define como se ve la pagina va plegado en un solo bloque: son
+        // muchos campos (nombre, portada, colores, ubicacion, servicios) para
+        // mostrarlos de entrada, y no son algo que se toque seguido. El botón de
+        // Guardar queda afuera, siempre a la vista, asi no depende de que el dueno
+        // haya abierto el bloque.
         return tabContent(
-                section("Identidad", tagline, instagram),
-                collapsibleSection("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline,
-                        heroOverlay, heroCta),
-                section("Apariencia", 3, theme, primaryColorField, secondaryColorField),
-                section("Ubicación", address, city, mapsLinkField(latitude, longitude, googleMapsUrl)),
-                actions(save),
-                servicesSection());
+                webLookSection(
+                        section("Identidad", tagline, instagram),
+                        section("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline,
+                                heroOverlay, heroCta),
+                        section("Apariencia", 3, theme, primaryColorField, secondaryColorField),
+                        section("Ubicación", address, city, mapsLinkField(latitude, longitude, googleMapsUrl)),
+                        servicesSection()),
+                actions(save));
     }
 
     /**
@@ -690,23 +694,25 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
     }
 
     /**
-     * Igual que {@link #section}, pero pegable: Portada trae seis campos (imagen,
-     * variante, titulo, overlay, boton) que ocupan bastante alto y no hacen falta
-     * a la vista todo el tiempo. Empieza abierta para no esconder nada de entrada;
-     * quien la usa la achica a mano cuando le estorba.
+     * Varios grupos de campos (cada uno con su propio {@link #section}) plegados
+     * bajo un solo titulo. Sirve para lo que define como se ve la pagina publica:
+     * son un monton de campos que abruman mostrados todos de una, y ninguno hace
+     * falta a la vista todo el tiempo -al dueño le alcanza con saber que "diseño
+     * de la web" esta ahi, y abrirlo el dia que lo necesite. Empieza cerrado a
+     * proposito, al reves de un {@link #section} suelto.
      */
-    private static Details collapsibleSection(String title, Component... fields) {
-        H3 heading = new H3(title);
+    private static Details webLookSection(Component... groups) {
+        H3 heading = new H3("Estética de la web de reservas");
         heading.addClassNames(LumoUtility.FontSize.MEDIUM, LumoUtility.Margin.NONE,
                 LumoUtility.FontWeight.SEMIBOLD);
 
-        FormLayout form = new FormLayout(fields);
-        form.setResponsiveSteps(
-                new FormLayout.ResponsiveStep("0", 1),
-                new FormLayout.ResponsiveStep("30em", 2));
+        VerticalLayout content = new VerticalLayout(groups);
+        content.setPadding(false);
+        content.setWidthFull();
+        content.addClassNames(LumoUtility.Gap.XLARGE);
 
-        Details details = new Details(heading, form);
-        details.setOpened(true);
+        Details details = new Details(heading, content);
+        details.setOpened(false);
         details.setWidthFull();
         return details;
     }
