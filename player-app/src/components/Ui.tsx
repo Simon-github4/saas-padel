@@ -446,7 +446,7 @@ export function FloatingWhatsapp({ href }: { href: string }) {
       target="_blank"
       rel="noreferrer"
       aria-label="Escribirle al club por WhatsApp"
-      className="fixed bottom-5 right-5 z-40 flex size-14 items-center justify-center rounded-full bg-wapp text-pista ring-1 ring-cal/10 transition hover:bg-wapp/90"
+      className="wapp-late fixed bottom-5 right-5 z-40 flex size-14 items-center justify-center rounded-full bg-wapp text-white ring-1 ring-white/20 transition hover:bg-wapp/90"
     >
       <WhatsappGlyph className="size-7" />
     </a>

@@ -369,9 +369,67 @@ button:not([aria-label]) {
   }
 }
 
+/* Icono de WhatsApp que late (boton flotante del club y botones de la
+   landing): dos golpes y una pausa larga, y en cada golpe sale un halo verde.
+   La excepcion a "nada se mueve": el movimiento invita a tocar. */
+.wapp-late {
+  isolation: isolate;
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--color-wapp) 45%, transparent);
+  animation: wapp-late 2400ms ease-in-out infinite;
+}
+.wapp-late::before,
+.wapp-late::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--color-wapp);
+  opacity: 0;
+  animation: wapp-halo 2400ms ease-out infinite;
+}
+.wapp-late::after {
+  animation-delay: 300ms;
+}
+.wapp-late:hover {
+  animation-play-state: paused;
+}
+
+@keyframes wapp-late {
+  0%,
+  20%,
+  45%,
+  100% {
+    transform: scale(1);
+  }
+  10% {
+    transform: scale(1.12);
+  }
+  30% {
+    transform: scale(1.07);
+  }
+}
+
+@keyframes wapp-halo {
+  0% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  45%,
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+  .wapp-late,
+  .wapp-late::before,
+  .wapp-late::after {
+    animation: none;
   }
   .ficha-in,
   .portada-foto,

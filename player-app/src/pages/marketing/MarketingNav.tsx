@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLogo } from '../../components/BrandLogo';
-import { SearchGlyph, WhatsappGlyph } from '../../components/Ui';
+import { SearchGlyph } from '../../components/Ui';
 import { BRAND, SALES_EMAIL, salesWhatsappHref } from './config';
+import { WhatsappPulse } from './Cta';
 import { CONTAINER } from './motion';
 
 const ANCHORS = [
@@ -127,9 +128,9 @@ export function MarketingNav() {
             href={salesWhatsappHref()}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 rounded-full bg-ladrillo px-4 py-2.5 text-xs font-bold uppercase tracking-[0.12em] text-cal transition duration-300 hover:-translate-y-px hover:bg-ladrillo/90 sm:px-5 [box-shadow:var(--shadow-glow)]"
+            className="inline-flex items-center gap-2 rounded-full bg-ladrillo py-2.5 pl-2.5 pr-4 text-xs font-bold uppercase tracking-[0.12em] text-cal transition duration-300 hover:-translate-y-px hover:bg-ladrillo/90 max-[399px]:pr-2.5 sm:pr-5 [box-shadow:var(--shadow-glow)]"
           >
-            <WhatsappGlyph className="size-3.5" />
+            <WhatsappPulse className="-my-1 size-6" />
             {/* En los teléfonos más angostos no entra al lado del logo: queda el ícono. */}
             <span className="max-[399px]:sr-only">Hablemos</span>
           </a>

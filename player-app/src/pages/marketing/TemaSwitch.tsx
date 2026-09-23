@@ -1,17 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 
 /**
  * Botón flotante para ver la landing en claro u oscuro: un sol en el tema
  * oscuro (lleva al claro) y una luna en el claro (vuelve al oscuro).
  *
- * <p>La landing es oscura por defecto. Pone el mismo data-theme que ya usan las
+ * <p>La landing es clara por defecto. Pone el mismo data-theme que ya usan las
  * páginas de un club que eligió tema claro, así lo que se ve es la paleta real
- * y no una maqueta aparte.
+ * y no una maqueta aparte. Layout effect para que no se vea un instante oscura
+ * antes de pintarse clara.
  */
 export function TemaSwitch() {
-  const [claro, setClaro] = useState(false);
+  const [claro, setClaro] = useState(true);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const html = document.documentElement;
     if (claro) {
       html.setAttribute('data-theme', 'light');

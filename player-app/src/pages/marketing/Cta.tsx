@@ -6,6 +6,18 @@ import { ArrowGlyph } from './motion';
 /** El club de ejemplo con datos reales cargados: la prueba de que el sistema anda. */
 export const DEMO_CLUB_PATH = '/club/simon';
 
+/** Ícono de WhatsApp en su verde, latiendo (ver .wapp-late en index.css). */
+export function WhatsappPulse({ className = '' }: { className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`wapp-late relative grid shrink-0 place-items-center rounded-full bg-wapp text-white ${className}`}
+    >
+      <WhatsappGlyph className="size-[62%]" />
+    </span>
+  );
+}
+
 /** Botón ladrillo que abre el WhatsApp de ventas. */
 export function WhatsappCta({
   href,
@@ -18,7 +30,8 @@ export function WhatsappCta({
   size?: 'md' | 'lg';
   className?: string;
 }) {
-  const sizing = size === 'lg' ? 'px-6 py-4 text-[0.8125rem] sm:px-7 sm:text-sm' : 'px-5 py-3.5 text-xs';
+  const sizing =
+    size === 'lg' ? 'py-4 pl-4 pr-6 text-[0.8125rem] sm:pr-7 sm:text-sm' : 'py-3.5 pl-3.5 pr-5 text-xs';
   return (
     <a
       href={href}
@@ -26,7 +39,7 @@ export function WhatsappCta({
       rel="noreferrer"
       className={`group inline-flex items-center justify-center gap-2.5 text-center sm:whitespace-nowrap rounded-full bg-ladrillo font-bold uppercase tracking-[0.08em] text-cal sm:tracking-[0.12em] transition duration-300 hover:-translate-y-0.5 hover:bg-ladrillo/90 active:translate-y-0 [box-shadow:var(--shadow-glow)] ${sizing} ${className}`}
     >
-      <WhatsappGlyph className="size-4 shrink-0" />
+      <WhatsappPulse className={size === 'lg' ? '-my-1.5 size-7' : '-my-1 size-6'} />
       {children}
       <ArrowGlyph className="hidden size-4 shrink-0 transition-transform duration-300 group-hover:translate-x-1 sm:block" />
     </a>

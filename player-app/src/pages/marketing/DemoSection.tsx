@@ -92,7 +92,7 @@ export function DemoSection() {
         <SectionHeading
           eyebrow="Probalo"
           title="Reservá como un jugador"
-          lead="Tocá un horario en el celular y mirá cómo entra en la agenda del club, sin que nadie conteste un mensaje."
+          lead="Tocá un horario en el celular y mirá cómo entra en la agenda del club, sin que nadie conteste un mensaje. Es una simulación con datos de ejemplo: acá no se reserva ninguna cancha de verdad."
         />
 
         <div className="mt-16 grid items-start gap-14 md:mt-20 lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-16 xl:gap-24">
@@ -193,8 +193,11 @@ function Phone({ children }: { children: ReactNode }) {
             </span>
           </span>
         </div>
-        <div className="border-b border-cal/10 px-5 pb-3 pt-2">
+        <div className="flex items-center justify-between border-b border-cal/10 px-5 pb-3 pt-2">
           <p className="display text-lg tracking-[0.14em]">Tu club</p>
+          <span className="eyebrow rounded-full border border-cal/15 px-2.5 py-1 text-[0.6rem] text-ink-soft">
+            Demo
+          </span>
         </div>
         <div className="flex flex-1 flex-col p-5">{children}</div>
       </div>
@@ -376,6 +379,7 @@ function DoneStep({ court, hour, onAgain }: { court: number; hour: number; onAga
       <p className="mt-3 max-w-[14rem] text-sm text-ink-soft">
         Ya está en la agenda del club. Nadie tuvo que contestar un mensaje.
       </p>
+      <p className="mt-2 text-[0.7rem] text-ink-mute">Es una demo: no se reservó nada de verdad.</p>
       <a
         href="#demo-panel"
         className="eyebrow mt-5 text-ladrillo-claro underline-offset-4 hover:underline lg:hidden"
