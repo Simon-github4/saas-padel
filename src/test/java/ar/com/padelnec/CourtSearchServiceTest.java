@@ -211,6 +211,22 @@ class CourtSearchServiceTest {
     }
 
     @Test
+    @DisplayName("El club de ejemplo de la landing no aparece ni en los resultados ni en el filtro")
+    void hidesDemoClub() {
+        withClub(CourtSearchService.DEMO_CLUB_SLUG, club -> {
+            fixture.court("Cancha 1", 1);
+            fixture.allDayPrice(TODAY.getDayOfWeek(), "18000");
+        });
+
+        CourtSearchResponse result = courtSearchService.search(TODAY, TODO_EL_DIA_DESDE, TODO_EL_DIA_HASTA,
+                Set.of(CourtSearchService.DEMO_CLUB_SLUG, "costa-verde"));
+
+        assertThat(result.matches()).extracting(Match::clubSlug).containsOnly("costa-verde");
+        assertThat(result.clubs()).extracting(CourtSearchResponse.ClubOption::slug)
+                .containsExactlyInAnyOrder("club-necochea", "costa-verde");
+    }
+
+    @Test
     @DisplayName("Los resultados vienen ordenados por horario, mezclando los clubes")
     void ordersByStartTime() {
         List<Match> matches = searchAllDay().matches();

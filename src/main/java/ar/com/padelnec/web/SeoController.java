@@ -3,6 +3,7 @@ package ar.com.padelnec.web;
 import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.repository.TenantRepository;
+import ar.com.padelnec.service.CourtSearchService;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -58,7 +59,9 @@ public class SeoController {
     @GetMapping(value = "/sitemap.xml", produces = MediaType.APPLICATION_XML_VALUE)
     public String sitemap() {
         String base = properties.getBaseUrl();
-        List<Tenant> clubs = tenantRepository.findAllByActiveTrue();
+        List<Tenant> clubs = tenantRepository.findAllByActiveTrue().stream()
+                .filter(CourtSearchService::listedPublicly)
+                .toList();
 
         StringBuilder xml = new StringBuilder();
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
