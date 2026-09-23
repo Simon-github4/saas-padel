@@ -7,11 +7,13 @@ import ar.com.padelnec.gym.domain.PayMethod;
 import ar.com.padelnec.gym.repository.GymMemberRepository;
 import ar.com.padelnec.gym.repository.GymMembershipRepository;
 import ar.com.padelnec.gym.repository.GymSedeRepository;
+import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.web.BusinessRuleException;
 import ar.com.padelnec.web.ResourceNotFoundException;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -27,17 +29,20 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class GymMembershipService {
 
+    private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
     private final GymMembershipRepository membershipRepository;
     private final GymMemberRepository memberRepository;
     private final GymSedeRepository sedeRepository;
     private final GymBillingService billingService;
     private final GymTariffService tariffService;
+    private final TenantService tenantService;
     private final Clock clock;
 
     /** Todo lo que carga el mostrador al cobrar una cuota. */
     public record Sale(UUID memberId, LocalDate startsOn, LocalDate endsOn, int daysPerWeek,
                        BigDecimal price, PayMethod payMethod, UUID collectedSedeId,
-                       Set<UUID> sedeIds, UUID registeredBy) {
+                       Set<UUID> sedeIds, UUID registeredBy, LocalDate paidOn) {
     }
 
     /** Ultimo dia de un periodo de {@code months} meses que arranca en {@code startsOn}. */
@@ -65,6 +70,7 @@ public class GymMembershipService {
         membership.setEndsOn(sale.endsOn());
         membership.setDaysPerWeek(sale.daysPerWeek());
         membership.setPrice(sale.price().setScale(2, java.math.RoundingMode.HALF_UP));
+        membership.setPaidOn(sale.paidOn() != null ? sale.paidOn() : clock.instant().atZone(tenantService.requireCurrent().zoneId()).toLocalDate());
         membership.setPayMethod(sale.payMethod());
         membership.setCollectedSede(collectedSede);
         membership.setRegisteredBy(sale.registeredBy());
@@ -84,11 +90,18 @@ public class GymMembershipService {
      * de corte de todos sus meses). {@code price} es opcional: si no viene, se
      * auto-completa con la tarifa de {@code daysPerWeek} (que solo importa para el
      * socio que empieza).
+     *
+     * <p>{@code newStart} arranca el ciclo de nuevo ese dia (null = sigue como venia; el
+     * socio nuevo arranca hoy): la primera cuota cobrada sale de ahi y pasa a ser el ancla,
+     * y los meses sin pagar de antes dejan de contar como deuda. Sirve para cargar a quien
+     * ya venia con su mes real y para el que vuelve despues de un tiempo. Tiene que ser
+     * despues de lo que el socio ya tiene pago. {@code paidOn} es el dia en que se cobro
+     * (null = hoy): va a la caja de ese dia y no mueve el periodo.
      */
     @Transactional
     public List<UUID> charge(UUID memberId, int months, BigDecimal price, Integer daysPerWeek,
                              PayMethod payMethod, UUID collectedSedeId, Set<UUID> sedeIds,
-                             UUID registeredBy, LocalDate today) {
+                             UUID registeredBy, LocalDate today, LocalDate newStart, LocalDate paidOn) {
         if (months < 1) {
             throw new BusinessRuleException("Elegí cuántas cuotas cobrar.");
         }
@@ -104,10 +117,25 @@ public class GymMembershipService {
         if (price != null && price.signum() < 0) {
             throw new BusinessRuleException("Poné un monto válido.");
         }
+        LocalDate collectedOn = paidOn != null ? paidOn : today;
+        if (collectedOn.isAfter(today)) {
+            throw new BusinessRuleException("La fecha de cobro no puede ser futura.");
+        }
+        if (newStart != null && (newStart.isBefore(today.minusYears(1)) || newStart.isAfter(today.plusYears(1)))) {
+            throw new BusinessRuleException("La cuota tiene que arrancar dentro del último año o del próximo.");
+        }
 
         GymMember member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe ese socio."));
-        GymBillingService.Status status = billingService.status(member, today);
+        if (newStart != null) {
+            membershipRepository.findFirstByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(member.getId())
+                    .filter(last -> !newStart.isAfter(last.getEndsOn()))
+                    .ifPresent(last -> {
+                        throw new BusinessRuleException("Tiene pago hasta el " + DAY.format(last.getEndsOn())
+                                + ": la cuota nueva tiene que arrancar después.");
+                    });
+        }
+        GymBillingService.Status status = billingService.status(member, today, newStart);
         List<GymBillingService.Period> pending = status.pending();
         if (months > pending.size()) {
             throw new BusinessRuleException("Estás cobrando más de las "
@@ -144,6 +172,7 @@ public class GymMembershipService {
             membership.setEndsOn(period.end());
             membership.setDaysPerWeek(effectiveDays);
             membership.setPrice(unit.setScale(2, java.math.RoundingMode.HALF_UP));
+            membership.setPaidOn(collectedOn);
             membership.setPayMethod(payMethod);
             membership.setCollectedSede(collectedSede);
             membership.setRegisteredBy(registeredBy);
@@ -151,7 +180,7 @@ public class GymMembershipService {
             ids.add(membershipRepository.saveAndFlush(membership).getId());
         }
 
-        if (member.getBillingAnchor() == null) {
+        if (newStart != null || member.getBillingAnchor() == null) {
             member.setBillingAnchor(pending.getFirst().start());
         }
         return ids;

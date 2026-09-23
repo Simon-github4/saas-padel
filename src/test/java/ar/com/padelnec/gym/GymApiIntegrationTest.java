@@ -312,7 +312,7 @@ class GymApiIntegrationTest {
         // haga lo que haga el calendario.
         LocalDate threeMonthsAgo = LocalDate.now(ZONE).minusDays(95);
         TenantContext.runAs(club.getId(), () -> membershipService.charge(carla.id(), 1,
-                new BigDecimal("30000"), 3, PayMethod.CASH, sede.getId(), Set.of(sede.getId()), null, threeMonthsAgo));
+                new BigDecimal("30000"), 3, PayMethod.CASH, sede.getId(), Set.of(sede.getId()), null, threeMonthsAgo, null, null));
 
         String token = readyToken(carla);
         JsonNode me = get("los-troncos", "/me", token, 200);

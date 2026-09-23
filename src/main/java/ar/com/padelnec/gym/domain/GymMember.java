@@ -41,8 +41,9 @@ public class GymMember extends TenantScopedEntity {
     private String notes;
 
     /**
-     * El dia en que empezo la primera cuota del socio: de ahi sale el dia de corte
-     * de todos sus meses. Lo fija el primer cobro y nunca cambia.
+     * El dia en que empezo el ciclo del socio: de ahi sale el dia de corte de todos
+     * sus meses. Lo fija el primer cobro y solo cambia si el mostrador arranca el
+     * ciclo de nuevo al cobrar (por ejemplo, cuando vuelve despues de un tiempo).
      */
     @Column(name = "billing_anchor")
     private LocalDate billingAnchor;

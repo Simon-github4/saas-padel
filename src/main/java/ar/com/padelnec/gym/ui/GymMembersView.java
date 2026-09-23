@@ -21,6 +21,7 @@ import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.CheckboxGroup;
+import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
@@ -73,6 +74,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
     private final GymSedeService sedeService;
     private final GymOverviewService overviewService;
     private final GymTariffService tariffService;
+    private final GymBillingService billingService;
     private final transient AuthenticationContext authenticationContext;
 
     private final Grid<MemberRow> grid = new Grid<>();
@@ -87,7 +89,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
     public GymMembersView(GymModule gymModule, GymMemberService memberService,
                           GymMembershipService membershipService, GymCheckinService checkinService,
                           GymSedeService sedeService, GymOverviewService overviewService,
-                          GymTariffService tariffService,
+                          GymTariffService tariffService, GymBillingService billingService,
                           AuthenticationContext authenticationContext) {
         this.gymModule = gymModule;
         this.memberService = memberService;
@@ -96,6 +98,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         this.sedeService = sedeService;
         this.overviewService = overviewService;
         this.tariffService = tariffService;
+        this.billingService = billingService;
         this.authenticationContext = authenticationContext;
 
         setSizeFull();
@@ -287,38 +290,58 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         dialog.setWidth("65vw");
         dialog.setHeight("80vh");
 
+        // Mutable: si el mostrador arranca el mes de nuevo, las cuotas salen de otro ciclo.
+        GymBillingService.Status[] cycleOf = {row.billing()};
         GymBillingService.Status billing = row.billing();
-        List<Period> pending = billing.pending();
+        boolean firstCharge = billing.anchor() == null;
 
         // A donde apunta el ciclo, para que el mostrador sepa que esta cobrando
-        Span cycle = new Span();
-        cycle.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
-        if (billing.anchor() == null) {
-            cycle.setText("Todavía no pagó ninguna cuota. Este primer pago arranca su ciclo.");
+        String cycleText;
+        if (firstCharge) {
+            cycleText = "Todavía no pagó ninguna cuota. Este primer pago arranca su ciclo.";
         } else if (billing.monthsLate() >= 2) {
-            cycle.setText("Adeudás " + billing.monthsLate()
-                    + " cuotas: se cobran de la más vieja a la más nueva.");
+            cycleText = "Adeudás " + billing.monthsLate() + " cuotas: se cobran de la más vieja a la más nueva.";
         } else if (billing.monthsLate() == 1) {
-            cycle.setText("Le falta el mes corriente (vence el " + SHORT_DAY.format(billing.periodEnd()) + ").");
+            cycleText = "Le falta el mes corriente (vence el " + SHORT_DAY.format(billing.periodEnd()) + ").";
         } else {
-            cycle.setText("Está al día. Podés pagar de a una cuota o adelantar de a varias.");
+            cycleText = "Está al día. Podés pagar de a una cuota o adelantar de a varias.";
         }
+        Span cycle = new Span(cycleText);
+        cycle.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
 
         CheckboxGroup<Period> periods = new CheckboxGroup<>("Cuotas a cobrar");
-        periods.setItems(pending);
         periods.setItemLabelGenerator(period -> {
-            LocalDate nextStart = billing.periodEnd().plusDays(1);
+            LocalDate nextStart = cycleOf[0].periodEnd().plusDays(1);
             String state = period.end().isBefore(today) ? "Vencida"
                     : !today.isBefore(period.start()) ? "Corriente"
                     : period.start().equals(nextStart) ? "Próxima" : "Adelanto";
             return state + " · del " + SHORT_DAY.format(period.start()) + " al "
                     + SHORT_DAY.format(period.end());
         });
-        // Por defecto se cobra la deuda entera (o la próxima cuota si está al día): el
-        // mostrador suma los adelantos marcando cuotas a futuro.
-        List<Period> owed = pending.stream().filter(period -> !period.start().isAfter(today)).toList();
-        periods.select(owed.isEmpty() ? Set.of(pending.getFirst()) : Set.copyOf(owed));
+        showPeriods(periods, billing.pending());
         periods.setWidthFull();
+
+        // Vacío, el ciclo sigue como venía. Con una fecha, el mes arranca de nuevo ese día:
+        // el socio que ya venía se carga con su mes real, y el que vuelve después de un
+        // tiempo no arrastra los meses que no vino. No puede pisar lo que ya tiene pago.
+        DatePicker newStart = new DatePicker("Nuevo inicio de mes (opcional)");
+        LocalDate earliest = today.minusYears(1);
+        if (billing.plan() != null && billing.plan().getEndsOn().isAfter(earliest)) {
+            earliest = billing.plan().getEndsOn().plusDays(1);
+        }
+        newStart.setMin(earliest);
+        newStart.setMax(today.plusYears(1));
+        newStart.setClearButtonVisible(true);
+        newStart.setHelperText(firstCharge
+                ? "Vacío: arranca hoy. Si el socio ya venía, poné el día en que empezó su mes."
+                : "Vacío: sigue su ciclo como venía. Con una fecha, su mes arranca de nuevo ese día.");
+        newStart.setWidthFull();
+
+        // La fecha de cobro es aparte del período: un pago de otro día va a la caja de ese día.
+        DatePicker paidOn = new DatePicker("Fecha de cobro");
+        paidOn.setValue(today);
+        paidOn.setMax(today);
+        paidOn.setWidthFull();
 
         BigDecimalField price = new BigDecimalField("Monto por cuota (opcional: usa la tarifa)");
         price.setPrefixComponent(new Span("$"));
@@ -349,6 +372,20 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             updateTotal(total, price, periods, tariff);
         };
         days.addValueChangeListener(event -> refresh.run());
+        newStart.addValueChangeListener(event -> {
+            LocalDate start = event.getValue();
+            cycleOf[0] = start == null ? row.billing() : billingService.status(row.billing().member(), today, start);
+            if (start == null) {
+                cycle.setText(cycleText);
+            } else if (firstCharge) {
+                cycle.setText("Todavía no pagó ninguna cuota. Este primer pago arranca su ciclo el "
+                        + SHORT_DAY.format(start) + ".");
+            } else {
+                cycle.setText("Su mes arranca de nuevo el " + SHORT_DAY.format(start)
+                        + ": los meses de antes sin pagar ya no se cobran.");
+            }
+            showPeriods(periods, cycleOf[0].pending());
+        });
         periods.addValueChangeListener(event -> updateTotal(total, price, periods, tariffFor(days)));
         price.addValueChangeListener(event -> updateTotal(total, price, periods, tariffFor(days)));
         refresh.run();
@@ -378,11 +415,23 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             collectedAt = null;
         }
 
-        VerticalLayout body = new VerticalLayout(cycle);
-        body.add(periods, price, days, total, sedeGroup, method);
+        // Cómo, dónde y cuándo se cobró, en una sola fila.
+        HorizontalLayout payment = new HorizontalLayout(method);
         if (collectedAt != null) {
-            body.add(collectedAt);
+            payment.add(collectedAt);
         }
+        payment.add(paidOn);
+        payment.setWidthFull();
+        payment.setPadding(false);
+        payment.getChildren().forEach(field -> payment.setFlexGrow(1, field));
+
+        // Días por semana y monto por cuota, en una sola fila.
+        HorizontalLayout plan = new HorizontalLayout(days, price);
+        plan.setWidthFull();
+        plan.setPadding(false);
+        plan.setFlexGrow(1, days, price);
+
+        VerticalLayout body = new VerticalLayout(cycle, newStart, periods, plan, total, sedeGroup, payment);
         body.setPadding(false);
         dialog.add(body);
 
@@ -398,7 +447,8 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                 membershipService.charge(row.id(), selected.size(), price.getValue(),
                         days.getValue(), method.getValue(),
                         collectedSedeId, sedeIds,
-                        GymViewSupport.currentUserId(authenticationContext).orElse(null), today);
+                        GymViewSupport.currentUserId(authenticationContext).orElse(null), today,
+                        newStart.getValue(), paidOn.getValue());
                 dialog.close();
                 refresh();
                 GymViewSupport.ok(selected.size() == 1 ? "Cuota registrada"
@@ -411,6 +461,16 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), save);
         dialog.open();
         price.focus();
+    }
+
+    /**
+     * Carga las cuotas que se pueden cobrar. Por defecto se cobra la deuda entera (o la
+     * próxima cuota si está al día): el mostrador suma los adelantos marcando cuotas a futuro.
+     */
+    private void showPeriods(CheckboxGroup<Period> periods, List<Period> pending) {
+        periods.setItems(pending);
+        List<Period> owed = pending.stream().filter(period -> !period.start().isAfter(today)).toList();
+        periods.select(owed.isEmpty() ? Set.of(pending.getFirst()) : Set.copyOf(owed));
     }
 
     /** Los días por semana que definen la tarifa: los que muestra el campo. */

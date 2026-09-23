@@ -67,9 +67,9 @@ class GymSchemaIntegrityTest {
     private UUID newMembership(UUID member, LocalDate from, LocalDate to) {
         return jdbc.queryForObject("""
                 INSERT INTO gym_membership (club_id, member_id, starts_on, ends_on, days_per_week, price,
-                                            pay_method, collected_sede_id)
-                VALUES (?, ?, ?, ?, 3, 30000, 'CASH', ?) RETURNING id
-                """, UUID.class, clubId, member, from, to, sedeId);
+                                            pay_method, collected_sede_id, paid_on)
+                VALUES (?, ?, ?, ?, 3, 30000, 'CASH', ?, ?) RETURNING id
+                """, UUID.class, clubId, member, from, to, sedeId, from);
     }
 
     @Test
@@ -131,9 +131,9 @@ class GymSchemaIntegrityTest {
         for (int invalid : new int[] {0, 8}) {
             assertThatThrownBy(() -> jdbc.update("""
                     INSERT INTO gym_membership (club_id, member_id, starts_on, ends_on, days_per_week, price,
-                                                pay_method, collected_sede_id)
-                    VALUES (?, ?, ?, ?, ?, 1000, 'CASH', ?)
-                    """, clubId, memberId, SEPT_1, SEPT_1.plusDays(29), invalid, sedeId))
+                                                pay_method, collected_sede_id, paid_on)
+                    VALUES (?, ?, ?, ?, ?, 1000, 'CASH', ?, ?)
+                    """, clubId, memberId, SEPT_1, SEPT_1.plusDays(29), invalid, sedeId, SEPT_1))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
     }

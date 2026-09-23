@@ -19,8 +19,10 @@ import org.springframework.transaction.annotation.Transactional;
  * El ciclo mensual de cada socio y su deuda.
  *
  * <p>El dia de corte de todos los meses de un socio es el dia en que empezo su
- * primera cuota (el "ancla"): quien arranco el dia 15, cada cuota va del 15 de un
- * mes al 14 del siguiente; el ancla en 31 baja al ultimo dia del mes corto. Un
+ * ciclo (el "ancla"): quien arranco el dia 15, cada cuota va del 15 de un mes al
+ * 14 del siguiente; el ancla en 31 baja al ultimo dia del mes corto. El mostrador
+ * puede arrancar el ciclo de nuevo al cobrar: el ancla pasa a ser ese dia y lo
+ * impago de antes deja de contar. Un
  * periodo esta pago si una cuota no anulada lo cubre; lo impago se acumula como
  * deuda, y se cobra la mas vieja primero.
  *
@@ -87,21 +89,48 @@ public class GymBillingService {
 
     @Transactional(readOnly = true)
     public Status status(GymMember member, LocalDate today) {
+        return status(member, today, null);
+    }
+
+    /**
+     * Como {@link #status(GymMember, LocalDate)}, pero con el ciclo arrancando de nuevo
+     * en {@code newStart}: lo que se cobre sale de ahi, y los meses de antes sin pagar
+     * dejan de contar. Sirve para cargar a un socio que ya venia (su mes empezo el 01/09
+     * aunque se lo cargue el 23/09) y para el que vuelve despues de un tiempo sin venir.
+     * Con {@code newStart} null el ciclo sigue como venia (y el socio nuevo arranca hoy).
+     */
+    @Transactional(readOnly = true)
+    public Status status(GymMember member, LocalDate today, LocalDate newStart) {
         List<GymMembership> paid =
                 membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(member.getId());
         GymMembership plan = paid.isEmpty() ? null : paid.getFirst();
 
         LocalDate anchor = member.getBillingAnchor();
-        if (anchor == null && paid.isEmpty()) {
-            // Nunca pago: la primera cuota arranca hoy y fija el ancla. No puede entrar hasta pagarla.
-            LocalDate start = today;
+        if (newStart != null || (anchor == null && paid.isEmpty())) {
+            // Ciclo nuevo (el socio que nunca pago, o uno que arranca de nuevo): la cuota arranca
+            // en newStart (o hoy) y fija el ancla al cobrarse. Hasta pagarla, el ciclo nuevo no
+            // habilita a entrar. Si arranca antes de hoy, se ofrecen todos los meses hasta el
+            // corriente y los adelantos de siempre.
+            LocalDate start = newStart == null ? today : newStart;
+            YearMonth first = YearMonth.from(start);
             List<Period> pending = new ArrayList<>();
-            for (int k = 0; k <= LOOK_AHEAD; k++) {
-                LocalDate s = start.plusMonths(k);
-                pending.add(new Period(s, s.plusMonths(1).minusDays(1)));
+            Period shown = null;
+            int ahead = 0;
+            for (int k = 0; ; k++) {
+                Period period = periodOf(start, first.plusMonths(k));
+                if (k > 0 && period.start().isAfter(today)) {
+                    if (ahead == LOOK_AHEAD) {
+                        break;
+                    }
+                    ahead++;
+                }
+                pending.add(period);
+                if (shown == null || !period.start().isAfter(today)) {
+                    shown = period;
+                }
             }
-            return new Status(member, null, false, start, start.plusMonths(1).minusDays(1),
-                    null, false, 0, BigDecimal.ZERO, pending, null, 0, false);
+            return new Status(member, null, false, shown.start(), shown.end(),
+                    null, false, 0, BigDecimal.ZERO, pending, plan, plan != null ? plan.getDaysPerWeek() : 0, false);
         }
         if (anchor == null) {
             // Socios de antes de la migracion (o registros sin backfill): su primera cuota es el ancla.

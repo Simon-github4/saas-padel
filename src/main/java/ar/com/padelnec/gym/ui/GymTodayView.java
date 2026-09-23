@@ -110,7 +110,7 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
     private void buildPaymentColumns() {
         payments.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
         payments.setSelectionMode(Grid.SelectionMode.NONE);
-        payments.addColumn(row -> hour.format(row.at())).setHeader("Hora").setAutoWidth(true).setFlexGrow(0);
+        payments.addColumn(this::loadedAt).setHeader("Hora").setAutoWidth(true).setFlexGrow(0);
         payments.addColumn(DayPayment::memberName).setHeader("Socio").setFlexGrow(3);
         payments.addColumn(row -> GymViewSupport.money(row.price())).setHeader("Monto").setAutoWidth(true)
                 .setFlexGrow(0);
@@ -118,6 +118,13 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
         payments.addColumn(DayPayment::collectedAt).setHeader("Cobrado en").setFlexGrow(2);
         payments.setEmptyStateText("No se cobró ninguna cuota este día.");
         payments.setHeight("14em");
+    }
+
+    /** La hora de carga; si se cargo otro dia que el del cobro, tambien la fecha. */
+    private String loadedAt(DayPayment row) {
+        LocalDate loadedOn = row.at().atZone(hour.getZone()).toLocalDate();
+        return loadedOn.equals(row.paidOn()) ? hour.format(row.at())
+                : "cargado " + GymViewSupport.SHORT_DAY.format(loadedOn) + " " + hour.format(row.at());
     }
 
     private void refresh() {

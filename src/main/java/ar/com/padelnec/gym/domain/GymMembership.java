@@ -24,7 +24,8 @@ import lombok.Setter;
  * Un periodo pago de un socio: vale desde {@code startsOn} hasta {@code endsOn}
  * inclusive, con un tope de dias por semana, en las sedes indicadas. Renovar es
  * una fila nueva. El cobro va en la misma fila porque se hace en el mostrador,
- * de una sola vez.
+ * de una sola vez, pero su fecha ({@code paidOn}) es aparte del periodo: se puede
+ * cargar hoy una cuota que empezo antes o que se cobro otro dia.
  */
 @Entity
 @Table(name = "gym_membership")
@@ -47,6 +48,10 @@ public class GymMembership extends TenantScopedEntity {
 
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
+
+    /** El dia en que se cobro: va a la caja de ese dia. No define el periodo. */
+    @Column(name = "paid_on", nullable = false)
+    private LocalDate paidOn;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "pay_method", nullable = false, length = 20)

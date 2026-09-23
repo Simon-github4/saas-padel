@@ -121,14 +121,14 @@ class GymTenantIsolationTest {
         LocalDate today = LocalDate.now();
 
         assertThatThrownBy(() -> membershipService.sell(new Sale(necocheaMember.id(), today, today.plusDays(29), 3,
-                new BigDecimal("30000"), PayMethod.CASH, necocheaSede.getId(), Set.of(necocheaSede.getId()), null)))
+                new BigDecimal("30000"), PayMethod.CASH, necocheaSede.getId(), Set.of(necocheaSede.getId()), null, null)))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         // Un socio propio, pero con una sede del otro club.
         GymSede ownSede = sedeRepository.findAll().getFirst();
         CreatedMember ownNewMember = memberService.create("50333444", "Otro socio", null);
         assertThatThrownBy(() -> membershipService.sell(new Sale(ownNewMember.id(), today, today.plusDays(29), 3,
-                new BigDecimal("30000"), PayMethod.CASH, ownSede.getId(), Set.of(necocheaSede.getId()), null)))
+                new BigDecimal("30000"), PayMethod.CASH, ownSede.getId(), Set.of(necocheaSede.getId()), null, null)))
                 .isInstanceOf(BusinessRuleException.class);
     }
 }

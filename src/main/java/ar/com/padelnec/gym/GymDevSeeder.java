@@ -116,6 +116,6 @@ class GymDevSeeder {
             sedeIds.add(sede.getId());
         }
         membershipService.sell(new Sale(member.getId(), from, to, daysPerWeek, new BigDecimal("30000"),
-                PayMethod.CASH, sedes[0].getId(), sedeIds, null));
+                PayMethod.CASH, sedes[0].getId(), sedeIds, null, null));
     }
 }

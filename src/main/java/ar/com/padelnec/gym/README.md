@@ -78,6 +78,12 @@ Para probar sin cámara, pegar el link o el código en el campo del escáner.
 - Pasado el tope semanal se rechaza; el mostrador puede dejar pasar (queda marcado
   como excepción). El mostrador solo registra ingresos de HOY.
 - Un socio no puede tener dos cuotas que se pisen (constraint en la base).
+- La fecha de cobro (`paid_on`) es aparte del período: un pago de otro día va a la caja
+  de ese día, y pagar antes no adelanta el período.
+- Al cobrar, "Nuevo inicio de mes" es opcional. Vacío, el ciclo sigue como venía. Con
+  una fecha, el mes arranca de nuevo ese día: sirve para cargar a un socio que ya venía
+  con su mes real, o para el que vuelve después de meses (los meses sin pagar de antes
+  dejan de contar como deuda). No puede pisar lo que el socio ya tiene pago.
 - El QR es un secreto estático por sede: quien lo fotografíe lo tiene. Se puede
   regenerar desde el panel, lo que invalida el cartel impreso. Con la ubicación de la
   sede cargada, tenerlo no alcanza: hay que estar cerca.

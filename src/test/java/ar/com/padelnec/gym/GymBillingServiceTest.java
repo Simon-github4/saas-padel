@@ -1,18 +1,24 @@
 package ar.com.padelnec.gym;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ar.com.padelnec.ClubFixture;
 import ar.com.padelnec.TestDatabaseConfig;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
 import ar.com.padelnec.gym.domain.GymSede;
+import ar.com.padelnec.gym.domain.PayMethod;
+import ar.com.padelnec.gym.repository.GymMemberRepository;
 import ar.com.padelnec.gym.repository.GymMembershipRepository;
 import ar.com.padelnec.gym.service.GymBillingService;
 import ar.com.padelnec.gym.service.GymBillingService.Status;
 import ar.com.padelnec.gym.service.GymMembershipService;
+import ar.com.padelnec.gym.service.GymOverviewService;
 import ar.com.padelnec.gym.service.GymTariffService;
+import ar.com.padelnec.web.BusinessRuleException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -40,6 +46,8 @@ class GymBillingServiceTest {
     @Autowired private GymMembershipService membershipService;
     @Autowired private GymMembershipRepository membershipRepository;
     @Autowired private GymTariffService tariffService;
+    @Autowired private GymOverviewService overviewService;
+    @Autowired private GymMemberRepository memberRepository;
     @Autowired private ClubFixture clubFixture;
     @Autowired private GymFixture gym;
 
@@ -65,7 +73,7 @@ class GymBillingServiceTest {
     /** La primera cuota del socio, cobrada con el servicio de cobro del ciclo. */
     private void charge(int months, BigDecimal price, int daysPerWeek, LocalDate today) {
         membershipService.charge(memberId, months, price, daysPerWeek, ar.com.padelnec.gym.domain.PayMethod.CASH,
-                sede.getId(), Set.of(sede.getId()), null, today);
+                sede.getId(), Set.of(sede.getId()), null, today, null, null);
     }
 
     @Test
@@ -216,7 +224,7 @@ class GymBillingServiceTest {
         // Pagó 3 días y ahora quiere ir 4: la próxima cuota sale con el plan nuevo.
         membershipService.charge(memberId, 1, new BigDecimal("40000"), 4,
                 ar.com.padelnec.gym.domain.PayMethod.CASH,
-                sede.getId(), Set.of(sede.getId()), null, LocalDate.of(2026, 7, 20));
+                sede.getId(), Set.of(sede.getId()), null, LocalDate.of(2026, 7, 20), null, null);
 
         Status status = billing.status(memberId, LocalDate.of(2026, 7, 20));
         assertThat(status.planDaysPerWeek()).isEqualTo(4);
@@ -236,9 +244,147 @@ class GymBillingServiceTest {
 
         // Sin monto a mano, la cuota del plan (3 dias) sale con la tarifa.
         membershipService.charge(memberId, 1, null, 3, ar.com.padelnec.gym.domain.PayMethod.CASH,
-                sede.getId(), Set.of(sede.getId()), null, LocalDate.of(2026, 6, 15));
+                sede.getId(), Set.of(sede.getId()), null, LocalDate.of(2026, 6, 15), null, null);
 
         assertThat(membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(memberId).getFirst()
                 .getPrice()).isEqualByComparingTo("35000");
+    }
+
+    /** Un cobro con las fechas del mostrador: si arranca el mes de nuevo y cuando se cobro. */
+    private void chargeWithDates(int months, LocalDate today, LocalDate newStart, LocalDate paidOn) {
+        membershipService.charge(memberId, months, new BigDecimal("30000"), 3, PayMethod.CASH,
+                sede.getId(), Set.of(sede.getId()), null, today, newStart, paidOn);
+    }
+
+    @Test
+    @DisplayName("Un socio que ya venia se carga con su mes real: arranco el 01/09, se lo carga el 23/09")
+    void aMemberWhoAlreadyCameKeepsTheirRealCycle() {
+        LocalDate today = LocalDate.of(2026, 9, 23);
+        LocalDate sept1 = LocalDate.of(2026, 9, 1);
+
+        Status before = billing.status(loadMember(), today, sept1);
+        assertThat(before.pending().getFirst().start()).isEqualTo(sept1);
+        assertThat(before.pending().getFirst().end()).isEqualTo(LocalDate.of(2026, 9, 30));
+
+        chargeWithDates(1, today, sept1, LocalDate.of(2026, 9, 5));
+
+        Status status = billing.status(memberId, today);
+        assertThat(status.anchor()).isEqualTo(sept1);
+        assertThat(status.periodStart()).isEqualTo(sept1);
+        assertThat(status.periodEnd()).isEqualTo(LocalDate.of(2026, 9, 30));
+        assertThat(status.paidCurrent()).isTrue();
+        assertThat(status.canEnter()).isTrue();
+        // La renovacion sigue su ciclo: del 01/10 al 31/10.
+        assertThat(status.pending().getFirst().start()).isEqualTo(LocalDate.of(2026, 10, 1));
+        assertThat(status.pending().getFirst().end()).isEqualTo(LocalDate.of(2026, 10, 31));
+
+        GymMembership cuota = membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(memberId)
+                .getFirst();
+        assertThat(cuota.getStartsOn()).isEqualTo(sept1);
+        assertThat(cuota.getPaidOn()).isEqualTo(LocalDate.of(2026, 9, 5));
+    }
+
+    @Test
+    @DisplayName("Si el primer mes arranco hace meses, se ofrecen todos hasta el corriente y los adelantos")
+    void aFirstStartMonthsAgoOffersEveryMonthUpToNow() {
+        Status status = billing.status(loadMember(), LocalDate.of(2026, 9, 23), LocalDate.of(2026, 6, 1));
+
+        assertThat(status.pending()).hasSize(4 + GymBillingService.LOOK_AHEAD);
+        assertThat(status.pending().getFirst().start()).isEqualTo(LocalDate.of(2026, 6, 1));
+        assertThat(status.periodStart()).isEqualTo(LocalDate.of(2026, 9, 1));
+        assertThat(status.canEnter()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Pagar antes no adelanta el periodo: cobrado el 25/09, la cuota es del 01/10 al 31/10")
+    void anEarlyPaymentDoesNotMoveThePeriod() {
+        chargeWithDates(1, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 1), null);
+
+        chargeWithDates(1, LocalDate.of(2026, 9, 25), null, LocalDate.of(2026, 9, 25));
+
+        GymMembership renewal = membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(memberId)
+                .getFirst();
+        assertThat(renewal.getStartsOn()).isEqualTo(LocalDate.of(2026, 10, 1));
+        assertThat(renewal.getEndsOn()).isEqualTo(LocalDate.of(2026, 10, 31));
+        assertThat(renewal.getPaidOn()).isEqualTo(LocalDate.of(2026, 9, 25));
+    }
+
+    @Test
+    @DisplayName("El que vuelve despues de meses arranca su mes de nuevo: sin deuda de lo que no vino")
+    void aNewStartRestartsTheCycleWithoutDebt() {
+        chargeWithDates(1, LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 1), null);
+        LocalDate today = LocalDate.of(2026, 9, 23);
+        assertThat(billing.status(memberId, today).monthsLate()).isEqualTo(3);
+
+        chargeWithDates(1, today, LocalDate.of(2026, 9, 18), null);
+
+        Status status = billing.status(memberId, today);
+        assertThat(status.anchor()).isEqualTo(LocalDate.of(2026, 9, 18));
+        assertThat(status.periodStart()).isEqualTo(LocalDate.of(2026, 9, 18));
+        assertThat(status.periodEnd()).isEqualTo(LocalDate.of(2026, 10, 17));
+        assertThat(status.monthsLate()).isZero();
+        assertThat(status.canEnter()).isTrue();
+        // Las renovaciones siguen desde la fecha nueva: 18/10 al 17/11.
+        assertThat(status.pending().getFirst().start()).isEqualTo(LocalDate.of(2026, 10, 18));
+        assertThat(status.pending().getFirst().end()).isEqualTo(LocalDate.of(2026, 11, 17));
+        // Julio y agosto no se generaron como cuotas.
+        assertThat(membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(memberId)).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("Sin fecha nueva el ciclo sigue como venia; con una, no puede pisar lo ya pagado")
+    void aNewStartCannotOverlapWhatIsPaid() {
+        chargeWithDates(1, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 1), null);
+
+        assertThatThrownBy(() -> chargeWithDates(1, LocalDate.of(2026, 9, 20), LocalDate.of(2026, 9, 25), null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("30/09/2026");
+
+        chargeWithDates(1, LocalDate.of(2026, 9, 20), null, null);
+        assertThat(membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(memberId).getFirst()
+                .getStartsOn()).isEqualTo(LocalDate.of(2026, 10, 1));
+        assertThat(billing.status(memberId, LocalDate.of(2026, 9, 20)).anchor()).isEqualTo(LocalDate.of(2026, 9, 1));
+    }
+
+    @Test
+    @DisplayName("Sin fecha de cobro, se cobro hoy; una fecha de cobro futura se rechaza")
+    void paidOnDefaultsToTodayAndCannotBeInTheFuture() {
+        LocalDate today = LocalDate.of(2026, 9, 23);
+
+        assertThatThrownBy(() -> chargeWithDates(1, today, null, today.plusDays(1)))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("futura");
+
+        chargeWithDates(1, today, null, null);
+        assertThat(membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(memberId).getFirst()
+                .getPaidOn()).isEqualTo(today);
+    }
+
+    @Test
+    @DisplayName("Un inicio a mas de un año (un error de tipeo) se rechaza")
+    void aFirstStartTooFarAwayIsRejected() {
+        LocalDate today = LocalDate.of(2026, 9, 23);
+
+        assertThatThrownBy(() -> chargeWithDates(1, today, LocalDate.of(2025, 9, 1), null))
+                .isInstanceOf(BusinessRuleException.class);
+        assertThatThrownBy(() -> chargeWithDates(1, today, LocalDate.of(2027, 10, 1), null))
+                .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test
+    @DisplayName("Los cobros del dia van por fecha de cobro: el de ayer cargado hoy es de ayer")
+    void dayPaymentsFollowThePaidDate() {
+        LocalDate today = overviewService.today();
+        LocalDate yesterday = today.minusDays(1);
+
+        chargeWithDates(1, today, today, yesterday);
+
+        assertThat(overviewService.paymentsOf(yesterday)).hasSize(1);
+        assertThat(overviewService.paymentsOf(yesterday).getFirst().paidOn()).isEqualTo(yesterday);
+        assertThat(overviewService.paymentsOf(today)).isEmpty();
+    }
+
+    private GymMember loadMember() {
+        return memberRepository.findById(memberId).orElseThrow();
     }
 }

@@ -49,7 +49,11 @@ public class GymOverviewService {
                              boolean manual) {
     }
 
-    public record DayPayment(Instant at, String memberName, BigDecimal price, PayMethod method,
+    /**
+     * Un cobro del dia. {@code at} es cuando se cargo, que puede ser otro dia que
+     * {@code paidOn} (un cobro de ayer cargado hoy va a la caja de ayer).
+     */
+    public record DayPayment(Instant at, LocalDate paidOn, String memberName, BigDecimal price, PayMethod method,
                              String collectedAt) {
     }
 
@@ -80,11 +84,8 @@ public class GymOverviewService {
 
     @Transactional(readOnly = true)
     public List<DayPayment> paymentsOf(LocalDate day) {
-        ZoneId zone = zone();
-        Instant from = day.atStartOfDay(zone).toInstant();
-        Instant to = day.plusDays(1).atStartOfDay(zone).toInstant();
-        return membershipRepository.findCreatedBetween(from, to).stream()
-                .map(m -> new DayPayment(m.getCreatedAt(), m.getMember().getFullName(), m.getPrice(),
+        return membershipRepository.findPaidOn(day).stream()
+                .map(m -> new DayPayment(m.getCreatedAt(), m.getPaidOn(), m.getMember().getFullName(), m.getPrice(),
                         m.getPayMethod(), m.getCollectedSede().getName()))
                 .toList();
     }

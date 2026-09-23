@@ -69,6 +69,6 @@ public class GymFixture {
                      GymSede... sedes) {
         return TenantContext.callAs(club.getId(), () -> membershipService.sell(new Sale(memberId, from, to,
                 daysPerWeek, new BigDecimal("30000"), PayMethod.CASH, sedes[0].getId(),
-                Arrays.stream(sedes).map(GymSede::getId).collect(Collectors.toSet()), null)));
+                Arrays.stream(sedes).map(GymSede::getId).collect(Collectors.toSet()), null, null)));
     }
 }
