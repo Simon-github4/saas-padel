@@ -35,11 +35,13 @@ import com.vaadin.flow.router.Route;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -88,6 +90,7 @@ public class AgendaView extends VerticalLayout {
     private List<Court> courts = List.of();
     private List<Blackout> blackouts = List.of();
     private SlotGenerator.DayPlan plan;
+    private Map<UUID, Instant> bookingRows = Map.of();
 
     public AgendaView(TenantService tenantService, BookingService bookingService,
                       CourtRepository courtRepository, BlackoutRepository blackoutRepository,
@@ -244,10 +247,34 @@ public class AgendaView extends VerticalLayout {
             }
             rows.add(new AgendaRow(slot.startTime(), slot.endTime(), slot, byCourt));
         }
+        bookingRows = rowWhereEachBookingShows(bookings, rows);
 
         renderBoard(rows);
         summary.setText(summaryOf(rows));
         renderFixedList(bookings);
+    }
+
+    /**
+     * La fila en la que se dibuja cada turno: la que arranca a su misma hora.
+     *
+     * <p>Con canchas de turnos corridos (13:30 contra el 14:00 de las demas) un
+     * turno se superpone con dos o tres filas, y se repetia en todas. Se dibuja una
+     * sola vez; si ninguna fila arranca justo a su hora (un turno cargado antes de
+     * cambiar el horario), en la primera que toca.
+     */
+    private static Map<UUID, Instant> rowWhereEachBookingShows(List<Booking> bookings, List<AgendaRow> rows) {
+        Map<UUID, Instant> shownAt = new HashMap<>();
+        for (Booking booking : bookings) {
+            rows.stream()
+                    .filter(row -> row.slot().startsAt().equals(booking.getStartTime()))
+                    .findFirst()
+                    .or(() -> rows.stream()
+                            .filter(row -> row.at(booking.getCourt())
+                                    .filter(booking::equals).isPresent())
+                            .findFirst())
+                    .ifPresent(row -> shownAt.put(booking.getId(), row.slot().startsAt()));
+        }
+        return shownAt;
     }
 
     /**
@@ -342,8 +369,10 @@ public class AgendaView extends VerticalLayout {
     // --------------------------------------------------------------- celdas
 
     private Component slotCard(AgendaRow row, Court court) {
+        // Las demas filas que el turno ocupa quedan en blanco: ver rowWhereEachBookingShows.
         return row.at(court)
-                .<Component>map(this::bookedCard)
+                .<Component>map(booking -> row.slot().startsAt().equals(bookingRows.get(booking.getId()))
+                        ? bookedCard(booking) : new Div())
                 .orElseGet(() -> plan.opens(court, row.slot()) ? freeCard(row, court)
                         : plan.openDuring(court, row.slot()) ? new Div() : closedCard());
     }
