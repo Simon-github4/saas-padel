@@ -100,6 +100,12 @@ export interface ClubOption {
   bookingHorizonDays: number;
   /** Foto de portada: URL externa o la subida desde el panel. Null si no cargó ninguna. */
   heroImageUrl: string | null;
+  /**
+   * Ubicación del club, para ordenar por cercanía. La distancia se calcula acá:
+   * la ubicación del jugador nunca viaja al servidor. Null si el club no la cargó.
+   */
+  latitude: number | null;
+  longitude: number | null;
 }
 
 /** Un horario libre en un club concreto, ya listo para pintar como resultado. */

@@ -17,8 +17,8 @@ import java.util.Set;
  * <p>Responde la pregunta con la que llega el jugador que todavia no eligio club:
  * "hoy a la noche, donde sea". Por eso {@link #matches()} no viene agrupada por club
  * sino ordenada por horario: primero cuando puede jugar. La app la agrupa en una
- * tarjeta por club, y con este orden el club que permite jugar mas temprano queda
- * arriba.
+ * tarjeta por club y pone arriba el club con mas horarios distintos libres; este
+ * orden por horario queda de desempate, y adentro de cada tarjeta.
  *
  * <p>Es deliberadamente mas flaca que {@link AvailabilityResponse}: aquella trae
  * servicios, colores, medios de pago y el detalle de cada cancha, que multiplicados
@@ -38,9 +38,13 @@ public record CourtSearchResponse(
      * @param heroImageUrl la foto de portada tal como la muestra la pagina del club:
      *                     una URL externa o el endpoint de la foto subida desde el
      *                     panel. Null si no cargo ninguna.
+     * @param latitude     la ubicacion del club, para que la app ordene por cercania.
+     *                     La distancia se calcula en el navegador: la ubicacion del
+     *                     jugador nunca viaja al servidor. Null, junto con
+     *                     {@code longitude}, si el club no cargo su ubicacion.
      */
     public record ClubOption(String slug, String name, String city, int bookingHorizonDays,
-                             String heroImageUrl) {
+                             String heroImageUrl, BigDecimal latitude, BigDecimal longitude) {
     }
 
     /** Un horario libre en un club concreto. */

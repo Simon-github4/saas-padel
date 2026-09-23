@@ -18,6 +18,12 @@ public enum PageEventName {
     SEARCH,
     /** Toco un resultado de la busqueda global y se fue a la ficha de ese club. */
     SEARCH_RESULT_CLICK,
+    /**
+     * Prendio o apago el orden por cercania de la busqueda global, con como termino
+     * en el detalle ("cercania", "cercania:off", o "cercania:denied" y los demas
+     * motivos): si pidio cercania y no dio la ubicacion, se nota aca.
+     */
+    SEARCH_SORT,
     /** Avanzo (o volvio) dentro del flujo de reserva de un club: dia, hora, datos. */
     CLUB_STEP,
     /** Eligio un horario concreto de la grilla. */

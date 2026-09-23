@@ -19,8 +19,18 @@ import {
   wallFromParam,
   wallParam,
 } from '../courtFeatures';
+import { formatDistance } from '../distance';
 import { addDays, longDate, perPerson, todayIso } from '../format';
-import { type ClubResults, clubFeatures, clubInitials, groupByClub, slotMinutes } from '../searchResults';
+import { GeoError, type Position, currentPosition, describeProblem, rememberedPosition } from '../geolocation';
+import {
+  type ClubByDistance,
+  type ClubResults,
+  clubFeatures,
+  clubInitials,
+  groupByClub,
+  slotMinutes,
+  sortByDistance,
+} from '../searchResults';
 import { setPageMeta } from '../seo';
 import { BRAND } from './marketing/config';
 
@@ -41,6 +51,21 @@ const TIMES = buildTimes();
 const STRIP_DAYS = 14;
 
 /**
+ * Dónde se recuerda si el jugador activó el orden por cercanía. No va en la URL a
+ * propósito: un link compartido con cercanía le pediría la ubicación a quien lo
+ * abre sin que la haya pedido. Y es sessionStorage: dura lo que la pestaña.
+ */
+const CERCANIA_KEY = 'orden-buscador';
+
+/**
+ * Si se ofrece el botón de ordenar por cercanía. Está listo pero apagado hasta
+ * decidir mostrarlo: mientras tanto la búsqueda siempre ordena por defecto (más
+ * horarios primero) y nunca pide la ubicación. Para activarlo alcanza con ponerlo
+ * en true.
+ */
+const CERCANIA_VISIBLE = false;
+
+/**
  * Búsqueda de canchas en varios clubes a la vez.
  *
  * <p>Responde la pregunta con la que llega el jugador que todavía no eligió dónde:
@@ -51,9 +76,11 @@ const STRIP_DAYS = 14;
  * tarjeta por club con su foto y todos sus horarios libres del rango. La
  * localidad es un corte real para quien juega: nadie cruza de ciudad por un
  * turno. Por eso las ciudades pegadas cuentan como una sola zona (Necochea y
- * Quequén, ver ZONAS). Las tarjetas van en el orden del primer turno de cada
- * club, así la lista sigue respondiendo primero "cuándo": arriba queda el club
- * donde se puede jugar más temprano.
+ * Quequén, ver ZONAS). Arriba va el club con más horarios distintos libres, que
+ * es el que más chances da de encontrar uno que sirva (ver groupByClub).
+ *
+ * <p>Con el botón de cercanía se ordena por distancia: la ubicación del jugador se
+ * pide recién ahí, y la distancia se calcula acá sin mandarla al servidor.
  *
  * <p>Los filtros viven en la URL para que una búsqueda se pueda compartir por
  * WhatsApp y para que volver desde un club no la pierda. La localidad se filtra
@@ -79,6 +106,70 @@ export function SearchPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pickingDay, setPickingDay] = useState(false);
+
+  // Se arranca con cercanía solo si la ubicación ya está en memoria (volviendo de un
+  // club, sin recargar). Si no, el efecto de abajo la recupera sin preguntar, o queda
+  // el orden por defecto.
+  const [nearby, setNearby] = useState(
+    () => CERCANIA_VISIBLE && readNearby() && rememberedPosition() !== null,
+  );
+  const [origin, setOrigin] = useState<Position | null>(() => rememberedPosition());
+  const [locating, setLocating] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+
+  // Después de recargar la página la ubicación en memoria se pierde. Si el jugador
+  // había elegido cercanía y el permiso ya está dado, se vuelve a pedir: el navegador
+  // no muestra ningún cartel. Si el permiso no está dado, no se pregunta nada sin que
+  // toque el botón.
+  useEffect(() => {
+    if (!CERCANIA_VISIBLE || !readNearby() || rememberedPosition() || !navigator.permissions) {
+      return;
+    }
+    let cancelled = false;
+    navigator.permissions
+      .query({ name: 'geolocation' })
+      .then((status) => (status.state === 'granted' ? currentPosition() : null))
+      .then((position) => {
+        if (!cancelled && position) {
+          setOrigin(position);
+          setNearby(true);
+        }
+      })
+      .catch(() => {
+        // Sin ubicación queda el orden por defecto: no hay nada que avisar, nadie la pidió ahora.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toggleNearby = async () => {
+    if (locating) {
+      return;
+    }
+    setGeoError(null);
+    if (nearby) {
+      setNearby(false);
+      saveNearby(false);
+      track('search_sort', { detail: 'cercania:off' });
+      return;
+    }
+    setLocating(true);
+    try {
+      const position = await currentPosition();
+      setOrigin(position);
+      setNearby(true);
+      saveNearby(true);
+      track('search_sort', { detail: 'cercania' });
+    } catch (err) {
+      // Sin ubicación no hay cercanía: queda el orden por defecto y se dice por qué.
+      const problem = err instanceof GeoError ? err.problem : 'unavailable';
+      setGeoError(describeProblem(problem));
+      track('search_sort', { detail: `cercania:${problem}` });
+    } finally {
+      setLocating(false);
+    }
+  };
 
   // Con ?localidad= de una zona reconocida (ver ZONAS), el título nombra la zona en vez del
   // genérico "todos los clubes": mismos textos que SeoPageRenderer.searchMeta(zoneKey) en el
@@ -168,6 +259,20 @@ export function SearchPage() {
     [data, activeLocality],
   );
   const visibleMatches = sections.reduce((sum, section) => sum + section.matches.length, 0);
+
+  // Con cercanía, una sola lista sin secciones: ordenada por distancia, los
+  // encabezados de localidad cortarían el orden. Se agrupa desde los turnos tal
+  // como vienen del backend -y no desde las secciones- para que, a igual distancia y
+  // entre clubes sin ubicación, siga mandando el orden por defecto.
+  const byDistance = useMemo(() => {
+    if (!nearby || !origin || !data) {
+      return null;
+    }
+    const matches = activeLocality
+      ? data.matches.filter((match) => localityOf(match.city).key === activeLocality.key)
+      : data.matches;
+    return sortByDistance(groupByClub(matches, data.clubs), origin);
+  }, [nearby, origin, data, activeLocality]);
 
   // Cambiar de localidad descarta los clubes elegidos de otra: dejarlos
   // filtrando daría una lista vacía sin motivo a la vista.
@@ -324,27 +429,57 @@ export function SearchPage() {
               />
             ) : (
               <>
-                {/* Con una sola zona, la cuenta total repetía la de su encabezado. */}
-                {sections.length > 1 ? (
-                  <div className="mb-6 flex items-baseline justify-between gap-3">
-                    <h2 className="text-2xl">{resultsTitle(sections.flatMap((section) => section.matches))}</h2>
-                    <p className="shrink-0 text-xs text-ink-soft">Tocá un horario para reservarlo</p>
+                {/* Con una sola zona, la cuenta total repetía la de su encabezado. Por
+                    cercanía no hay encabezados de zona, así que va siempre. */}
+                {sections.length > 1 || byDistance || CERCANIA_VISIBLE ? (
+                  <div className="mb-6 flex flex-wrap items-end justify-between gap-x-3 gap-y-4">
+                    <div className="min-w-0">
+                      {(sections.length > 1 || byDistance) && (
+                        <h2 className="text-2xl">{resultsTitle(sections.flatMap((section) => section.matches))}</h2>
+                      )}
+                      <p className="mt-1 text-xs text-ink-soft">Tocá un horario para reservarlo</p>
+                    </div>
+                    {CERCANIA_VISIBLE && (
+                      <NearbyToggle active={nearby} locating={locating} onToggle={() => void toggleNearby()} />
+                    )}
                   </div>
                 ) : (
                   <p className="mb-3 text-right text-xs text-ink-soft">Tocá un horario para reservarlo</p>
                 )}
 
-                <div className="space-y-10">
-                  {sections.map((section) => (
-                    <LocalitySection
-                      key={section.key}
-                      section={section}
-                      clubs={clubs}
-                      date={data.date}
-                      courtQuery={courtQuery(wall, surface, roof)}
-                    />
-                  ))}
-                </div>
+                {geoError && (
+                  <div className="mb-6">
+                    <Alert>{geoError}</Alert>
+                  </div>
+                )}
+
+                {byDistance ? (
+                  <ul className="space-y-4">
+                    {byDistance.map((group, index) => (
+                      <li key={group.slug}>
+                        <ClubCard
+                          club={group}
+                          distanceKm={group.distanceKm}
+                          date={data.date}
+                          position={index + 1}
+                          courtQuery={courtQuery(wall, surface, roof)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="space-y-10">
+                    {sections.map((section) => (
+                      <LocalitySection
+                        key={section.key}
+                        section={section}
+                        clubs={clubs}
+                        date={data.date}
+                        courtQuery={courtQuery(wall, surface, roof)}
+                      />
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -999,7 +1134,7 @@ function LocalitySection({
             <span>{section.name}</span>
           </h3>
         </div>
-        <p className="shrink-0 text-xs text-ink-soft tabular-nums sm:pb-1">
+        <p className="shrink-0 text-sm text-ink-soft tabular-nums sm:pb-1">
           {groups.length === 1 ? '1 club' : `${groups.length} clubes`} · {resultsTitle(section.matches)}
         </p>
       </header>
@@ -1027,17 +1162,26 @@ function LocalitySection({
  */
 function ClubCard({
   club,
+  distanceKm,
   date,
   position,
   courtQuery,
 }: {
   club: ClubResults;
+  /**
+   * Solo en el orden por cercanía: la distancia al jugador, o null si el club no
+   * cargó su ubicación. Sin la prop, la tarjeta está en el orden por defecto.
+   */
+  distanceKm?: ClubByDistance['distanceKm'];
   date: string;
-  /** Lugar de la tarjeta en su localidad, desde 1: lo registra la analítica. */
+  /** Lugar de la tarjeta en su localidad (o en la lista por cercanía), desde 1: lo registra la analítica. */
   position: number;
   /** Paredes y piso pedidos, para que el club preelija una cancha que los cumpla. */
   courtQuery: string;
 }) {
+  // El lugar en la lista para la analítica. Por cercanía se marca aparte: el primero
+  // por distancia no es el primero del orden por defecto, y mezclarlos ensuciaría la métrica.
+  const detail = distanceKm === undefined ? String(position) : `cercania:${position}`;
   const first = club.matches[0];
   const { walls, surfaces, roofs } = clubFeatures(club.matches);
   const minutes = slotMinutes(club.matches);
@@ -1062,7 +1206,7 @@ function ClubCard({
     >
       <Link
         to={`/club/${club.slug}?fecha=${date}${courtQuery}`}
-        onClick={() => track('search_result_click', { clubSlug: club.slug, detail: String(position) })}
+        onClick={() => track('search_result_click', { clubSlug: club.slug, detail })}
         className="group flex items-center gap-4 p-3 pr-4 transition hover:bg-vidrio-alto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ladrillo"
       >
         <ClubPhoto name={club.name} url={club.heroImageUrl} />
@@ -1076,7 +1220,16 @@ function ClubCard({
             <span className="font-semibold tabular-nums text-cal">{perPerson(cheapest, first.playersPerCourt)}</span>{' '}
             c/u
           </p>
-          {place && <p className="mt-0.5 truncate text-xs text-ink-mute">{place}</p>}
+          {(place || typeof distanceKm === 'number') && (
+            <p className="mt-0.5 truncate text-xs text-ink-mute">
+              {/* Primero, porque es por lo que se ordenó: si la línea se corta, se corta lo otro. */}
+              {typeof distanceKm === 'number' && (
+                <span className="font-semibold text-ink-soft">{formatDistance(distanceKm)}</span>
+              )}
+              {typeof distanceKm === 'number' && place && ' · '}
+              {place}
+            </p>
+          )}
         </div>
         <span
           aria-hidden
@@ -1089,7 +1242,7 @@ function ClubCard({
       <ul className="grid grid-cols-4 gap-1.5 border-t border-cal/10 p-3 sm:grid-cols-6 md:grid-cols-7">
         {club.matches.map((match) => (
           <li key={match.startsAt}>
-            <SlotChip match={match} date={date} position={position} courtQuery={courtQuery} />
+            <SlotChip match={match} date={date} detail={detail} courtQuery={courtQuery} />
           </li>
         ))}
       </ul>
@@ -1106,12 +1259,13 @@ function ClubCard({
 function SlotChip({
   match,
   date,
-  position,
+  detail,
   courtQuery,
 }: {
   match: SearchMatch;
   date: string;
-  position: number;
+  /** El lugar de la tarjeta del club en la lista, tal como lo registra la analítica. */
+  detail: string;
   courtQuery: string;
 }) {
   const price = perPerson(match.cheapestPrice, match.playersPerCourt);
@@ -1123,8 +1277,9 @@ function SlotChip({
         track('search_result_click', {
           clubSlug: match.clubSlug,
           slotAt: match.startsAt,
-          // En qué lugar de su localidad estaba la tarjeta del club que eligió.
-          detail: String(position),
+          // En qué lugar de su localidad (o de la lista por cercanía) estaba la
+          // tarjeta del club que eligió.
+          detail,
         })
       }
       aria-label={`${match.startTime} a ${match.endTime}, ${price} por persona${match.promo ? ', en promo' : ''}, ${free}`}
@@ -1367,6 +1522,66 @@ function buildLocalities(clubs: ClubOption[], matches: SearchMatch[]): LocalityC
     }
   }
   return [...byKey.values()].sort(compareLocalities);
+}
+
+/**
+ * Un solo botón que prende y apaga el orden por cercanía; apagado, queda el orden
+ * por defecto (más horarios primero), que no necesita botón. Mientras se busca la
+ * ubicación el botón lo dice y no se puede volver a tocar: el navegador ya está
+ * mostrando (o resolviendo) el pedido de permiso.
+ */
+function NearbyToggle({
+  active,
+  locating,
+  onToggle,
+}: {
+  active: boolean;
+  locating: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        aria-pressed={active}
+        aria-busy={locating}
+        disabled={locating}
+        onClick={onToggle}
+        className={`inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-bold transition disabled:cursor-wait ${
+          active
+            ? 'border-cal bg-cal text-pista'
+            : 'border-cal/15 text-ink-soft hover:border-cal/40 hover:text-cal'
+        }`}
+      >
+        <PinGlyph className="size-3.5 shrink-0" />
+        {locating ? 'Buscando tu ubicación…' : 'Ordenar por cercanía'}
+      </button>
+      <span className="sr-only" aria-live="polite">
+        {locating ? 'Buscando tu ubicación…' : ''}
+      </span>
+    </>
+  );
+}
+
+/** Si activó la cercanía en esta pestaña. Sin sessionStorage (modo privado, bloqueado) queda apagada. */
+function readNearby(): boolean {
+  try {
+    return sessionStorage.getItem(CERCANIA_KEY) === 'cercania';
+  } catch {
+    return false;
+  }
+}
+
+function saveNearby(on: boolean) {
+  try {
+    if (on) {
+      sessionStorage.setItem(CERCANIA_KEY, 'cercania');
+    } else {
+      sessionStorage.removeItem(CERCANIA_KEY);
+    }
+  } catch {
+    // Sin almacenamiento, la elección dura hasta recargar: no vale un error.
+  }
 }
 
 /** Los resultados agrupados por localidad, cada grupo en el orden por horario que manda el backend. */

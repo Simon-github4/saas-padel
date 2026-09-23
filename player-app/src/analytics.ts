@@ -35,6 +35,7 @@ export type EventName =
   | 'view'
   | 'search'
   | 'search_result_click'
+  | 'search_sort'
   | 'club_step'
   | 'slot_click'
   | 'checkout_submit'

@@ -180,8 +180,14 @@ public class CourtSearchService {
     private List<ClubOption> options(List<Tenant> clubs) {
         return clubs.stream()
                 .sorted(Comparator.comparing(Tenant::getName))
-                .map(club -> new ClubOption(club.getSlug(), club.getName(), club.getCity(),
-                        club.getBookingHorizonDays(), heroImageOf(club)))
+                .map(club -> {
+                    // Las dos o ninguna: media coordenada no ubica a nadie.
+                    boolean located = club.getLatitude() != null && club.getLongitude() != null;
+                    return new ClubOption(club.getSlug(), club.getName(), club.getCity(),
+                            club.getBookingHorizonDays(), heroImageOf(club),
+                            located ? club.getLatitude() : null,
+                            located ? club.getLongitude() : null);
+                })
                 .toList();
     }
 

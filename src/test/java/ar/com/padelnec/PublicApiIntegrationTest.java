@@ -9,6 +9,7 @@ import ar.com.padelnec.domain.TenantHeroImage;
 import ar.com.padelnec.repository.TenantHeroImageRepository;
 import ar.com.padelnec.service.CustomerService;
 import tools.jackson.databind.JsonNode;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -275,6 +276,10 @@ class PublicApiIntegrationTest {
         // El punto fino: /api/public/search no lleva slug, asi que el filtro de tenant
         // no tiene ningun club que instalar. Si "search" se leyera como el nombre de un
         // club, esto vendria vacio.
+        club.setLatitude(new BigDecimal("-38.557304"));
+        club.setLongitude(new BigDecimal("-58.730110"));
+        fixture.save(club);
+
         JsonNode result = client.get().uri("/api/public/search?date=" + matchDay)
                 .exchange()
                 .expectStatus().isOk()
@@ -284,6 +289,14 @@ class PublicApiIntegrationTest {
         assertThat(result.get("date").asText()).isEqualTo(matchDay.toString());
         assertThat(result.get("clubs")).isNotEmpty();
         assertThat(result.get("matches")).isNotEmpty();
+
+        // La ubicacion del club viaja como numero, para que la app calcule la
+        // distancia al jugador sin mandarle la del jugador al servidor.
+        JsonNode option = result.get("clubs").get(0);
+        assertThat(option.get("slug").asText()).isEqualTo("club-necochea");
+        assertThat(option.get("latitude").isNumber()).isTrue();
+        assertThat(option.get("latitude").decimalValue()).isEqualByComparingTo("-38.557304");
+        assertThat(option.get("longitude").decimalValue()).isEqualByComparingTo("-58.730110");
 
         JsonNode first = result.get("matches").get(0);
         assertThat(first.get("clubSlug").asText()).isEqualTo("club-necochea");

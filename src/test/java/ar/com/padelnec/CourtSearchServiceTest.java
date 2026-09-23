@@ -180,6 +180,28 @@ class CourtSearchServiceTest {
     }
 
     @Test
+    @DisplayName("Cada club trae su ubicacion para ordenar por cercania, y sin ubicacion cargada viaja vacia")
+    void offersEachClubWithItsLocation() {
+        necochea.setLatitude(new BigDecimal("-38.557304"));
+        necochea.setLongitude(new BigDecimal("-58.730110"));
+        fixture.save(necochea);
+        // Media coordenada no ubica al club: viaja como si no tuviera ninguna.
+        quequen.setLatitude(new BigDecimal("-38.530000"));
+        quequen.setLongitude(null);
+        fixture.save(quequen);
+
+        CourtSearchResponse result = searchAllDay();
+
+        assertThat(result.clubs())
+                .extracting(CourtSearchResponse.ClubOption::slug,
+                        CourtSearchResponse.ClubOption::latitude,
+                        CourtSearchResponse.ClubOption::longitude)
+                .containsExactlyInAnyOrder(
+                        tuple("club-necochea", new BigDecimal("-38.557304"), new BigDecimal("-58.730110")),
+                        tuple("costa-verde", null, null));
+    }
+
+    @Test
     @DisplayName("Un horario sin canchas libres no aparece en los resultados")
     void hidesFullyBookedSlots() {
         // Quequen tiene una sola cancha: ocuparla borra ese horario del mapa.
