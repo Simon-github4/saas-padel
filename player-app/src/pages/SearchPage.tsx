@@ -5,6 +5,7 @@ import { ApiError, api } from '../api/client';
 import type { ClubOption, CourtRoof, CourtSurface, CourtWall, SearchMatch, SearchResult } from '../api/client';
 import { AccountButton } from '../components/AccountButton';
 import { MonthCalendar } from '../components/MonthCalendar';
+import { TemaSwitch } from '../components/TemaSwitch';
 import { Alert, Badge, Button, Card, Screen, TopBar } from '../components/Ui';
 import {
   ROOF_LABEL,
@@ -182,6 +183,7 @@ export function SearchPage() {
         <TopBar name={BRAND} titleTo="/" brandMark accountSlot={<AccountButton />} />
       }
     >
+      <TemaSwitch recordar="tema-buscador" />
       <div className="pt-10 text-center">
         <p className="eyebrow flex items-center justify-center gap-3 text-ladrillo-claro">
           <span aria-hidden className="h-px w-6 bg-ladrillo-claro/60" />
