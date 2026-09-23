@@ -130,7 +130,7 @@ class CourtScheduleTest {
     }
 
     @Test
-    @DisplayName("Una cancha que abre antes suma turnos antes de la apertura, con el mismo paso de la grilla")
+    @DisplayName("Una cancha que abre antes suma turnos antes de la apertura del club")
     void earlierOpeningExtendsTheGridBackwards() {
         fixture.courtHours(court2, DayOfWeek.WEDNESDAY, LocalTime.of(6, 30), LocalTime.of(12, 0));
 
@@ -141,6 +141,35 @@ class CourtScheduleTest {
         assertThat(courtsAt(slots, 9, 30)).containsExactly("Cancha 1", "Cancha 2");
         // 11:00 a 12:30 se pasa del cierre de la cancha 2.
         assertThat(courtsAt(slots, 11, 0)).containsExactly("Cancha 1");
+    }
+
+    @Test
+    @DisplayName("Una cancha con turnos corridos media hora los arranca desde su propio horario")
+    void shiftedCourtStartsItsOwnChain() {
+        Court court3 = fixture.court("Cancha 3", 3);
+        fixture.courtHours(court3, DayOfWeek.TUESDAY, LocalTime.of(13, 30), LocalTime.of(22, 30));
+
+        List<SlotView> slots = slotsOf(TUESDAY);
+
+        assertThat(slots).extracting(SlotView::startTime)
+                .contains(LocalTime.of(13, 30), LocalTime.of(15, 0), LocalTime.of(16, 30),
+                        LocalTime.of(18, 0), LocalTime.of(19, 30), LocalTime.of(21, 0));
+        assertThat(courtsAt(slots, 13, 30)).containsExactly("Cancha 3");
+        assertThat(courtsAt(slots, 21, 0)).containsExactly("Cancha 3");
+        assertThat(courtsAt(slots, 14, 0)).containsExactly("Cancha 1", "Cancha 2");
+        assertThat(courtsAt(slots, 21, 30)).containsExactly("Cancha 1", "Cancha 2");
+
+        Booking shifted = bookingService.create(club, new NewBooking(court3.getId(), at(TUESDAY, 13, 30),
+                "Jugador", "2262415000", PaymentChoice.PAY_AT_CLUB));
+        assertThat(shifted.getEndTime()).isEqualTo(at(TUESDAY, 15, 0));
+        assertThatThrownBy(() -> bookingService.create(club, new NewBooking(court3.getId(), at(TUESDAY, 14, 0),
+                "Otro", "2262415111", PaymentChoice.PAY_AT_CLUB)))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Cancha 3 no abre");
+        assertThatThrownBy(() -> bookingService.create(club, new NewBooking(court1.getId(), at(TUESDAY, 13, 30),
+                "Otro", "2262415111", PaymentChoice.PAY_AT_CLUB)))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Cancha 1 no abre");
     }
 
     @Test

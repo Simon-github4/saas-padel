@@ -287,7 +287,8 @@ public class AgendaView extends VerticalLayout {
             return "Todavia no cargaste ninguna cancha.";
         }
         long total = courts.stream().mapToLong(plan::slotsOpenIn).sum();
-        long taken = rows.stream().mapToLong(row -> row.byCourt().size()).sum();
+        // Distintos: con canchas de turnos corridos, un turno cruza dos filas.
+        long taken = rows.stream().flatMap(row -> row.byCourt().values().stream()).distinct().count();
         return "%d de %d turnos vendidos".formatted(taken, total);
     }
 
@@ -343,10 +344,15 @@ public class AgendaView extends VerticalLayout {
     private Component slotCard(AgendaRow row, Court court) {
         return row.at(court)
                 .<Component>map(this::bookedCard)
-                .orElseGet(() -> plan.opens(court, row.slot()) ? freeCard(row, court) : closedCard());
+                .orElseGet(() -> plan.opens(court, row.slot()) ? freeCard(row, court)
+                        : plan.openDuring(court, row.slot()) ? new Div() : closedCard());
     }
 
-    /** La cancha no abre a esa hora ese dia, por su horario propio (Configuracion > Canchas). */
+    /**
+     * La cancha no abre a esa hora ese dia, por su horario propio (Configuracion >
+     * Canchas). Si abre pero sus turnos arrancan a otra hora (13:30 contra el 14:00
+     * de las demas), la fila no le corresponde y la celda queda en blanco.
+     */
     private Component closedCard() {
         Button button = new Button("Cerrada");
         button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);

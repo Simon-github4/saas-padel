@@ -1135,9 +1135,10 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         scheduleGrid.setItems(courtScheduleRepository.findAllWithCourt());
         scheduleHelp.setText(("Horario general del club: de %s a %s (se cambia en la pestaña Club). "
                 + "Si una cancha tiene horario propio un día, le gana al general: ese día abre solo en "
-                + "las franjas que cargues. Los turnos siguen la grilla del club, de %d minutos desde "
-                + "la apertura, así que un turno que no entra completo en el horario de la cancha no "
-                + "se ofrece.").formatted(club.getOpenTime(), club.getCloseTime(), club.getDefaultSlotDuration()));
+                + "las franjas que cargues, y sus turnos de %d minutos arrancan a la hora \"Desde\" "
+                + "(de 13:30 a 22:30 da 13:30, 15:00 ... 21:00). Un turno que no entra completo antes "
+                + "de \"Hasta\" no se ofrece.").formatted(club.getOpenTime(), club.getCloseTime(),
+                club.getDefaultSlotDuration()));
     }
 
     private String hoursText(CourtSchedule schedule) {

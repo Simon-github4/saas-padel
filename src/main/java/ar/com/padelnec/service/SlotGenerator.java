@@ -31,10 +31,11 @@ import org.springframework.stereotype.Component;
  * ofrece.
  *
  * <p>Una cancha puede tener su propio horario algunos dias ({@link CourtSchedule}),
- * que le gana al del club. La grilla sigue siendo una sola, anclada en la apertura
- * del club: si una cancha abre antes o cierra despues, la grilla se estira hacia
- * ese lado con el mismo paso, y esos turnos de mas solo existen en esa cancha. Asi
- * un turno de las 19:30 es el mismo en todas las canchas que lo ofrecen.
+ * que le gana al del club. Cada franja de ese horario encadena sus turnos desde su
+ * propio inicio: una cancha que esos dias abre 13:30 tiene turnos 13:30, 15:00,
+ * 16:30..., aunque las demas sigan con los del club (14:00, 15:30...). La grilla
+ * del dia es la union de los turnos de todas las canchas, y cada turno sabe en que
+ * canchas se juega.
  */
 @Component
 @RequiredArgsConstructor
@@ -54,8 +55,8 @@ public class SlotGenerator {
     /** Un tramo en que una cancha abre, en fecha y hora del club. */
     private record Window(LocalDateTime start, LocalDateTime end) {
 
-        boolean contains(LocalDateTime from, LocalDateTime to) {
-            return !from.isBefore(start) && !to.isAfter(end);
+        boolean overlaps(LocalDateTime from, LocalDateTime to) {
+            return from.isBefore(end) && start.isBefore(to);
         }
     }
 
@@ -63,17 +64,22 @@ public class SlotGenerator {
     public static final class DayPlan {
 
         private final List<Slot> slots;
-        private final List<Window> general;
-        private final Map<UUID, List<Window>> byCourt;
+        private final Set<Instant> generalStarts;
+        private final Map<UUID, Set<Instant>> startsByCourt;
+        private final List<Window> generalWindows;
+        private final Map<UUID, List<Window>> windowsByCourt;
         private final ZoneId zone;
         private final Instant start;
         private final Instant end;
 
-        private DayPlan(List<Slot> slots, List<Window> general, Map<UUID, List<Window>> byCourt,
+        private DayPlan(List<Slot> slots, Set<Instant> generalStarts, Map<UUID, Set<Instant>> startsByCourt,
+                        List<Window> generalWindows, Map<UUID, List<Window>> windowsByCourt,
                         ZoneId zone, Instant start, Instant end) {
             this.slots = slots;
-            this.general = general;
-            this.byCourt = byCourt;
+            this.generalStarts = generalStarts;
+            this.startsByCourt = startsByCourt;
+            this.generalWindows = generalWindows;
+            this.windowsByCourt = windowsByCourt;
             this.zone = zone;
             this.start = start;
             this.end = end;
@@ -83,12 +89,20 @@ public class SlotGenerator {
             return slots;
         }
 
-        /** Si la cancha abre en ese turno: por su horario propio ese dia, o el del club. */
+        /** Si ese turno es uno de los de la cancha: por su horario propio ese dia, o el del club. */
         public boolean opens(Court court, Slot slot) {
+            return startsByCourt.getOrDefault(court.getId(), generalStarts).contains(slot.startsAt());
+        }
+
+        /**
+         * Si la cancha esta abierta durante ese turno aunque no sea uno de los suyos:
+         * pasa cuando sus turnos arrancan a otra hora (13:30 contra el 14:00 del club).
+         */
+        public boolean openDuring(Court court, Slot slot) {
             LocalDateTime from = LocalDateTime.ofInstant(slot.startsAt(), zone);
             LocalDateTime to = LocalDateTime.ofInstant(slot.endsAt(), zone);
-            return byCourt.getOrDefault(court.getId(), general).stream()
-                    .anyMatch(window -> window.contains(from, to));
+            return windowsByCourt.getOrDefault(court.getId(), generalWindows).stream()
+                    .anyMatch(window -> window.overlaps(from, to));
         }
 
         /** Cuantos turnos del dia ofrece la cancha. */
@@ -122,54 +136,55 @@ public class SlotGenerator {
      */
     public DayPlan plan(Tenant club, LocalDate date, List<Court> activeCourts,
                         List<CourtSchedule> schedules) {
-        List<Window> general = List.of(window(date, club.getOpenTime(), club.getCloseTime()));
-        Map<UUID, List<Window>> byCourt = courtWindows(date, schedules);
+        ZoneId zone = club.zoneId();
+        long step = club.getDefaultSlotDuration();
+        List<Window> generalWindows = List.of(window(date, club.getOpenTime(), club.getCloseTime()));
+        Map<UUID, List<Window>> windowsByCourt = courtWindows(date, schedules);
 
-        List<Window> offered = new ArrayList<>();
+        Map<Instant, Slot> offered = new HashMap<>();
+        Set<Instant> generalStarts = chain(generalWindows, step, zone);
+        Map<UUID, Set<Instant>> startsByCourt = new HashMap<>();
+        windowsByCourt.forEach((courtId, windows) -> startsByCourt.put(courtId, chain(windows, step, zone)));
+
+        // Solo entran a la grilla los turnos de alguna cancha activa: si todas tienen
+        // horario propio ese dia, el del club no aporta ninguno.
         if (activeCourts.isEmpty()) {
-            offered.addAll(general);
+            addSlots(offered, generalWindows, step, zone);
         }
         for (Court court : activeCourts) {
-            offered.addAll(byCourt.getOrDefault(court.getId(), general));
+            addSlots(offered, windowsByCourt.getOrDefault(court.getId(), generalWindows), step, zone);
         }
+        List<Slot> slots = offered.values().stream()
+                .sorted(Comparator.comparing(Slot::startsAt))
+                .toList();
 
-        List<Window> all = new ArrayList<>(general);
-        byCourt.values().forEach(all::addAll);
+        List<Window> all = new ArrayList<>(generalWindows);
+        windowsByCourt.values().forEach(all::addAll);
         LocalDateTime from = all.stream().map(Window::start).min(Comparator.naturalOrder()).orElseThrow();
         LocalDateTime until = all.stream().map(Window::end).max(Comparator.naturalOrder()).orElseThrow();
 
-        ZoneId zone = club.zoneId();
-        return new DayPlan(grid(club, date, from, until, offered), general, byCourt, zone,
+        return new DayPlan(slots, generalStarts, startsByCourt, generalWindows, windowsByCourt, zone,
                 from.atZone(zone).toInstant(), until.atZone(zone).toInstant());
     }
 
-    /**
-     * Turnos anclados en la apertura del club, con su paso, estirados hacia atras o
-     * hacia adelante hasta cubrir {@code from}–{@code until}. Solo quedan los que
-     * entran completos en algun horario que se ofrece ese dia.
-     */
-    private List<Slot> grid(Tenant club, LocalDate date, LocalDateTime from, LocalDateTime until,
-                            List<Window> offered) {
-        ZoneId zone = club.zoneId();
-        long step = club.getDefaultSlotDuration();
-        LocalDateTime anchor = date.atTime(club.getOpenTime());
-        long offset = java.time.Duration.between(anchor, from).toMinutes();
-        LocalDateTime cursor = anchor.plusMinutes(-Math.floorDiv(-offset, step) * step);
-
-        List<Slot> slots = new ArrayList<>();
-        while (!cursor.plusMinutes(step).isAfter(until)) {
-            LocalDateTime slotStart = cursor;
-            LocalDateTime slotEnd = cursor.plusMinutes(step);
-            if (offered.stream().anyMatch(window -> window.contains(slotStart, slotEnd))) {
-                slots.add(new Slot(
-                        slotStart.toLocalTime(),
-                        slotEnd.toLocalTime(),
-                        slotStart.atZone(zone).toInstant(),
-                        slotEnd.atZone(zone).toInstant()));
+    /** Los turnos de cada franja, encadenados desde su inicio; el que no entra completo no va. */
+    private static void addSlots(Map<Instant, Slot> into, List<Window> windows, long step, ZoneId zone) {
+        for (Window window : windows) {
+            LocalDateTime cursor = window.start();
+            while (!cursor.plusMinutes(step).isAfter(window.end())) {
+                LocalDateTime slotEnd = cursor.plusMinutes(step);
+                Slot slot = new Slot(cursor.toLocalTime(), slotEnd.toLocalTime(),
+                        cursor.atZone(zone).toInstant(), slotEnd.atZone(zone).toInstant());
+                into.putIfAbsent(slot.startsAt(), slot);
+                cursor = slotEnd;
             }
-            cursor = slotEnd;
         }
-        return slots;
+    }
+
+    private static Set<Instant> chain(List<Window> windows, long step, ZoneId zone) {
+        Map<Instant, Slot> slots = new HashMap<>();
+        addSlots(slots, windows, step, zone);
+        return slots.keySet();
     }
 
     /** Horarios propios de cada cancha que tiene alguna regla ese dia; "cerrada" le gana a todo. */
