@@ -44,11 +44,16 @@ public class SpaForwardingController {
                 .orElseGet(() -> page(HttpStatus.OK, seoPageRenderer.landingMeta()));
     }
 
-    /** Busqueda global de canchas libres. */
+    /**
+     * Busqueda global de canchas libres. Con {@code ?localidad=<zona>} (el mismo parametro que
+     * usa SearchPage.tsx para filtrar), le da a esa zona su propio titulo y descripcion -- sin
+     * esto, una busqueda como "turnos padel necochea" solo tiene para competir el titulo
+     * generico de "todos los clubes", que no nombra ninguna ciudad.
+     */
     @GetMapping("/buscar")
     public ResponseEntity<String> search(HttpServletRequest request) {
         return canonicalHostRedirect(request)
-                .orElseGet(() -> page(HttpStatus.OK, seoPageRenderer.searchMeta()));
+                .orElseGet(() -> page(HttpStatus.OK, seoPageRenderer.searchMeta(request.getParameter("localidad"))));
     }
 
     /**

@@ -69,6 +69,9 @@ class SeoPagesIntegrationTest {
                 .contains("<script type=\"application/ld+json\" data-server-seo>")
                 .contains("\"@type\":\"SportsClub\"")
                 .contains("<noscript><h1>Necochea &amp; Padel</h1>")
+                // El club esta en una zona reconocida (Necochea): el link de "buscar mas" la nombra
+                // en vez del generico "todos los clubes".
+                .contains("<a href=\"/buscar?localidad=necochea-quequen\">Buscar más canchas de pádel en Necochea y Quequén</a>")
                 .doesNotContain("<title>test</title>");
         assertThat(html).containsOnlyOnce("<title>").containsOnlyOnce("name=\"description\"");
     }
@@ -132,16 +135,42 @@ class SeoPagesIntegrationTest {
     }
 
     @Test
-    @DisplayName("El sitemap trae lastmod en los clubes, y robots.txt libera la foto de portada")
+    @DisplayName("Con ?localidad= de una zona reconocida, el buscador nombra la zona; con una que no, cae al generico")
+    void searchWithKnownLocalityHasItsOwnMetadata() {
+        assertThat(body("/buscar?localidad=necochea-quequen"))
+                .contains("<title>Canchas de pádel en Necochea y Quequén — turnos online</title>")
+                .contains("<link rel=\"canonical\" href=\"http://localhost:8080/buscar?localidad=necochea-quequen\" />")
+                .contains("<meta property=\"og:title\" content=\"Canchas de pádel en Necochea y Quequén — turnos online\" />")
+                .containsPattern("<noscript><h1>Canchas de pádel en Necochea y Quequén</h1>");
+
+        assertThat(body("/buscar?localidad=marte"))
+                .contains("<title>Buscar cancha de pádel — todos los clubes</title>")
+                .contains("<link rel=\"canonical\" href=\"http://localhost:8080/buscar\" />");
+    }
+
+    @Test
+    @DisplayName("Un club sin ciudad, o en una que no es zona reconocida, enlaza al buscador generico")
+    void clubOutsideAKnownZoneLinksToTheGenericSearch() {
+        fixture.club("hostil");
+
+        assertThat(body("/club/hostil"))
+                .contains("<a href=\"/buscar\">Buscar canchas de pádel libres en todos los clubes</a>");
+    }
+
+    @Test
+    @DisplayName("El sitemap trae lastmod en los clubes y una URL por zona activa, y robots.txt libera la foto de portada")
     void sitemapAndRobots() {
-        fixture.club("necochea-padel");
+        Tenant club = fixture.club("necochea-padel");
+        club.setCity("Necochea");
+        tenantRepository.saveAndFlush(club);
 
         client.get().uri("/sitemap.xml").exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class)
                 .value(xml -> assertThat(xml)
                         .containsPattern("<loc>http://localhost:8080/club/necochea-padel</loc><lastmod>\\d{4}-\\d{2}-\\d{2}T[^<]+Z</lastmod>")
-                        .contains("<url><loc>http://localhost:8080/buscar</loc></url>"));
+                        .contains("<url><loc>http://localhost:8080/buscar</loc></url>")
+                        .contains("<url><loc>http://localhost:8080/buscar?localidad=necochea-quequen</loc></url>"));
         client.get().uri("/robots.txt").exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class)

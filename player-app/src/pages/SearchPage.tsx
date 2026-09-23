@@ -80,14 +80,21 @@ export function SearchPage() {
   const [error, setError] = useState<string | null>(null);
   const [pickingDay, setPickingDay] = useState(false);
 
-  useEffect(
-    () =>
-      setPageMeta(
-        'Buscar cancha de pádel — todos los clubes',
-        'Buscá canchas de pádel libres hoy en todos los clubes a la vez, por día y horario, sin elegir club primero.',
-      ),
-    [],
-  );
+  // Con ?localidad= de una zona reconocida (ver ZONAS), el título nombra la zona en vez del
+  // genérico "todos los clubes": mismos textos que SeoPageRenderer.searchMeta(zoneKey) en el
+  // backend, que es lo que ya ve un buscador antes de que cargue React.
+  useEffect(() => {
+    const zoneName = zoneNameByKey(localidad);
+    return zoneName
+      ? setPageMeta(
+          `Canchas de pádel en ${zoneName} — turnos online`,
+          `Buscá y reservá una cancha de pádel libre en ${zoneName} hoy, por día y horario, en todos los clubes a la vez.`,
+        )
+      : setPageMeta(
+          'Buscar cancha de pádel — todos los clubes',
+          'Buscá canchas de pádel libres hoy en todos los clubes a la vez, por día y horario, sin elegir club primero.',
+        );
+  }, [localidad]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1308,6 +1315,11 @@ const ZONAS: Record<string, { key: string; name: string }> = {
   necochea: { key: 'necochea-quequen', name: 'Necochea y Quequén' },
   quequen: { key: 'necochea-quequen', name: 'Necochea y Quequén' },
 };
+
+/** El nombre de la zona a partir de su clave en la URL, para el título del SEO (ver el `useEffect` de arriba). */
+function zoneNameByKey(key: string): string | null {
+  return Object.values(ZONAS).find((zona) => zona.key === key)?.name ?? null;
+}
 
 /**
  * La localidad de un club, a partir de la ciudad que carga en el panel: "Necochea,

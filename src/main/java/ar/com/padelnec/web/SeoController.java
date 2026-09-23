@@ -26,6 +26,7 @@ public class SeoController {
 
     private final TenantRepository tenantRepository;
     private final AppProperties properties;
+    private final SeoPageRenderer seoPageRenderer;
 
     /**
      * Bloquea lo que no es contenido publico: portales por token (nadie mas
@@ -68,6 +69,11 @@ public class SeoController {
         xml.append("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
         appendUrl(xml, base + "/", null);
         appendUrl(xml, base + "/buscar", null);
+        // Una URL por zona con clubes activos: sin esto, "turnos padel necochea" no tiene una
+        // pagina propia que un buscador pueda descubrir por su cuenta.
+        for (String zoneKey : seoPageRenderer.activeSearchZoneKeys(clubs)) {
+            appendUrl(xml, base + "/buscar?localidad=" + zoneKey, null);
+        }
         for (Tenant club : clubs) {
             appendUrl(xml, base + "/club/" + club.getSlug(), club.getUpdatedAt());
         }

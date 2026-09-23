@@ -4,9 +4,11 @@ import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Tenant;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.text.Normalizer;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -37,6 +39,18 @@ public class SeoPageRenderer {
     static final String SITE_NAME = "TurnosPadel";
 
     private static final String LOGO_PATH = "/apple-touch-icon.png";
+
+    /**
+     * Ciudades pegadas que para el jugador son un mismo lugar, igual que {@code ZONAS} en
+     * SearchPage.tsx: ahi agrupa las secciones de resultados, aca le da a esa zona su propio
+     * titulo, descripcion y URL ({@code /buscar?localidad=<clave>}) en vez de competir con el
+     * texto generico de "todos los clubes" para una busqueda como "turnos padel necochea".
+     * Es una decision de negocio, no algo que salga de los datos: sumar una ciudad nueva a una
+     * zona va aca y alla.
+     */
+    private static final Map<String, String> ZONE_KEY_BY_CITY_SLUG =
+            Map.of("necochea", "necochea-quequen", "quequen", "necochea-quequen");
+    private static final Map<String, String> ZONE_NAME_BY_KEY = Map.of("necochea-quequen", "Necochea y Quequén");
 
     /** El build de Vite puede dejar la etiqueta en una linea o en varias: por eso {@code [^>]*}. */
     private static final Pattern TITLE = Pattern.compile("(?s)<title>.*?</title>");
@@ -143,7 +157,14 @@ public class SeoPageRenderer {
                     : hasText(club.getAddress()) ? club.getAddress() : club.getCity();
             text.append("<p>").append(escape(place)).append("</p>");
         }
-        text.append("<p><a href=\"/buscar\">Buscar canchas de pádel libres en todos los clubes</a></p>");
+        String zoneKey = zoneKeyForCity(club.getCity());
+        String zoneName = zoneKey == null ? null : ZONE_NAME_BY_KEY.get(zoneKey);
+        if (zoneName != null) {
+            text.append("<p><a href=\"/buscar?localidad=").append(zoneKey).append("\">Buscar más canchas de pádel en ")
+                    .append(escape(zoneName)).append("</a></p>");
+        } else {
+            text.append("<p><a href=\"/buscar\">Buscar canchas de pádel libres en todos los clubes</a></p>");
+        }
 
         return new PageMeta(club.getName() + " — Reservá tu cancha de pádel", description, path,
                 image, image != null, false, ld, text.toString());
@@ -190,6 +211,52 @@ public class SeoPageRenderer {
         return new PageMeta("Buscar cancha de pádel — todos los clubes",
                 "Buscá canchas de pádel libres hoy en todos los clubes a la vez, por día y horario, sin elegir club primero.",
                 "/buscar", LOGO_PATH, false, false, null, null);
+    }
+
+    /**
+     * Buscador filtrado a una zona reconocida ({@code ?localidad=<clave>}, ver
+     * {@link #ZONE_KEY_BY_CITY_SLUG}): mismo buscador, con titulo, descripcion, canonical y
+     * texto propios que nombran la zona -- sin esto, "turnos padel necochea" compite contra el
+     * titulo generico de /buscar, que no dice en que ciudad. Una clave que no se reconoce cae al
+     * buscador generico, igual que hace SearchPage.tsx cuando el parametro no matchea ninguna zona.
+     */
+    public PageMeta searchMeta(String zoneKey) {
+        String zoneName = zoneKey == null ? null : ZONE_NAME_BY_KEY.get(zoneKey);
+        if (zoneName == null) {
+            return searchMeta();
+        }
+        String description = "Buscá y reservá una cancha de pádel libre en " + zoneName
+                + " hoy, por día y horario, en todos los clubes a la vez.";
+        String text = "<h1>Canchas de pádel en " + escape(zoneName) + "</h1><p>" + escape(description) + "</p>";
+        return new PageMeta("Canchas de pádel en " + zoneName + " — turnos online", description,
+                "/buscar?localidad=" + zoneKey, LOGO_PATH, false, false, null, text);
+    }
+
+    /**
+     * Zonas con al menos un club activo: las unicas que tiene sentido indexar, en el sitemap y
+     * como link desde la ficha de un club. En el orden en que aparecen los clubes.
+     */
+    public List<String> activeSearchZoneKeys(List<Tenant> activeClubs) {
+        return activeClubs.stream()
+                .map(club -> zoneKeyForCity(club.getCity()))
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    /** La zona de una ciudad ("Necochea, Buenos Aires" → "necochea-quequen"), o nulo si no es una zona reconocida. */
+    private static String zoneKeyForCity(String city) {
+        if (!hasText(city)) {
+            return null;
+        }
+        String firstTown = city.split(",")[0].trim();
+        return ZONE_KEY_BY_CITY_SLUG.get(slugify(firstTown));
+    }
+
+    /** Igual a {@code slugify} en SearchPage.tsx: sin tildes, en minuscula, separado por guiones. */
+    private static String slugify(String text) {
+        String withoutAccents = Normalizer.normalize(text, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        return withoutAccents.toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
     }
 
     /**
