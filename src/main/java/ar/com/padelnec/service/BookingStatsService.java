@@ -2,6 +2,7 @@ package ar.com.padelnec.service;
 
 import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Court;
+import ar.com.padelnec.domain.CourtSchedule;
 import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.BookingStatus;
@@ -12,6 +13,7 @@ import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.BookingStatsRow;
 import ar.com.padelnec.repository.CourtRepository;
+import ar.com.padelnec.repository.CourtScheduleRepository;
 import ar.com.padelnec.repository.PaymentCashRow;
 import ar.com.padelnec.repository.PaymentRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
@@ -56,6 +58,7 @@ public class BookingStatsService {
 
     private final BookingRepository bookingRepository;
     private final CourtRepository courtRepository;
+    private final CourtScheduleRepository courtScheduleRepository;
     private final PaymentRepository paymentRepository;
     private final BlackoutRepository blackoutRepository;
     private final PlayerAccountRepository playerAccountRepository;
@@ -104,7 +107,7 @@ public class BookingStatsService {
      */
     @Transactional(readOnly = true)
     public List<PeriodStats> statsFor(Tenant club, Periodo periodo, LocalDate from, LocalDate to) {
-        List<Court> courts = courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc();
+        Courts courts = loadCourts();
         LocalDate rangeEnd = to.plusDays(1);
 
         // Antes: un findBetween() y un findOverlapping() de blackouts por bucket
@@ -125,7 +128,7 @@ public class BookingStatsService {
     }
 
     /** El cuerpo de {@link #statsFor}, sobre datos ya traidos: lo reusa {@link #dashboardFor}. */
-    private List<PeriodStats> buildPeriods(Tenant club, List<Court> courts, Periodo periodo,
+    private List<PeriodStats> buildPeriods(Tenant club, Courts courts, Periodo periodo,
             LocalDate from, LocalDate to, LocalDate rangeEnd, List<BookingStatsRow> allBookings,
             List<PaymentCashRow> allPayments, List<Blackout> blackouts) {
         List<PeriodStats> result = new ArrayList<>();
@@ -160,7 +163,7 @@ public class BookingStatsService {
      */
     @Transactional(readOnly = true)
     public PeriodStats summary(Tenant club, LocalDate from, LocalDate to) {
-        List<Court> courts = courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc();
+        Courts courts = loadCourts();
         LocalDate toExclusive = to.plusDays(1);
         Instant fromInstant = from.atStartOfDay(club.zoneId()).toInstant();
         Instant untilInstant = toExclusive.atStartOfDay(club.zoneId()).toInstant();
@@ -191,7 +194,7 @@ public class BookingStatsService {
     @Transactional(readOnly = true)
     public DashboardSnapshot dashboardFor(Tenant club, Periodo periodo, LocalDate from, LocalDate to,
                                           int topLimit) {
-        List<Court> courts = courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc();
+        Courts courts = loadCourts();
         LocalDate rangeEnd = to.plusDays(1);
         Instant rangeFromInstant = from.atStartOfDay(club.zoneId()).toInstant();
         Instant rangeUntilInstant = rangeEnd.atStartOfDay(club.zoneId()).toInstant();
@@ -370,7 +373,7 @@ public class BookingStatsService {
         return date.plusDays(1);
     }
 
-    private PeriodStats summarize(Tenant club, List<Court> courts, LocalDate bucketStart,
+    private PeriodStats summarize(Tenant club, Courts courts, LocalDate bucketStart,
                                   LocalDate bucketEndExclusive, List<BookingStatsRow> bookings,
                                   List<PaymentCashRow> payments, List<Blackout> blackouts,
                                   String label) {
@@ -421,27 +424,38 @@ public class BookingStatsService {
      * Suma turnos ocupados y turnos posibles dia por dia del bucket.
      *
      * <p>Mismo calculo que ya hace {@code AgendaView.summaryOf} para un solo dia
-     * (turnos ocupados sobre slots posibles), extendido a varios dias. Como la
-     * capacidad diaria es la misma todos los dias (mismas canchas, misma grilla),
-     * sumar y despues dividir da el mismo porcentaje que promediar dia por dia, y
-     * de paso deja los dos numeros crudos para mostrar "10/125" en vez de solo "8%".
+     * (turnos ocupados sobre slots posibles), extendido a varios dias. Sumar y
+     * despues dividir pesa cada dia por lo que se podia vender ese dia (una cancha
+     * con horario propio puede abrir menos algunos dias), y de paso deja los dos
+     * numeros crudos para mostrar "10/125" en vez de solo "8%".
      */
-    private Occupancy occupancy(Tenant club, List<Court> courts, LocalDate from,
+    /** Canchas activas y sus horarios propios, traidos una vez por llamada y no dia por dia. */
+    private record Courts(List<Court> active, List<CourtSchedule> schedules) {
+    }
+
+    private Courts loadCourts() {
+        return new Courts(courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc(),
+                courtScheduleRepository.findAllWithCourt());
+    }
+
+    private Occupancy occupancy(Tenant club, Courts courts, LocalDate from,
                                 LocalDate toExclusive, Map<LocalDate, Integer> occupiedByDay,
                                 List<Blackout> blackouts) {
-        if (courts.isEmpty()) {
+        if (courts.active().isEmpty()) {
             return new Occupancy(0, 0, BigDecimal.ZERO);
         }
         int totalOccupied = 0;
         int totalCapacity = 0;
         for (LocalDate day = from; day.isBefore(toExclusive); day = day.plusDays(1)) {
+            SlotGenerator.DayPlan plan = slotGenerator.plan(club, day, courts.active(), courts.schedules());
             // Un dia suspendido para todas las canchas no suma capacidad: nadie
             // podia reservar ahi, asi que tampoco deberia contar como "posible".
             // Una suspension parcial (una cancha, una franja) se deja pasar a
-            // proposito: separar la capacidad por cancha es un cambio mas grande
-            // que lo que esta cuenta necesita.
-            if (!dayFullyBlocked(club, day, blackouts)) {
-                totalCapacity += slotGenerator.generate(club, day).size() * courts.size();
+            // proposito: separar la capacidad por suspension es un cambio mas
+            // grande que lo que esta cuenta necesita. El horario propio de cada
+            // cancha si cuenta: un turno en que la cancha no abre no es posible.
+            if (!dayFullyBlocked(plan, blackouts)) {
+                totalCapacity += (int) courts.active().stream().mapToLong(plan::slotsOpenIn).sum();
             }
             totalOccupied += occupiedByDay.getOrDefault(day, 0);
         }
@@ -455,9 +469,9 @@ public class BookingStatsService {
     }
 
     /** Si hay un blackout de club entero que cubre todo el dia operativo. */
-    private boolean dayFullyBlocked(Tenant club, LocalDate day, List<Blackout> blackouts) {
-        Instant dayStart = slotGenerator.dayStart(club, day);
-        Instant dayEnd = slotGenerator.dayEnd(club, day);
+    private boolean dayFullyBlocked(SlotGenerator.DayPlan plan, List<Blackout> blackouts) {
+        Instant dayStart = plan.start();
+        Instant dayEnd = plan.end();
         return blackouts.stream()
                 .anyMatch(blackout -> blackout.getCourt() == null
                         && !blackout.getStartTime().isAfter(dayStart)

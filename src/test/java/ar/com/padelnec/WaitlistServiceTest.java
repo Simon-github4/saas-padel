@@ -221,7 +221,7 @@ class WaitlistServiceTest {
         waitlistService.join(club, early, "2262415333", "Anotado temprano", player("tercero@test.com"));
         bookingService.cancelByClub(club, lateBooking.getId(), "Se cayo el grupo");
 
-        List<SlotWaitlist> slots = waitlistService.upcomingBySlot();
+        List<SlotWaitlist> slots = waitlistService.upcomingBySlot(club);
 
         assertThat(slots).extracting(SlotWaitlist::startsAt).containsExactly(early, late);
         assertThat(slots.get(0).courtFree()).isFalse();
@@ -232,7 +232,7 @@ class WaitlistServiceTest {
 
         // A las 19:00 el de las 18:30 ya empezo: no hay a quien avisarle nada.
         ((MutableClock) clock).set(TODAY.atTime(19, 0).atZone(ZONE).toInstant());
-        assertThat(waitlistService.upcomingBySlot()).extracting(SlotWaitlist::startsAt).containsExactly(late);
+        assertThat(waitlistService.upcomingBySlot(club)).extracting(SlotWaitlist::startsAt).containsExactly(late);
     }
 
     // ------------------------------------------------------------- limpieza
@@ -248,7 +248,7 @@ class WaitlistServiceTest {
         bookingService.create(club, new NewBooking(court.getId(), startTime,
                 "Jugador anotado", "2262415111", PaymentChoice.PAY_AT_CLUB));
 
-        assertThat(waitlistService.upcomingBySlot()).isEmpty();
+        assertThat(waitlistService.upcomingBySlot(club)).isEmpty();
     }
 
     @Test
@@ -265,7 +265,7 @@ class WaitlistServiceTest {
 
         assertThat(again.isNotified()).isFalse();
         assertThat(again.getId()).isNotEqualTo(first.getId());
-        assertThat(waitlistService.upcomingBySlot().getFirst().entries())
+        assertThat(waitlistService.upcomingBySlot(club).getFirst().entries())
                 .extracting(entry -> entry.getCustomer().getFullName())
                 .containsExactly("Segundo", "Primero");
     }

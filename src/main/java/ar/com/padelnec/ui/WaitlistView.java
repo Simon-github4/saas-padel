@@ -114,7 +114,7 @@ public class WaitlistView extends VerticalLayout implements BeforeEnterObserver 
 
     private void refresh() {
         club = tenantService.requireCurrent();
-        List<SlotWaitlist> upcoming = waitlistService.upcomingBySlot();
+        List<SlotWaitlist> upcoming = waitlistService.upcomingBySlot(club);
         List<SlotWaitlist> shown = focus == null
                 ? upcoming
                 : upcoming.stream().filter(slot -> slot.startsAt().equals(focus)).toList();

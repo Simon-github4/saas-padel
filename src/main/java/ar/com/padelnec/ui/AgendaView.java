@@ -87,6 +87,7 @@ public class AgendaView extends VerticalLayout {
     private Tenant club;
     private List<Court> courts = List.of();
     private List<Blackout> blackouts = List.of();
+    private SlotGenerator.DayPlan plan;
 
     public AgendaView(TenantService tenantService, BookingService bookingService,
                       CourtRepository courtRepository, BlackoutRepository blackoutRepository,
@@ -230,11 +231,11 @@ public class AgendaView extends VerticalLayout {
         List<Booking> bookings = bookingService.agendaFor(club, date).stream()
                 .filter(booking -> booking.getStatus().occupiesSlot())
                 .toList();
-        blackouts = blackoutRepository.findOverlapping(
-                slotGenerator.dayStart(club, date), slotGenerator.dayEnd(club, date));
+        plan = slotGenerator.plan(club, date);
+        blackouts = blackoutRepository.findOverlapping(plan.start(), plan.end());
 
         List<AgendaRow> rows = new ArrayList<>();
-        for (Slot slot : slotGenerator.generate(club, date)) {
+        for (Slot slot : plan.slots()) {
             Map<UUID, Booking> byCourt = new LinkedHashMap<>();
             for (Booking booking : bookings) {
                 if (booking.overlaps(slot.startsAt(), slot.endsAt())) {
@@ -285,7 +286,7 @@ public class AgendaView extends VerticalLayout {
         if (courts.isEmpty()) {
             return "Todavia no cargaste ninguna cancha.";
         }
-        long total = (long) rows.size() * courts.size();
+        long total = courts.stream().mapToLong(plan::slotsOpenIn).sum();
         long taken = rows.stream().mapToLong(row -> row.byCourt().size()).sum();
         return "%d de %d turnos vendidos".formatted(taken, total);
     }
@@ -342,7 +343,17 @@ public class AgendaView extends VerticalLayout {
     private Component slotCard(AgendaRow row, Court court) {
         return row.at(court)
                 .<Component>map(this::bookedCard)
-                .orElseGet(() -> freeCard(row, court));
+                .orElseGet(() -> plan.opens(court, row.slot()) ? freeCard(row, court) : closedCard());
+    }
+
+    /** La cancha no abre a esa hora ese dia, por su horario propio (Configuracion > Canchas). */
+    private Component closedCard() {
+        Button button = new Button("Cerrada");
+        button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+        button.addClassName("agenda-card__button");
+        button.setWidthFull();
+        button.setEnabled(false);
+        return card(button, "agenda-card--suspended", "agenda-card--disabled");
     }
 
     private Component bookedCard(Booking booking) {

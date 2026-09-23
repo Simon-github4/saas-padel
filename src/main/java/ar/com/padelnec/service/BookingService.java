@@ -103,9 +103,7 @@ public class BookingService {
                 .filter(Court::isActive)
                 .orElseThrow(() -> new ResourceNotFoundException("La cancha no existe o no está activa"));
 
-        ResolvedSlot slot = slotGenerator.resolve(club, request.startTime())
-                .orElseThrow(() -> new BusinessRuleException(
-                        "Ese horario no forma parte de la grilla del club"));
+        ResolvedSlot slot = openSlot(club, court, request.startTime());
 
         Instant now = clock.instant();
         validateWindow(club, slot, now);
@@ -177,9 +175,7 @@ public class BookingService {
                                 String phoneNumber, BigDecimal priceOverride, String notes) {
         Court court = courtRepository.findById(courtId)
                 .orElseThrow(() -> new ResourceNotFoundException("La cancha no existe"));
-        ResolvedSlot slot = slotGenerator.resolve(club, startTime)
-                .orElseThrow(() -> new BusinessRuleException(
-                        "Ese horario no forma parte de la grilla del club"));
+        ResolvedSlot slot = openSlot(club, court, startTime);
 
         BigDecimal price = priceOverride != null ? priceOverride : pricingService
                 .resolve(club, pricingService.rulesFor(club, slot.operatingDate().getDayOfWeek()),
@@ -213,6 +209,17 @@ public class BookingService {
         Booking saved = persist(booking);
         leaveWaitlistOnceBooked(saved);
         return saved;
+    }
+
+    /** El turno de la grilla que arranca en {@code startTime}, si esa cancha abre a esa hora. */
+    private ResolvedSlot openSlot(Tenant club, Court court, Instant startTime) {
+        SlotGenerator.ResolvedPlan resolved = slotGenerator.resolveWithPlan(club, startTime)
+                .orElseThrow(() -> new BusinessRuleException(
+                        "Ese horario no forma parte de la grilla del club"));
+        if (!resolved.opens(court)) {
+            throw new BusinessRuleException("%s no abre en ese horario".formatted(court.getName()));
+        }
+        return resolved.resolved();
     }
 
     /**

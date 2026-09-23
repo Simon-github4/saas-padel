@@ -48,14 +48,15 @@ public class WaitlistService {
     @Transactional
     public WaitlistEntry join(Tenant club, Instant startTime, String phone, String fullName,
                               PlayerAccount account) {
-        SlotGenerator.ResolvedSlot slot = slotGenerator.resolve(club, startTime)
+        SlotGenerator.ResolvedPlan resolved = slotGenerator.resolveWithPlan(club, startTime)
                 .orElseThrow(() -> new BusinessRuleException(
                         "Ese horario no forma parte de la grilla del club"));
+        SlotGenerator.ResolvedSlot slot = resolved.resolved();
 
         if (!slot.slot().startsAt().isAfter(clock.instant())) {
             throw new BusinessRuleException("Ese horario ya pasó");
         }
-        if (availabilityService.anyCourtFree(slot.slot().startsAt(), slot.slot().endsAt())) {
+        if (availabilityService.anyCourtFree(resolved)) {
             throw new BusinessRuleException(
                     "Todavía hay canchas libres en ese horario: reservalo directo");
         }
@@ -106,7 +107,7 @@ public class WaitlistService {
 
     /** Horarios que todavia no empezaron y tienen gente anotada, el mas proximo primero. */
     @Transactional(readOnly = true)
-    public List<SlotWaitlist> upcomingBySlot() {
+    public List<SlotWaitlist> upcomingBySlot(Tenant club) {
         Map<Instant, List<WaitlistEntry>> bySlot = waitlistEntryRepository.findUpcoming(clock.instant())
                 .stream()
                 .collect(Collectors.groupingBy(WaitlistEntry::getStartsAt, LinkedHashMap::new,
@@ -119,7 +120,7 @@ public class WaitlistService {
                         entries.getFirst().getStartsAt(), entries.getFirst().getEndsAt()))
                 .toList();
         Map<AvailabilityService.SlotWindow, Boolean> freeBySlot =
-                availabilityService.anyCourtFreeForSlots(windows);
+                availabilityService.anyCourtFreeForSlots(club, windows);
 
         return bySlot.values().stream()
                 .map(entries -> {

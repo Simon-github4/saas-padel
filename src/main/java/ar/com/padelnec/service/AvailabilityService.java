@@ -4,6 +4,7 @@ import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.ClubAmenity;
 import ar.com.padelnec.domain.Court;
+import ar.com.padelnec.domain.CourtSchedule;
 import ar.com.padelnec.domain.PricingRule;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.BookingStatus;
@@ -11,6 +12,7 @@ import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.ClubAmenityRepository;
 import ar.com.padelnec.repository.CourtRepository;
+import ar.com.padelnec.repository.CourtScheduleRepository;
 import ar.com.padelnec.service.SlotGenerator.Slot;
 import ar.com.padelnec.web.dto.AvailabilityResponse;
 import ar.com.padelnec.web.dto.AvailabilityResponse.AmenityView;
@@ -53,6 +55,7 @@ public class AvailabilityService {
             BookingStatus.COMPLETED);
 
     private final CourtRepository courtRepository;
+    private final CourtScheduleRepository courtScheduleRepository;
     private final BookingRepository bookingRepository;
     private final BlackoutRepository blackoutRepository;
     private final ClubAmenityRepository clubAmenityRepository;
@@ -90,7 +93,8 @@ public class AvailabilityService {
 
     private List<SlotView> freeSlots(Tenant club, LocalDate date, List<Court> courts) {
         Instant now = clock.instant();
-        List<Slot> slots = slotGenerator.generate(club, date);
+        SlotGenerator.DayPlan plan = slotGenerator.plan(club, date);
+        List<Slot> slots = plan.slots();
 
         if (courts.isEmpty() || slots.isEmpty() || isOutsideBookingWindow(club, date, now)) {
             return List.of();
@@ -111,7 +115,7 @@ public class AvailabilityService {
             }
             views.add(new SlotView(
                     slot.startTime(), slot.endTime(), slot.startsAt(), slot.endsAt(),
-                    freeCourts(club, courts, slot, taken, blackouts, rules, date.getDayOfWeek()),
+                    freeCourts(club, plan, courts, slot, taken, blackouts, rules, date.getDayOfWeek()),
                     pricingService.isSlotPromo(club, rules, date.getDayOfWeek(), slot.startTime())));
         }
         return views;
@@ -130,13 +134,16 @@ public class AvailabilityService {
     }
 
     /**
-     * Indica si alguna cancha activa esta libre en una franja. Lo usa la lista de
-     * espera, a la que no le importa cual cancha se libero, solo que haya alguna.
+     * Indica si alguna cancha activa, de las que abren en ese turno, esta libre. Lo
+     * usa la lista de espera, a la que no le importa cual cancha se libero, solo
+     * que haya alguna.
      */
     @Transactional(readOnly = true)
-    public boolean anyCourtFree(Instant start, Instant end) {
+    public boolean anyCourtFree(SlotGenerator.ResolvedPlan slot) {
+        Instant start = slot.resolved().slot().startsAt();
+        Instant end = slot.resolved().slot().endsAt();
         return courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc().stream()
-                .anyMatch(court -> isCourtFree(court, start, end));
+                .anyMatch(court -> slot.opens(court) && isCourtFree(court, start, end));
     }
 
     /** Una franja de horario, tal como la necesita {@link #anyCourtFreeForSlots}. */
@@ -152,7 +159,7 @@ public class AvailabilityService {
      * identicas. Mismo patron que ya usa {@link #freeSlots}.
      */
     @Transactional(readOnly = true)
-    public Map<SlotWindow, Boolean> anyCourtFreeForSlots(Collection<SlotWindow> windows) {
+    public Map<SlotWindow, Boolean> anyCourtFreeForSlots(Tenant club, Collection<SlotWindow> windows) {
         if (windows.isEmpty()) {
             return Map.of();
         }
@@ -162,9 +169,18 @@ public class AvailabilityService {
         List<Booking> taken = bookingRepository.findOverlapping(from, until, BLOCKING);
         List<Blackout> blackouts = blackoutRepository.findOverlapping(from, until);
 
+        List<CourtSchedule> schedules = courtScheduleRepository.findAllWithCourt();
+
         Map<SlotWindow, Boolean> result = new LinkedHashMap<>();
         for (SlotWindow window : windows) {
-            boolean free = courts.stream().anyMatch(court -> isFreeInMemory(court, window, taken, blackouts));
+            // Una cancha que ese dia no abre a esa hora no cuenta como libre. Un horario
+            // que ya no esta en la grilla (el club cambio su horario despues de que se
+            // anotaran) se sigue mirando cancha por cancha, como siempre.
+            Optional<SlotGenerator.ResolvedPlan> slot =
+                    slotGenerator.resolveWithPlan(club, window.startsAt(), courts, schedules);
+            boolean free = courts.stream()
+                    .anyMatch(court -> slot.map(s -> s.opens(court)).orElse(true)
+                            && isFreeInMemory(court, window, taken, blackouts));
             result.put(window, free);
         }
         return result;
@@ -185,11 +201,14 @@ public class AvailabilityService {
 
     // ------------------------------------------------------------- internos
 
-    private List<CourtAvailability> freeCourts(Tenant club, List<Court> courts, Slot slot,
-                                               List<Booking> taken, List<Blackout> blackouts,
+    private List<CourtAvailability> freeCourts(Tenant club, SlotGenerator.DayPlan plan, List<Court> courts,
+                                               Slot slot, List<Booking> taken, List<Blackout> blackouts,
                                                List<PricingRule> rules, DayOfWeek day) {
         List<CourtAvailability> free = new ArrayList<>();
         for (Court court : courts) {
+            if (!plan.opens(court, slot)) {
+                continue;
+            }
             boolean occupied = taken.stream()
                     .anyMatch(booking -> booking.getCourt().getId().equals(court.getId())
                             && booking.overlaps(slot.startsAt(), slot.endsAt()));

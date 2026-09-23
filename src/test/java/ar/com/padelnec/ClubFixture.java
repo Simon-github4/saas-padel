@@ -2,6 +2,7 @@ package ar.com.padelnec;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Court;
+import ar.com.padelnec.domain.CourtSchedule;
 import ar.com.padelnec.domain.enums.CourtRoof;
 import ar.com.padelnec.domain.enums.CourtSurface;
 import ar.com.padelnec.domain.enums.CourtWall;
@@ -10,6 +11,7 @@ import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CourtRepository;
+import ar.com.padelnec.repository.CourtScheduleRepository;
 import ar.com.padelnec.repository.CustomerRepository;
 import ar.com.padelnec.repository.NotificationLogRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
@@ -25,6 +27,7 @@ import ar.com.padelnec.repository.WaitlistEntryRepository;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.test.context.TestComponent;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +43,7 @@ public class ClubFixture {
     private final TenantRepository tenantRepository;
     private final CourtRepository courtRepository;
     private final PricingRuleRepository pricingRuleRepository;
+    private final CourtScheduleRepository courtScheduleRepository;
     private final BookingRepository bookingRepository;
     private final CustomerRepository customerRepository;
     private final BlackoutRepository blackoutRepository;
@@ -74,6 +78,7 @@ public class ClubFixture {
             recurringBookingRepository.deleteAllInBatch();
             blackoutRepository.deleteAllInBatch();
             pricingRuleRepository.deleteAllInBatch();
+            courtScheduleRepository.deleteAllInBatch();
             customerRepository.deleteAllInBatch();
             courtRepository.deleteAllInBatch();
             tenantRepository.deleteAllInBatch();
@@ -150,6 +155,26 @@ public class ClubFixture {
     public PricingRule markPromo(PricingRule rule) {
         rule.setPromo(true);
         return pricingRuleRepository.saveAndFlush(rule);
+    }
+
+    /** Horario propio de la cancha ese dia; un cierre menor al inicio es de madrugada. */
+    @Transactional
+    public CourtSchedule courtHours(Court court, DayOfWeek day, LocalTime from, LocalTime to) {
+        CourtSchedule schedule = new CourtSchedule();
+        schedule.setCourt(court);
+        schedule.setDays(Set.of(day));
+        schedule.setStartTime(from);
+        schedule.setEndTime(to);
+        return courtScheduleRepository.saveAndFlush(schedule);
+    }
+
+    @Transactional
+    public CourtSchedule courtClosed(Court court, DayOfWeek day) {
+        CourtSchedule schedule = new CourtSchedule();
+        schedule.setCourt(court);
+        schedule.setDays(Set.of(day));
+        schedule.setClosed(true);
+        return courtScheduleRepository.saveAndFlush(schedule);
     }
 
     @Transactional

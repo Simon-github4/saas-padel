@@ -61,7 +61,7 @@ public class WaitlistNotificationWorker {
                 .map(entry -> new SlotWindow(entry.getStartsAt(), entry.getEndsAt()))
                 .distinct()
                 .toList();
-        Map<SlotWindow, Boolean> freeBySlot = availabilityService.anyCourtFreeForSlots(windows);
+        Map<SlotWindow, Boolean> freeBySlot = availabilityService.anyCourtFreeForSlots(club, windows);
 
         int notified = 0;
         for (WaitlistEntry entry : pending) {

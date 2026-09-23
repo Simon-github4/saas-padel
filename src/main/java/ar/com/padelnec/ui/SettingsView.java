@@ -3,6 +3,7 @@ package ar.com.padelnec.ui;
 import ar.com.padelnec.domain.ClubAmenity;
 import ar.com.padelnec.domain.ClubUser;
 import ar.com.padelnec.domain.Court;
+import ar.com.padelnec.domain.CourtSchedule;
 import ar.com.padelnec.domain.PricingRule;
 import ar.com.padelnec.domain.Product;
 import ar.com.padelnec.domain.Tenant;
@@ -15,6 +16,7 @@ import ar.com.padelnec.domain.enums.ThemeMode;
 import ar.com.padelnec.payment.MercadoPagoOAuthService;
 import ar.com.padelnec.repository.ClubAmenityRepository;
 import ar.com.padelnec.repository.CourtRepository;
+import ar.com.padelnec.repository.CourtScheduleRepository;
 import ar.com.padelnec.repository.PricingRuleRepository;
 import ar.com.padelnec.repository.ProductRepository;
 import ar.com.padelnec.repository.TenantHeroImageRepository;
@@ -137,6 +139,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
     private final TenantHeroImageRepository tenantHeroImageRepository;
     private final CourtRepository courtRepository;
     private final PricingRuleRepository pricingRuleRepository;
+    private final CourtScheduleRepository courtScheduleRepository;
     private final ClubAmenityRepository amenityRepository;
     private final ProductRepository productRepository;
     private final ProductService productService;
@@ -149,6 +152,9 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
     private final Grid<ClubAmenity> amenityGrid = new Grid<>();
     private final Grid<Court> courtGrid = new Grid<>();
     private final Grid<PricingRule> pricingGrid = new Grid<>();
+    private final Grid<CourtSchedule> scheduleGrid = new Grid<>();
+    private final Select<Court> scheduleCourt = new Select<>();
+    private final Paragraph scheduleHelp = new Paragraph();
     private final Grid<Product> productGrid = new Grid<>();
     private final Paragraph pricingWarning = new Paragraph();
     private final VerticalLayout usersContent = new VerticalLayout();
@@ -169,6 +175,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
     public SettingsView(TenantService tenantService,
                         TenantHeroImageRepository tenantHeroImageRepository,
                         CourtRepository courtRepository, PricingRuleRepository pricingRuleRepository,
+                        CourtScheduleRepository courtScheduleRepository,
                         ClubAmenityRepository amenityRepository, ProductRepository productRepository,
                         ProductService productService, ClubUserService clubUserService,
                         GoogleMapsLinkResolver mapsLinkResolver,
@@ -178,6 +185,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         this.tenantHeroImageRepository = tenantHeroImageRepository;
         this.courtRepository = courtRepository;
         this.pricingRuleRepository = pricingRuleRepository;
+        this.courtScheduleRepository = courtScheduleRepository;
         this.amenityRepository = amenityRepository;
         this.productRepository = productRepository;
         this.productService = productService;
@@ -876,6 +884,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
                 + "resolver una persona");
 
         TimePicker open = timePicker("Abre", club.getOpenTime());
+        open.setHelperText("Horario general: una cancha puede tener el suyo algunos días (pestaña Canchas)");
         TimePicker close = timePicker("Cierra", club.getCloseTime());
         close.setHelperText("Si es anterior a la apertura, se entiende que cierran de madrugada");
 
@@ -1014,16 +1023,129 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         });
         add.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
+        VerticalLayout schedules = courtSchedulesSection();
         refreshCourts();
         HorizontalLayout toolbar = new HorizontalLayout(newName, newOrder, newWall, newSurface, newRoof, add);
         toolbar.setAlignItems(Alignment.END);
         toolbar.setPadding(false);
         toolbar.addClassNames(LumoUtility.Gap.SMALL);
-        return tabContent(toolbar, courtGrid);
+        return tabContent(toolbar, courtGrid, schedules);
     }
 
     private void refreshCourts() {
-        courtGrid.setItems(courtRepository.findAllByOrderByDisplayOrderAscNameAsc());
+        List<Court> courts = courtRepository.findAllByOrderByDisplayOrderAscNameAsc();
+        courtGrid.setItems(courts);
+        scheduleCourt.setItems(courts);
+    }
+
+    // --------------------------------------------------- horarios por cancha
+
+    /**
+     * Horario propio de una cancha en ciertos dias, con el mismo criterio que las
+     * franjas de tarifa: la regla de la cancha le gana a la general del club.
+     */
+    private VerticalLayout courtSchedulesSection() {
+        dressGrid(scheduleGrid);
+        scheduleGrid.addColumn(schedule -> schedule.getCourt().getName()).setHeader("Cancha").setAutoWidth(true);
+        scheduleGrid.addColumn(schedule -> daysText(schedule.getDays())).setHeader("Días").setAutoWidth(true);
+        scheduleGrid.addColumn(this::hoursText).setHeader("Horario").setFlexGrow(1)
+                .setPartNameGenerator(schedule -> "tabular");
+        scheduleGrid.addComponentColumn(schedule -> {
+            Button delete = new Button("Borrar", event -> {
+                courtScheduleRepository.delete(schedule);
+                refreshSchedules();
+            });
+            delete.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY);
+            return delete;
+        }).setAutoWidth(true).setFlexGrow(0);
+
+        Map<DayOfWeek, Checkbox> dayChecks = new LinkedHashMap<>();
+        HorizontalLayout daysRow = daysRow(dayChecks);
+
+        scheduleCourt.setLabel("Cancha");
+        scheduleCourt.setItemLabelGenerator(Court::getName);
+        scheduleCourt.setPlaceholder("Elegí la cancha");
+
+        TimePicker from = timePicker("Desde", club.getOpenTime());
+        TimePicker to = timePicker("Hasta", club.getCloseTime());
+        to.setHelperText("Si es anterior a Desde, cierra de madrugada");
+        Checkbox closed = new Checkbox("Cerrada todo el día", false);
+        closed.addValueChangeListener(event -> {
+            from.setEnabled(!event.getValue());
+            to.setEnabled(!event.getValue());
+        });
+
+        Button add = new Button("Agregar horario", event -> {
+            Set<DayOfWeek> selected = dayChecks.entrySet().stream()
+                    .filter(entry -> entry.getValue().getValue())
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            if (scheduleCourt.getValue() == null) {
+                Notification.show("Elegí la cancha");
+                return;
+            }
+            if (selected.isEmpty()) {
+                Notification.show("Elegi al menos un dia");
+                return;
+            }
+            boolean isClosed = closed.getValue();
+            if (!isClosed && (from.getValue() == null || to.getValue() == null)) {
+                Notification.show("Poné desde y hasta qué hora abre");
+                return;
+            }
+            if (!isClosed && from.getValue().equals(to.getValue())) {
+                Notification.show("El horario tiene que terminar a otra hora que la que empieza");
+                return;
+            }
+            CourtSchedule schedule = new CourtSchedule();
+            schedule.setCourt(scheduleCourt.getValue());
+            schedule.setDays(selected);
+            schedule.setClosed(isClosed);
+            schedule.setStartTime(isClosed ? null : from.getValue());
+            schedule.setEndTime(isClosed ? null : to.getValue());
+            courtScheduleRepository.save(schedule);
+            dayChecks.values().forEach(check -> check.setValue(false));
+            closed.clear();
+            refreshSchedules();
+            Notification.show("Horario de %s guardado".formatted(schedule.getCourt().getName()));
+        });
+        add.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+
+        HorizontalLayout fields = new HorizontalLayout(scheduleCourt, from, to, closed);
+        fields.setAlignItems(Alignment.BASELINE);
+        fields.getStyle().set("flex-wrap", "wrap");
+
+        HorizontalLayout actions = new HorizontalLayout(add);
+        actions.getStyle().set("margin-top", "0.75rem");
+
+        H3 heading = new H3("Horarios por cancha");
+        heading.addClassNames(LumoUtility.FontSize.MEDIUM, LumoUtility.Margin.NONE,
+                LumoUtility.FontWeight.SEMIBOLD);
+        scheduleHelp.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.Margin.NONE);
+
+        refreshSchedules();
+        VerticalLayout section = new VerticalLayout(heading, scheduleHelp, daysRow, fields, actions, scheduleGrid);
+        section.setPadding(false);
+        section.setSpacing(false);
+        section.addClassNames(LumoUtility.Gap.SMALL);
+        return section;
+    }
+
+    private void refreshSchedules() {
+        scheduleGrid.setItems(courtScheduleRepository.findAllWithCourt());
+        scheduleHelp.setText(("Horario general del club: de %s a %s (se cambia en la pestaña Club). "
+                + "Si una cancha tiene horario propio un día, le gana al general: ese día abre solo en "
+                + "las franjas que cargues. Los turnos siguen la grilla del club, de %d minutos desde "
+                + "la apertura, así que un turno que no entra completo en el horario de la cancha no "
+                + "se ofrece.").formatted(club.getOpenTime(), club.getCloseTime(), club.getDefaultSlotDuration()));
+    }
+
+    private String hoursText(CourtSchedule schedule) {
+        if (schedule.isClosed()) {
+            return "Cerrada todo el día";
+        }
+        return "%s - %s%s".formatted(schedule.getStartTime(), schedule.getEndTime(),
+                schedule.closesAfterMidnight() ? " (del día siguiente)" : "");
     }
 
     /** Selector chico para una caracteristica de la cancha, que guarda al cambiar. */
@@ -1236,9 +1358,12 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         return row;
     }
 
-    private VerticalLayout newPricingRuleForm() {
-        // Etiqueta de grupo y una fila de "nombre + checkbox" (lun [x] mar [ ]…)
-        // en un solo renglon. "Dias" es un rotulo con estilo de label, no un checkbox.
+    /**
+     * Etiqueta de grupo y una fila de "nombre + checkbox" (lun [x] mar [ ]…) en un
+     * solo renglon. "Dias" es un rotulo con estilo de label, no un checkbox. Deja
+     * los checkbox en {@code dayChecks}, con el lunes tildado.
+     */
+    private HorizontalLayout daysRow(Map<DayOfWeek, Checkbox> dayChecks) {
         Span daysLabel = new Span("Dias:");
         daysLabel.addClassNames(LumoUtility.TextColor.SECONDARY,
                 LumoUtility.FontWeight.SEMIBOLD);
@@ -1247,7 +1372,6 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         daysRow.setAlignItems(Alignment.CENTER);
         daysRow.getStyle().set("flex-wrap", "wrap");
         daysRow.getStyle().set("column-gap", "0.5rem");
-        Map<DayOfWeek, Checkbox> dayChecks = new LinkedHashMap<>();
         for (DayOfWeek day : DayOfWeek.values()) {
             // El texto va a la izquierda del checkbox: "lun [x]", no "[x] lun".
             Span name = new Span(shortDayName(day));
@@ -1262,6 +1386,12 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
             dayChecks.put(day, check);
             daysRow.add(item);
         }
+        return daysRow;
+    }
+
+    private VerticalLayout newPricingRuleForm() {
+        Map<DayOfWeek, Checkbox> dayChecks = new LinkedHashMap<>();
+        HorizontalLayout daysRow = daysRow(dayChecks);
 
         Select<Court> court = new Select<>();
         court.setLabel("Cancha");
@@ -1342,7 +1472,11 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
     }
 
     private String daysText(PricingRule rule) {
-        List<String> names = rule.getDays().stream()
+        return daysText(rule.getDays());
+    }
+
+    private String daysText(Set<DayOfWeek> days) {
+        List<String> names = days.stream()
                 .sorted()
                 .map(this::shortDayName)
                 .toList();
