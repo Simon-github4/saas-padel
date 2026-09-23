@@ -84,8 +84,10 @@ final class GymViewSupport {
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle(memberName + " ya es socio");
 
-        Paragraph note = new Paragraph("Entra a la app con su DNI (" + dni + "), sin clave. Falta cobrarle la cuota "
-                + "para que pueda registrar sus ingresos.");
+        Paragraph note = new Paragraph((dni == null
+                ? "Todavía no tiene DNI cargado: cuando se lo cargues, entra a la app con él, sin clave."
+                : "Entra a la app con su DNI (" + dni + "), sin clave.")
+                + " Falta cobrarle la cuota para que pueda registrar sus ingresos.");
         dialog.add(note);
 
         Button later = new Button("Después", event -> dialog.close());
@@ -110,7 +112,7 @@ final class GymViewSupport {
         dialog.setCloseOnOutsideClick(false);
         dialog.setCloseOnEsc(false);
 
-        Span dniLine = new Span("DNI " + dni);
+        Span dniLine = new Span(dni == null ? "Sin DNI: cuando se lo cargues, entra con el DNI y esta clave" : "DNI " + dni);
         dniLine.addClassNames(LumoUtility.TextColor.SECONDARY);
 
         Span code = new Span(password);

@@ -17,6 +17,11 @@ public final class GymDni {
         return digits.length() >= 6 && digits.length() <= 10 ? digits : null;
     }
 
+    /** Para el mostrador cuando el DNI es opcional: vacio es null; si no sirve, dice por que. */
+    public static String optional(String raw) {
+        return raw == null || raw.isBlank() ? null : require(raw);
+    }
+
     /** Para el alta: si no sirve, dice por que. */
     public static String require(String raw) {
         String digits = digitsOrNull(raw);

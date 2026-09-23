@@ -22,8 +22,8 @@ Después, desde el panel (`/admin`, entrando como dueño):
 
 1. **Sedes y QR**: crear la sede, cargar su ubicación (ver abajo), imprimir su QR y
    pegarlo en la entrada.
-2. **Socios**: dar de alta al socio (nombre y DNI) y cobrar su cuota (desde cuándo,
-   meses, días por semana, sedes).
+2. **Socios**: dar de alta al socio (nombre y, si está a mano, DNI) y cobrar su
+   cuota (desde cuándo, meses, días por semana, sedes).
 
 El socio entra a `https://<host>/gym/<slug-del-club>` **con solo su DNI** y escanea
 el QR de la entrada.
@@ -77,6 +77,10 @@ Para probar sin cámara, pegar el link o el código en el campo del escáner.
   todas las sedes. La semana va de lunes a domingo.
 - Pasado el tope semanal se rechaza; el mostrador puede dejar pasar (queda marcado
   como excepción). El mostrador solo registra ingresos de HOY.
+- El DNI es opcional en el alta: los socios anotados sin DNI se cargan con el nombre y
+  el DNI se completa después en "Cargar DNI y datos". Sin DNI no entra a la app, pero el
+  mostrador le cobra y le registra ingresos. Si se cambia el DNI de un socio, se cierran
+  sus sesiones abiertas.
 - Un socio no puede tener dos cuotas que se pisen (constraint en la base).
 - La fecha de cobro (`paid_on`) es aparte del período: un pago de otro día va a la caja
   de ese día, y pagar antes no adelanta el período.

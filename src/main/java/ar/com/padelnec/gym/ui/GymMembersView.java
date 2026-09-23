@@ -159,8 +159,11 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
 
     private Component nameCell(MemberRow row) {
         Span name = new Span(row.fullName());
-        Span dni = new Span("DNI " + row.dni());
+        Span dni = new Span(row.dni() == null ? "Sin DNI" : "DNI " + row.dni());
         dni.addClassNames(LumoUtility.FontSize.XSMALL, LumoUtility.TextColor.SECONDARY);
+        if (row.dni() == null) {
+            dni.getElement().setAttribute("title", "Sin DNI no puede entrar a la app. Cargáselo en «Editar datos».");
+        }
         VerticalLayout lines = new VerticalLayout(name, dni);
         lines.setPadding(false);
         lines.setSpacing(false);
@@ -221,7 +224,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         ContextMenu menu = new ContextMenu(more);
         menu.setOpenOnClick(true);
         menu.addItem("Registrar ingreso hoy", event -> openManualCheckIn(row)).setEnabled(row.enabled());
-        menu.addItem("Editar nombre y teléfono", event -> openEdit(row));
+        menu.addItem(row.dni() == null ? "Cargar DNI y datos" : "Editar datos", event -> openEdit(row));
         if (passwordRequired) {
             menu.addItem("Resetear clave", event -> confirmReset(row));
         }
@@ -239,11 +242,8 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle("Nuevo socio");
 
-        TextField dni = new TextField("DNI");
-        dni.setRequired(true);
-        dni.setMaxLength(12);
-        dni.setHelperText("Solo números");
-        dni.setWidthFull();
+        // El DNI es opcional: los socios anotados sin DNI se cargan igual y se completa después.
+        TextField dni = dniField("DNI (opcional)");
         TextField name = new TextField("Nombre y apellido");
         name.setRequired(true);
         name.setMaxLength(120);
@@ -252,7 +252,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         phone.setMaxLength(25);
         phone.setWidthFull();
 
-        VerticalLayout body = new VerticalLayout(dni, name, phone);
+        VerticalLayout body = new VerticalLayout(name, dni, phone);
         body.setPadding(false);
         dialog.add(body);
 
@@ -275,7 +275,16 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), save);
         dialog.open();
-        dni.focus();
+        name.focus();
+    }
+
+    /** DNI opcional: vacío se puede cargar después, pero sin DNI el socio no entra a la app. */
+    private static TextField dniField(String label) {
+        TextField dni = new TextField(label);
+        dni.setMaxLength(12);
+        dni.setHelperText("Solo números. Sin DNI no puede entrar a la app: lo podés cargar después.");
+        dni.setWidthFull();
+        return dni;
     }
 
     private void openSell(MemberRow row) {
@@ -543,6 +552,8 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle("Datos del socio");
 
+        TextField dni = dniField("DNI");
+        dni.setValue(row.dni() == null ? "" : row.dni());
         TextField name = new TextField("Nombre y apellido");
         name.setValue(row.fullName());
         name.setMaxLength(120);
@@ -552,16 +563,13 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         phone.setMaxLength(25);
         phone.setWidthFull();
 
-        Span dni = new Span("DNI " + row.dni() + " (no se puede cambiar)");
-        dni.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
-
-        VerticalLayout body = new VerticalLayout(name, phone, dni);
+        VerticalLayout body = new VerticalLayout(name, dni, phone);
         body.setPadding(false);
         dialog.add(body);
 
         Button save = new Button("Guardar", event -> {
             try {
-                memberService.updateDetails(row.id(), name.getValue(), phone.getValue());
+                memberService.updateDetails(row.id(), dni.getValue(), name.getValue(), phone.getValue());
                 dialog.close();
                 refresh();
             } catch (BusinessRuleException ex) {
@@ -612,7 +620,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         String term = search.getValue() == null ? "" : search.getValue().trim().toLowerCase();
         List<MemberRow> shown = all.stream()
                 .filter(row -> term.isEmpty() || row.fullName().toLowerCase().contains(term)
-                        || row.dni().contains(term))
+                        || (row.dni() != null && row.dni().contains(term)))
                 .toList();
         grid.setItems(shown);
         count.setText(!term.isEmpty() && shown.size() != all.size()

@@ -18,8 +18,11 @@ import lombok.Setter;
 @Setter
 public class GymMember extends TenantScopedEntity {
 
-    /** Solo digitos, sin puntos. */
-    @Column(nullable = false, length = 12)
+    /**
+     * Solo digitos, sin puntos. Null si todavia no se cargo: el socio existe y se le
+     * cobra, pero no puede entrar a la app hasta que el mostrador le ponga el DNI.
+     */
+    @Column(length = 12)
     private String dni;
 
     @Column(name = "full_name", nullable = false, length = 120)

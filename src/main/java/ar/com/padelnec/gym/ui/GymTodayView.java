@@ -87,7 +87,7 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
         checkins.setSelectionMode(Grid.SelectionMode.NONE);
         checkins.addColumn(row -> hour.format(row.at())).setHeader("Hora").setAutoWidth(true).setFlexGrow(0);
         checkins.addColumn(DayCheckin::memberName).setHeader("Socio").setFlexGrow(3);
-        checkins.addColumn(DayCheckin::dni).setHeader("DNI").setAutoWidth(true).setFlexGrow(0);
+        checkins.addColumn(row -> row.dni() == null ? "—" : row.dni()).setHeader("DNI").setAutoWidth(true).setFlexGrow(0);
         checkins.addColumn(DayCheckin::sedeName).setHeader("Sede").setFlexGrow(2);
         checkins.addComponentColumn(this::marks).setHeader("").setAutoWidth(true).setFlexGrow(0);
         checkins.setEmptyStateText("Nadie entró este día.");

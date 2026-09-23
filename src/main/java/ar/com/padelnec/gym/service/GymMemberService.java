@@ -8,6 +8,7 @@ import ar.com.padelnec.web.ResourceNotFoundException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -37,7 +38,10 @@ public class GymMemberService {
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
 
-    /** El socio recien dado de alta, con la clave temporal en claro (unica vez que existe asi). */
+    /**
+     * El socio recien dado de alta, con la clave temporal en claro (unica vez que existe asi).
+     * {@code dni} es null si se lo dio de alta sin DNI.
+     */
     public record CreatedMember(UUID id, String fullName, String dni, String temporaryPassword) {
     }
 
@@ -46,13 +50,15 @@ public class GymMemberService {
         return memberRepository.findAllByOrderByFullNameAsc();
     }
 
+    /**
+     * Da de alta a un socio. El DNI es opcional: los socios anotados sin DNI se cargan
+     * con el nombre y el DNI se completa despues con {@link #updateDetails}.
+     */
     @Transactional
     public CreatedMember create(String rawDni, String fullName, String phone) {
-        String dni = GymDni.require(rawDni);
+        String dni = GymDni.optional(rawDni);
         String name = requireName(fullName);
-        if (memberRepository.findByDni(dni).isPresent()) {
-            throw new BusinessRuleException("Ya hay un socio con ese DNI.");
-        }
+        requireFreeDni(dni, null);
 
         String temporary = temporaryPassword();
         GymMember member = new GymMember();
@@ -70,12 +76,30 @@ public class GymMemberService {
         return new CreatedMember(member.getId(), member.getFullName(), dni, temporary);
     }
 
-    /** Corrige nombre y telefono. El DNI no se edita: es la identidad del socio. */
+    /**
+     * Corrige DNI, nombre y telefono. El DNI se puede cargar despues del alta o
+     * corregir; si cambia, se cierran las sesiones abiertas del socio: quien entro
+     * con el DNI anterior no sigue adentro con esta cuenta.
+     */
     @Transactional
-    public void updateDetails(UUID memberId, String fullName, String phone) {
+    public void updateDetails(UUID memberId, String rawDni, String fullName, String phone) {
         GymMember member = require(memberId);
-        member.setFullName(requireName(fullName));
+        String dni = GymDni.optional(rawDni);
+        String name = requireName(fullName);
+        requireFreeDni(dni, member.getId());
+
+        boolean dniChanged = !Objects.equals(dni, member.getDni());
+        member.setDni(dni);
+        member.setFullName(name);
         member.setPhone(blankToNull(phone));
+        try {
+            memberRepository.flush();
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessRuleException("Ya hay un socio con ese DNI.");
+        }
+        if (dniChanged) {
+            sessionRepository.revokeAllForMember(member.getId(), clock.instant());
+        }
     }
 
     /**
@@ -106,6 +130,14 @@ public class GymMemberService {
     private GymMember require(UUID memberId) {
         return memberRepository.findById(memberId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe ese socio."));
+    }
+
+    /** Que el DNI no sea de otro socio del club. {@code self} es el socio que se edita, o null en el alta. */
+    private void requireFreeDni(String dni, UUID self) {
+        if (dni != null && memberRepository.findByDni(dni)
+                .filter(other -> !other.getId().equals(self)).isPresent()) {
+            throw new BusinessRuleException("Ya hay un socio con ese DNI.");
+        }
     }
 
     private static String requireName(String fullName) {
