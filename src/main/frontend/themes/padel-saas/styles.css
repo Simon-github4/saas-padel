@@ -958,3 +958,35 @@ vaadin-side-nav-item[current]::part(item) {
   font-size: var(--lumo-font-size-s);
   color: var(--lumo-secondary-text-color);
 }
+
+/* Barra de "Guardar cambios" de Configuracion (UnsavedChanges): queda pegada al
+   pie de la pantalla, para que el boton se vea aunque el formulario sea largo, y
+   se resalta mientras hay algo sin guardar. */
+.settings-save-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  justify-content: flex-end;
+  gap: var(--lumo-space-m);
+  padding: var(--lumo-space-s) var(--lumo-space-m);
+  border-radius: var(--lumo-border-radius-l);
+  border: 1px solid transparent;
+  background: var(--lumo-base-color);
+  transition: background-color 200ms, border-color 200ms, box-shadow 200ms;
+}
+
+.settings-save-bar[dirty] {
+  border-color: var(--lumo-primary-color-50pct);
+  background: color-mix(in srgb, var(--lumo-primary-color) 10%, var(--lumo-base-color));
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.settings-save-bar__hint {
+  display: none;
+  font-weight: 600;
+  color: var(--lumo-primary-text-color);
+}
+
+.settings-save-bar[dirty] .settings-save-bar__hint {
+  display: inline;
+}

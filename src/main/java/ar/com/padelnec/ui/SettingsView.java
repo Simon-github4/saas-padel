@@ -64,6 +64,8 @@ import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.component.upload.receivers.MemoryBuffer;
 import com.vaadin.flow.router.BeforeEnterEvent;
 import com.vaadin.flow.router.BeforeEnterObserver;
+import com.vaadin.flow.router.BeforeLeaveEvent;
+import com.vaadin.flow.router.BeforeLeaveObserver;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.spring.security.AuthenticationContext;
@@ -97,7 +99,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 @Route(value = "configuracion", layout = MainLayout.class)
 @PageTitle("Configuración | Panel del club")
 @PermitAll
-public class SettingsView extends VerticalLayout implements BeforeEnterObserver {
+public class SettingsView extends VerticalLayout implements BeforeEnterObserver, BeforeLeaveObserver {
 
     private static final Locale ES_AR = Locale.forLanguageTag("es-AR");
 
@@ -169,6 +171,11 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
      */
     private Tab paymentsTab;
     private TabSheet tabs;
+
+    private final List<UnsavedChanges> forms = new java.util.ArrayList<>();
+    private UnsavedChanges clubChanges;
+    private UnsavedChanges profileChanges;
+    private UnsavedChanges paymentsChanges;
 
     private Tenant club;
 
@@ -307,6 +314,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
                     return;
                 }
                 heroImage.setValue(club.getHeroImageUrl());
+                profileChanges.saved(heroImage);
                 Notification.show("Imagen subida");
             } catch (IOException e) {
                 Notification.show("No se pudo subir la imagen").addThemeVariants(NotificationVariant.LUMO_ERROR);
@@ -433,6 +441,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
             // Se muestra como quedo guardado, no como se pego: si pegaron el link,
             // ven que el sistema entendio el usuario correcto.
             instagram.setValue(club.getInstagramHandle() == null ? "" : "@" + club.getInstagramHandle());
+            profileChanges.saved();
             Notification.show("Perfil guardado");
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -443,14 +452,14 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
 
         // Cuatro grupos, en el orden en que el dueno los piensa: como se llama
         // el club, como se ve su portada, con que paleta, y donde queda.
-        return tabContent(
-                lookHeading,
-                section("Identidad", tagline, instagram),
-                collapsibleSection("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline,
-                        heroOverlay, heroCta),
-                section("Apariencia", 3, theme, primaryColorField, secondaryColorField),
-                section("Ubicación", address, city, mapsLinkField(latitude, longitude, googleMapsUrl)),
-                actions(save),
+        VerticalLayout identity = section("Identidad", tagline, instagram);
+        Details cover = collapsibleSection("Portada", heroImage, heroImageUpload, heroVariant, heroHeadline,
+                heroOverlay, heroCta);
+        VerticalLayout look = section("Apariencia", 3, theme, primaryColorField, secondaryColorField);
+        VerticalLayout location = section("Ubicación", address, city,
+                mapsLinkField(latitude, longitude, googleMapsUrl));
+        profileChanges = track(save, identity, cover, look, location);
+        return tabContent(lookHeading, identity, cover, look, location, profileChanges.bar(),
                 servicesSection());
     }
 
@@ -921,17 +930,52 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
             if (!saved) {
                 return;
             }
+            clubChanges.saved();
             Notification.show("Configuración guardada");
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
         // Ocho campos seguidos no dicen nada; separados, cada grupo se contesta
         // de una: quien sos, cuando abris, y con que reglas se reserva.
-        return tabContent(
-                section("Identidad y contacto", name, whatsapp),
-                section("Horarios", open, close, duration),
-                section("Reglas de reserva", cancellation, horizon, maxActive),
-                actions(save));
+        VerticalLayout identity = section("Identidad y contacto", name, whatsapp);
+        VerticalLayout hours = section("Horarios", open, close, duration);
+        VerticalLayout rules = section("Reglas de reserva", cancellation, horizon, maxActive);
+        clubChanges = track(save, identity, hours, rules);
+        return tabContent(identity, hours, rules, clubChanges.bar());
+    }
+
+    /** Barra de guardar que se resalta con cambios pendientes: ver {@link UnsavedChanges}. */
+    private UnsavedChanges track(Button save, Component... watched) {
+        UnsavedChanges changes = new UnsavedChanges(save,
+                () -> UnsavedChanges.warnOnClose(anyUnsaved()), watched);
+        forms.add(changes);
+        return changes;
+    }
+
+    private boolean anyUnsaved() {
+        return forms.stream().anyMatch(UnsavedChanges::isDirty);
+    }
+
+    /** Irse a otra pantalla del panel con cambios sin guardar: se pregunta antes. */
+    @Override
+    public void beforeLeave(BeforeLeaveEvent event) {
+        if (!anyUnsaved()) {
+            return;
+        }
+        BeforeLeaveEvent.ContinueNavigationAction leave = event.postpone();
+        ConfirmDialog dialog = new ConfirmDialog();
+        dialog.setHeader("Cambios sin guardar");
+        dialog.setText("Hay cambios en Configuración que no guardaste. Si salís ahora, se pierden.");
+        dialog.setCancelable(true);
+        dialog.setCancelText("Quedarme");
+        dialog.setConfirmText("Salir sin guardar");
+        dialog.setConfirmButtonTheme(ButtonVariant.LUMO_ERROR.getVariantName() + " "
+                + ButtonVariant.LUMO_PRIMARY.getVariantName());
+        dialog.addConfirmListener(confirm -> {
+            UnsavedChanges.warnOnClose(false);
+            leave.proceed();
+        });
+        dialog.open();
     }
 
     // -------------------------------------------------------------- canchas
@@ -1531,6 +1575,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
             if (!saved) {
                 return;
             }
+            paymentsChanges.saved();
             Notification.show("Cobros actualizados");
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -1540,10 +1585,9 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver 
         // credenciales que ya no existen (el token se pegaba a mano; ahora lo
         // entrega el consentimiento OAuth, ver MercadoPagoOAuthService).
         refreshMercadoPagoSection();
-        return tabContent(
-                section("Cómo se cobra", allowUnpaid, deposit),
-                mercadoPagoSection,
-                actions(save));
+        VerticalLayout howToCharge = section("Cómo se cobra", allowUnpaid, deposit);
+        paymentsChanges = track(save, howToCharge);
+        return tabContent(howToCharge, mercadoPagoSection, paymentsChanges.bar());
     }
 
     /**
