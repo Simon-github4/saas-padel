@@ -6,10 +6,13 @@ import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.service.CustomerService;
 import ar.com.padelnec.service.RecurringBookingService;
+import ar.com.padelnec.service.RecurringBookingService.Conflict;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.web.BusinessRuleException;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
@@ -36,8 +39,11 @@ import jakarta.annotation.security.PermitAll;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Turnos fijos: el grupo que juega todas las semanas a la misma hora.
@@ -54,6 +60,7 @@ public class RecurringView extends VerticalLayout {
     private static final Locale ES_AR = Locale.forLanguageTag("es-AR");
     /** 24 horas: con es-AR el TimePicker no puede releer lo que el mismo formatea. */
     private static final Locale CLOCK = Locale.forLanguageTag("es-ES");
+    private static final DateTimeFormatter SHORT_DATE = DateTimeFormatter.ofPattern("EEE d/MM", ES_AR);
 
     private final RecurringBookingService recurringBookingService;
     private final CourtRepository courtRepository;
@@ -63,6 +70,7 @@ public class RecurringView extends VerticalLayout {
     private final Grid<RecurringBooking> grid = new Grid<>();
     private final Span count = new Span();
     private Tenant club;
+    private Map<RecurringBooking, List<Conflict>> conflictsByFixed = Map.of();
 
     public RecurringView(RecurringBookingService recurringBookingService,
                          CourtRepository courtRepository, CustomerService customerService,
@@ -122,11 +130,53 @@ public class RecurringView extends VerticalLayout {
         grid.addColumn(fixed -> fixed.getValidUntil() == null
                         ? "Sin fecha de corte" : fixed.getValidUntil().toString())
                 .setHeader("Hasta").setAutoWidth(true);
+        grid.addComponentColumn(this::conflictsCell).setHeader("Choques").setAutoWidth(true);
 
         grid.addComponentColumn(this::actions)
                 .setAutoWidth(true).setFlexGrow(0)
                 .setTextAlign(ColumnTextAlign.END);
         grid.setSizeFull();
+    }
+
+    /**
+     * Las semanas que no se generaron porque la cancha ya estaba tomada. Es donde el
+     * club ve los choques, en vez de una alerta por fecha que se repetia cada noche.
+     */
+    private Component conflictsCell(RecurringBooking fixed) {
+        List<Conflict> conflicts = conflictsByFixed.getOrDefault(fixed, List.of());
+        if (conflicts.isEmpty()) {
+            return new Span();
+        }
+        Button button = new Button(conflicts.size() == 1 ? "1 fecha sin generar"
+                : conflicts.size() + " fechas sin generar", event -> openConflicts(fixed, conflicts));
+        button.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
+        return button;
+    }
+
+    private void openConflicts(RecurringBooking fixed, List<Conflict> conflicts) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Fechas sin generar");
+        Paragraph intro = new Paragraph(("El turno fijo de %s (%s, %s %s) no tiene su turno en estas "
+                + "fechas porque la cancha ya estaba tomada. Si se libera, se genera solo esa noche; "
+                + "si no, reubicá a uno de los dos.").formatted(fixed.getCustomer().getFullName(),
+                fixed.getCourt().getName(), dayName(fixed.day()), fixed.getStartTime()));
+        intro.addClassNames(LumoUtility.Margin.Top.NONE);
+        dialog.add(intro, conflictList(conflicts));
+        Button close = new Button("Cerrar", event -> dialog.close());
+        close.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        dialog.getFooter().add(close);
+        dialog.setWidth("30rem");
+        dialog.open();
+    }
+
+    private static VerticalLayout conflictList(List<Conflict> conflicts) {
+        VerticalLayout list = new VerticalLayout();
+        list.setPadding(false);
+        list.setSpacing(false);
+        list.addClassNames(LumoUtility.Gap.XSMALL);
+        conflicts.forEach(conflict -> list.add(new Span("%s · ocupada por %s".formatted(
+                SHORT_DATE.format(conflict.date()), conflict.occupant()))));
+        return list;
     }
 
     private HorizontalLayout actions(RecurringBooking fixed) {
@@ -215,26 +265,29 @@ public class RecurringView extends VerticalLayout {
         price.setHelperText("Vacío: cobra la tarifa vigente de la franja");
 
         Button save = new Button("Crear y generar turnos", event -> {
-            try {
-                RecurringBooking fixed = new RecurringBooking();
-                fixed.setCustomer(customerService.findOrCreate(phone.getValue(), name.getValue(), null));
-                fixed.setCourt(court.getValue());
-                fixed.setDay(day.getValue());
-                fixed.setStartTime(start.getValue());
-                fixed.setDurationMinutes(duration.getValue());
-                fixed.setValidFrom(from.getValue());
-                fixed.setValidUntil(until.getValue());
-                fixed.setPriceOverride(price.getValue());
-                RecurringBooking saved = recurringBookingService.save(fixed);
+            if (court.getValue() == null || day.getValue() == null || start.getValue() == null
+                    || duration.getValue() == null || from.getValue() == null) {
+                Notification.show("Completá cancha, día, hora, duración y desde")
+                        .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                return;
+            }
+            RecurringBooking fixed = new RecurringBooking();
+            fixed.setCourt(court.getValue());
+            fixed.setDay(day.getValue());
+            fixed.setStartTime(start.getValue());
+            fixed.setDurationMinutes(duration.getValue());
+            fixed.setValidFrom(from.getValue());
+            fixed.setValidUntil(until.getValue());
+            fixed.setPriceOverride(price.getValue());
 
-                // Se materializa en el momento para que el club vea el resultado y se
-                // entere ahora si alguna semana choca con un turno ya vendido.
-                int created = recurringBookingService.materializeUpcoming(club);
-                Notification.show("Turno fijo creado. Se generaron %d turnos.".formatted(created));
-                dialog.close();
-                refresh();
-            } catch (BusinessRuleException ex) {
-                Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+            // Los choques se muestran antes de guardar: el club decide en el momento,
+            // en vez de enterarse despues por una pila de alertas.
+            List<Conflict> conflicts = recurringBookingService.conflicts(club, fixed);
+            Runnable create = () -> create(fixed, name.getValue(), phone.getValue(), conflicts.size(), dialog);
+            if (conflicts.isEmpty()) {
+                create.run();
+            } else {
+                confirmConflicts(conflicts, create);
             }
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -245,6 +298,37 @@ public class RecurringView extends VerticalLayout {
                 dialogSection("Vigencia y precio", from, until, price));
         dialog.getFooter().add(cancel(dialog), save);
         dialog.open();
+    }
+
+    private void create(RecurringBooking fixed, String name, String phone, int skipped, Dialog form) {
+        try {
+            fixed.setCustomer(customerService.findOrCreate(phone, name, null));
+            RecurringBooking saved = recurringBookingService.save(fixed);
+            int created = recurringBookingService.materializeNew(club, saved);
+            Notification.show(skipped == 0
+                    ? "Turno fijo creado. Se generaron %d turnos.".formatted(created)
+                    : "Turno fijo creado. Se generaron %d turnos y %d fechas quedaron sin generar."
+                            .formatted(created, skipped));
+            form.close();
+            refresh();
+        } catch (BusinessRuleException ex) {
+            Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+        }
+    }
+
+    private void confirmConflicts(List<Conflict> conflicts, Runnable create) {
+        ConfirmDialog confirm = new ConfirmDialog();
+        confirm.setHeader(conflicts.size() == 1 ? "Una fecha ya está ocupada"
+                : conflicts.size() + " fechas ya están ocupadas");
+        Paragraph intro = new Paragraph("En estas fechas la cancha ya está tomada y el turno fijo no se "
+                + "va a generar. Se muestran las próximas semanas que se generan por adelantado.");
+        intro.addClassNames(LumoUtility.Margin.Top.NONE);
+        confirm.setText(new VerticalLayout(intro, conflictList(conflicts)));
+        confirm.setCancelable(true);
+        confirm.setCancelText("Volver");
+        confirm.setConfirmText("Crear igual");
+        confirm.addConfirmListener(event -> create.run());
+        confirm.open();
     }
 
     /** Bloque de campos con titulo, para que el dialogo no sea una lista larga. */
@@ -275,6 +359,7 @@ public class RecurringView extends VerticalLayout {
     private void refresh() {
         club = tenantService.requireCurrent();
         var fixedBookings = recurringBookingService.all();
+        conflictsByFixed = recurringBookingService.conflicts(club, fixedBookings);
         grid.setItems(fixedBookings);
         count.setText(fixedBookings.size() == 1 ? "1 turno fijo" : fixedBookings.size() + " turnos fijos");
         count.getElement().getThemeList().add("badge contrast");

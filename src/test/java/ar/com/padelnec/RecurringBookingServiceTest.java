@@ -177,22 +177,84 @@ class RecurringBookingServiceTest {
     }
 
     @Test
-    @DisplayName("Si la franja ya se vendio online, se avisa al club en vez de pisar al jugador")
-    void conflictsRaiseAnAlertInsteadOfOverwriting() {
+    @DisplayName("Si la franja ya se vendio online, esa semana no se genera y queda a la vista en el turno fijo")
+    void conflictsAreListedInsteadOfOverwriting() {
         // Un jugador compro por la web el martes que viene a las 20:00.
         bookingService.create(club, new NewBooking(court.getId(),
                 TODAY.plusWeeks(1).atTime(20, 0).atZone(ZONE).toInstant(),
                 "Jugador web", "2262415111", PaymentChoice.PAY_AT_CLUB));
 
-        fixedBooking(LocalTime.of(20, 0), null);
+        RecurringBooking fixed = fixedBooking(LocalTime.of(20, 0), null);
         int created = recurringBookingService.materializeUpcoming(club);
 
         // Se pierde solo esa semana; las otras cuatro se generan igual.
         assertThat(created).isEqualTo(4);
+        assertThat(recurringBookingService.conflicts(club, fixed))
+                .singleElement()
+                .satisfies(conflict -> {
+                    assertThat(conflict.date()).isEqualTo(TODAY.plusWeeks(1));
+                    assertThat(conflict.occupant()).isEqualTo("Jugador web (reserva web)");
+                });
+        // Esa fecha ya estaba adentro del horizonte: no es un choque nuevo de esta noche.
+        assertThat(alertRepository.findPending()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("El choque de la semana que entra al horizonte se avisa una sola vez, no cada noche")
+    void horizonConflictIsAlertedOnce() {
+        fixedBooking(LocalTime.of(20, 0), null);
+        LocalDate horizon = TODAY.plusWeeks(4);
+        bookingService.createManual(club, court.getId(), horizon.atTime(20, 0).atZone(ZONE).toInstant(),
+                "Torneo", "2262415111", null, null);
+
+        recurringBookingService.materializeUpcoming(club);
         assertThat(alertRepository.findPending())
                 .singleElement()
-                .satisfies(alert ->
-                        assertThat(alert.getType()).isEqualTo(AlertType.RECURRING_CONFLICT));
+                .satisfies(alert -> {
+                    assertThat(alert.getType()).isEqualTo(AlertType.RECURRING_CONFLICT);
+                    assertThat(alert.getMessage()).contains("29/09", "Turnos fijos");
+                });
+
+        // La noche siguiente la fecha se vuelve a intentar, pero no se vuelve a avisar.
+        ((MutableClock) clock).set(Instant.parse(NOW).plus(java.time.Duration.ofDays(1)));
+        recurringBookingService.materializeUpcoming(club);
+        assertThat(alertRepository.findPending()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Dar de alta un turno fijo genera solo ese, sin volver a correr los demas ni avisar")
+    void creatingOneOnlyMaterializesThatOne() {
+        fixedBooking(LocalTime.of(20, 0), null);
+        bookingService.create(club, new NewBooking(court.getId(),
+                TODAY.plusWeeks(1).atTime(18, 30).atZone(ZONE).toInstant(),
+                "Jugador web", "2262415111", PaymentChoice.PAY_AT_CLUB));
+        RecurringBooking other = fixedBooking(LocalTime.of(18, 30), null);
+
+        int created = recurringBookingService.materializeNew(club, other);
+
+        assertThat(created).isEqualTo(4);
+        assertThat(occurrences()).extracting(booking -> booking.getStartTime().atZone(ZONE).toLocalTime())
+                .containsOnly(LocalTime.of(18, 30));
+        assertThat(alertRepository.findPending()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Antes de guardar se ven las fechas que chocan, tambien contra otro turno fijo")
+    void previewShowsConflictsOfAnUnsavedFixedBooking() {
+        fixedBooking(LocalTime.of(20, 0), null);
+        recurringBookingService.materializeUpcoming(club);
+
+        RecurringBooking duplicate = new RecurringBooking();
+        duplicate.setCourt(court);
+        duplicate.setDay(DayOfWeek.TUESDAY);
+        duplicate.setStartTime(LocalTime.of(20, 0));
+        duplicate.setDurationMinutes(90);
+        duplicate.setValidFrom(TODAY);
+
+        assertThat(recurringBookingService.conflicts(club, duplicate))
+                .hasSize(5)
+                .allSatisfy(conflict -> assertThat(conflict.occupant())
+                        .isEqualTo("Grupo del martes (turno fijo)"));
     }
 
     @Test
