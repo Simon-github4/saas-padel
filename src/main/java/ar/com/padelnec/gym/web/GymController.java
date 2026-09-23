@@ -15,6 +15,7 @@ import ar.com.padelnec.gym.web.GymDtos.ConfigResponse;
 import ar.com.padelnec.gym.web.GymDtos.LoginRequest;
 import ar.com.padelnec.gym.web.GymDtos.MeResponse;
 import ar.com.padelnec.gym.web.GymDtos.SessionResponse;
+import ar.com.padelnec.web.ClientIp;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -72,7 +73,7 @@ public class GymController {
     public SessionResponse login(@PathVariable String slug, @Valid @RequestBody LoginRequest request,
                                  HttpServletRequest http) {
         gymModule.requireEnabled();
-        rateLimits.checkLogin(slug, request.dni(), http.getRemoteAddr());
+        rateLimits.checkLogin(slug, request.dni(), ClientIp.of(http));
         return SessionResponse.of(authService.login(request.dni(), request.password()));
     }
 
@@ -110,7 +111,7 @@ public class GymController {
             @Valid @RequestBody CheckInRequest request, HttpServletRequest http) {
         gymModule.requireEnabled();
         GymMember member = authService.requireMember(bearerToken(authorization));
-        rateLimits.checkCheckIn(member.getId(), http.getRemoteAddr());
+        rateLimits.checkCheckIn(member.getId(), ClientIp.of(http));
         // Sin las dos coordenadas no hay ubicacion: la sede que la exige lo va a decir.
         GymLocation.Point location = request.latitude() != null && request.longitude() != null
                 ? new GymLocation.Point(request.latitude(), request.longitude())

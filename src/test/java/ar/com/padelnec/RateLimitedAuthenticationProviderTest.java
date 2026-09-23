@@ -72,4 +72,44 @@ class RateLimitedAuthenticationProviderTest {
                 new UsernamePasswordAuthenticationToken(email, PASSWORD)))
                 .isInstanceOf(BadCredentialsException.class);
     }
+
+    @Test
+    @DisplayName("Escribir el mail o el usuario con otras mayusculas no da intentos nuevos")
+    void caseVariantsDoNotResetTheBudget() {
+        fixture.reset();
+        Tenant club = fixture.club("club-necochea");
+        String suffix = UUID.randomUUID().toString();
+        String email = "dueno-%s@test.com".formatted(suffix);
+        String username = "Dueño " + suffix;
+
+        ClubUser owner = new ClubUser();
+        owner.setClubId(club.getId());
+        owner.setEmail(email);
+        owner.setFullName(username);
+        owner.setRole(UserRole.OWNER);
+        owner.setPasswordHash(passwordEncoder.encode(PASSWORD));
+        clubUserRepository.saveAndFlush(owner);
+
+        // El login busca sin distinguir mayusculas: cada variante entra a la misma
+        // cuenta, asi que tiene que gastar el mismo cupo. Mail y usuario llevan
+        // cupos separados; se prueba cada uno por su lado.
+        assertVariantsShareOneBudget(new String[] {
+                email, email.toUpperCase(), " " + email + " ", "Dueno-" + suffix + "@Test.com",
+                "DUENO-" + suffix + "@test.com"}, "dUeNo-" + suffix + "@TEST.com");
+        assertVariantsShareOneBudget(new String[] {
+                username, username.toUpperCase(), username.toLowerCase(), " " + username,
+                "dUEÑO " + suffix}, "DUEÑO " + suffix.toUpperCase());
+    }
+
+    private void assertVariantsShareOneBudget(String[] wrongPasswordVariants, String lastVariant) {
+        for (String variant : wrongPasswordVariants) {
+            assertThatThrownBy(() -> provider.authenticate(
+                    new UsernamePasswordAuthenticationToken(variant, "claveEquivocada")))
+                    .isInstanceOf(BadCredentialsException.class);
+        }
+        // La sexta se frena aunque traiga la contraseña correcta: el cupo ya se gasto.
+        assertThatThrownBy(() -> provider.authenticate(
+                new UsernamePasswordAuthenticationToken(lastVariant, PASSWORD)))
+                .isInstanceOf(BadCredentialsException.class);
+    }
 }

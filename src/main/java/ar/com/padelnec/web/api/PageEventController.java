@@ -1,6 +1,7 @@
 package ar.com.padelnec.web.api;
 
 import ar.com.padelnec.service.PageEventService;
+import ar.com.padelnec.web.ClientIp;
 import ar.com.padelnec.web.dto.PageEventDtos.TrackRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -35,7 +36,7 @@ public class PageEventController {
     @PostMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void track(@Valid @RequestBody TrackRequest request, HttpServletRequest httpRequest) {
-        if (!rateLimiter.allow(httpRequest.getRemoteAddr(), request.events().size())) {
+        if (!rateLimiter.allow(ClientIp.of(httpRequest), request.events().size())) {
             return;
         }
         pageEventService.record(request, httpRequest.getHeader(HttpHeaders.USER_AGENT));

@@ -7,6 +7,7 @@ import ar.com.padelnec.service.BookingClaimService;
 import ar.com.padelnec.service.PlayerAuthService;
 import ar.com.padelnec.service.PlayerAuthService.IssuedSession;
 import ar.com.padelnec.service.WaitlistService;
+import ar.com.padelnec.web.ClientIp;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.BookingHistoryItem;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.ConfigResponse;
@@ -73,7 +74,7 @@ public class PlayerAuthController {
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.ACCEPTED)
     public void register(@Valid @RequestBody RegisterRequest request, HttpServletRequest httpRequest) {
-        bookingRateLimiter.check(httpRequest.getRemoteAddr());
+        bookingRateLimiter.check(ClientIp.of(httpRequest));
         playerAuthService.register(
                 request.email(), request.password(), request.displayName(), request.phoneNumber());
     }
@@ -82,7 +83,7 @@ public class PlayerAuthController {
     @PostMapping("/register/confirm")
     public SessionResponse confirmSignup(@Valid @RequestBody ConfirmSignupRequest request,
                                          HttpServletRequest httpRequest) {
-        bookingRateLimiter.check(httpRequest.getRemoteAddr());
+        bookingRateLimiter.check(ClientIp.of(httpRequest));
         return toResponse(playerAuthService.confirmSignup(request.email(), request.code()));
     }
 
@@ -105,7 +106,7 @@ public class PlayerAuthController {
     @PostMapping("/login/google")
     public SessionResponse loginWithGoogle(@Valid @RequestBody GoogleLoginRequest request,
                                            HttpServletRequest httpRequest) {
-        bookingRateLimiter.check(httpRequest.getRemoteAddr());
+        bookingRateLimiter.check(ClientIp.of(httpRequest));
         return toResponse(playerAuthService.loginWithGoogle(request.idToken()));
     }
 

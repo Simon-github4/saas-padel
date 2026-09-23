@@ -17,6 +17,7 @@ import ar.com.padelnec.support.TokenHash;
 import ar.com.padelnec.support.Tokens;
 import ar.com.padelnec.ui.MainLayout;
 import ar.com.padelnec.web.BusinessRuleException;
+import ar.com.padelnec.web.ClientIp;
 import ar.com.padelnec.web.ResourceNotFoundException;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -58,6 +59,9 @@ class GymArchitectureTest {
                                     ThemeMode.class,
                                     // Sesiones: mismo esquema de tokens que el resto.
                                     Tokens.class, TokenHash.class,
+                                    // Origen del pedido para los topes de intentos: detras de un
+                                    // proxy no se puede leer de getRemoteAddr().
+                                    ClientIp.class,
                                     // Errores de negocio compartidos.
                                     BusinessRuleException.class, ResourceNotFoundException.class,
                                     UnauthorizedSessionException.class,

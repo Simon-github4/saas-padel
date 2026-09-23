@@ -50,6 +50,21 @@ class GymRateLimitsTest {
     }
 
     @Test
+    @DisplayName("Escribir el mismo DNI o el mismo club de otra forma no da intentos nuevos")
+    void formattingVariantsShareTheBudget() {
+        String[][] variants = {
+                {"los-troncos", "30111222"}, {"los-troncos", "30.111.222"}, {"Los-Troncos", " 30111222 "},
+                {"LOS-TRONCOS", "30-111-222"}, {"los-troncos", "30 111 222"}};
+        for (String[] variant : variants) {
+            assertThatCode(() -> limits.checkLogin(variant[0], variant[1], "10.0.0.1")).doesNotThrowAnyException();
+        }
+
+        assertThatThrownBy(() -> limits.checkLogin("Los-troncos", "30.111222", "10.0.0.2"))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("muchos intentos");
+    }
+
+    @Test
     @DisplayName("Barrer DNIs desde un mismo origen se corta aunque cada DNI sea distinto")
     void sweepingDnisFromOneOriginIsCapped() {
         for (int i = 0; i < 30; i++) {

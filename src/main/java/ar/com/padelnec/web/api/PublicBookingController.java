@@ -25,6 +25,7 @@ import ar.com.padelnec.web.dto.BookingDtos.CancellationResponse;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingRequest;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingResponse;
 import ar.com.padelnec.web.dto.BookingDtos.PaymentOptionsResponse;
+import ar.com.padelnec.web.ClientIp;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.CourtSearchResponse;
 import ar.com.padelnec.web.dto.WaitlistDtos.JoinWaitlistRequest;
@@ -167,7 +168,7 @@ public class PublicBookingController {
         // El telefono es de quien lo escribe, no de quien lo autentica: sin este
         // limite, un script podia anotar el numero de un tercero en la lista de
         // espera de cada horario, y esa persona terminaba recibiendo el aviso.
-        rateLimiter.check(httpRequest.getRemoteAddr());
+        rateLimiter.check(ClientIp.of(httpRequest));
 
         PlayerAccount account = requireSession(authorization);
         Tenant club = tenantService.activate(slug);
@@ -187,7 +188,7 @@ public class PublicBookingController {
     public PaymentOptionsResponse paymentOptions(@PathVariable String slug,
                                                  @RequestParam String phone,
                                                  HttpServletRequest httpRequest) {
-        rateLimiter.check("payment-options:" + httpRequest.getRemoteAddr());
+        rateLimiter.check("payment-options:" + ClientIp.of(httpRequest));
         Tenant club = tenantService.activate(slug);
         return new PaymentOptionsResponse(bookingService.canPayAtClub(club, phone));
     }
@@ -202,7 +203,7 @@ public class PublicBookingController {
                                       HttpServletRequest httpRequest) {
         // Reservar bloquea la grilla sin haber pagado nada, asi que el endpoint se
         // limita por origen antes de tocar la base.
-        rateLimiter.check(httpRequest.getRemoteAddr());
+        rateLimiter.check(ClientIp.of(httpRequest));
 
         Tenant club = tenantService.activate(slug);
         CheckoutResult result = checkoutService.checkout(club, new NewBooking(

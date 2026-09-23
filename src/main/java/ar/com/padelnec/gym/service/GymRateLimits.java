@@ -2,6 +2,7 @@ package ar.com.padelnec.gym.service;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Locale;
 import org.springframework.stereotype.Component;
 
 /**
@@ -29,10 +30,25 @@ public class GymRateLimits {
         this.checkInByOrigin = new SlidingWindowLimiter(clock, 60, Duration.ofMinutes(10), tooMany);
     }
 
-    /** El DNI que llega sin normalizar se usa tal cual: es solo una clave de conteo. */
     public void checkLogin(String slug, String dni, String origin) {
         loginByOrigin.check(origin);
-        loginByDni.check(slug + ":" + dni);
+        loginByDni.check(loginKey(slug, dni));
+    }
+
+    /**
+     * El socio que se esta probando, no el texto que se tipeo.
+     *
+     * <p>El login se queda con los digitos del DNI y el club se busca sin distinguir
+     * mayusculas: {@code 30.111.222} en {@code Los-Troncos} es el mismo socio que
+     * {@code 30111222} en {@code los-troncos}. Contando el texto tal cual, cada
+     * forma de escribirlo tenia su propio cupo de intentos. Un DNI sin digitos
+     * suficientes no es de nadie y el login lo rechaza igual: queda contado aparte,
+     * tal cual llego.
+     */
+    static String loginKey(String slug, String dni) {
+        String club = slug == null ? "" : slug.trim().toLowerCase(Locale.ROOT);
+        String digits = GymDni.digitsOrNull(dni);
+        return club + ":" + (digits != null ? digits : dni);
     }
 
     public void checkCheckIn(java.util.UUID memberId, String origin) {

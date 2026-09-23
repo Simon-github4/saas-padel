@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class LoginRateLimiter {
     private final Clock clock;
 
     public void check(String email) {
+        String key = keyOf(email);
         long now = clock.millis();
         long windowStart = now - WINDOW.toMillis();
 
@@ -45,7 +47,7 @@ public class LoginRateLimiter {
             });
         }
 
-        Deque<Long> timestamps = attempts.computeIfAbsent(email, key -> new ArrayDeque<>());
+        Deque<Long> timestamps = attempts.computeIfAbsent(key, k -> new ArrayDeque<>());
         synchronized (timestamps) {
             while (!timestamps.isEmpty() && timestamps.peekFirst() < windowStart) {
                 timestamps.pollFirst();
@@ -56,5 +58,23 @@ public class LoginRateLimiter {
             }
             timestamps.addLast(now);
         }
+    }
+
+    /**
+     * La cuenta que se esta atacando, no el texto que se tipeo.
+     *
+     * <p>El login del jugador compara el email en minusculas y el del panel busca
+     * usuario y mail sin distinguir mayusculas: {@code Dueno@club.com} y
+     * {@code DUENO@club.com} entran a la misma cuenta. Contando el texto tal cual,
+     * cada variante de mayusculas tenia su propio cupo y el tope no frenaba a
+     * nadie. Pasar a minusculas y despues a mayusculas junta tambien las letras
+     * que solo coinciden en uno de los dos sentidos (la i sin punto turca, por
+     * ejemplo, que en minusculas es distinta de la i pero en mayusculas es la I).
+     */
+    static String keyOf(String email) {
+        if (email == null) {
+            return "";
+        }
+        return email.trim().toLowerCase(Locale.ROOT).toUpperCase(Locale.ROOT);
     }
 }
