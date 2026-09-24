@@ -121,10 +121,6 @@ public class SlotGenerator {
         }
     }
 
-    public List<Slot> generate(Tenant club, LocalDate date) {
-        return plan(club, date).slots();
-    }
-
     public DayPlan plan(Tenant club, LocalDate date) {
         return plan(club, date, courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc(),
                 courtScheduleRepository.findAllWithCourt());
