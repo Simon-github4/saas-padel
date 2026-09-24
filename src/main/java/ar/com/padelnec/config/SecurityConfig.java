@@ -135,6 +135,8 @@ public class SecurityConfig {
                         // Logos de otras marcas que muestra la landing (Mercado Pago):
                         // misma razon, sin esto la imagen llega como el login del panel.
                         "/marcas/**",
+                        // Capturas del sistema que muestra la landing, misma razon.
+                        "/capturas/**",
                         "/robots.txt", "/sitemap.xml",
                         // Archivo de verificacion de Google Search Console: hay que poder
                         // pedirlo sin sesion, y el nombre trae un id al azar que cambia

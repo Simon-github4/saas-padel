@@ -3,7 +3,8 @@ import { DemoClubCta } from './Cta';
 import { CONTAINER, CheckGlyph, Reveal, SectionHeading, useInView, usePrefersReducedMotion } from './motion';
 
 /**
- * Capturas reales del sistema (ver player-app/public/panel): las del panel,
+ * Capturas reales del sistema (ver player-app/public/capturas, que el backend
+ * sirve sin sesion por SecurityConfig.playerAppChain): las del panel,
  * del club de ejemplo con nombres inventados; la del jugador, del club de
  * demostración en producción, al que lleva el botón de esa pestaña. Las
  * maquetas de arriba explican la idea; esto muestra que el producto existe y
@@ -28,7 +29,7 @@ const SHOTS = [
       'El color te dice qué está cobrado y qué falta cobrar.',
       'Los turnos fijos del día, listados arriba de un vistazo.',
     ],
-    src: '/panel/agenda.webp',
+    src: '/capturas/agenda.webp',
     width: 2880,
     height: 2120,
     alt: 'Agenda del panel con las reservas del día por cancha, cobradas y por cobrar',
@@ -43,7 +44,7 @@ const SHOTS = [
       'El precio sale solo de tus tarifas.',
       'Esa cancha deja de aparecer libre en tu link al instante.',
     ],
-    src: '/panel/cargar-turno.webp',
+    src: '/capturas/cargar-turno.webp',
     width: 1008,
     height: 1232,
     alt: 'Ventana para cargar un turno que entró por teléfono',
@@ -58,7 +59,7 @@ const SHOTS = [
       'Efectivo, transferencia o Mercado Pago, y los consumos del buffet en la misma ventana.',
       'Todo queda en la caja del día.',
     ],
-    src: '/panel/cobrar.webp',
+    src: '/capturas/cobrar.webp',
     width: 1196,
     height: 1324,
     alt: 'Detalle de un turno con el saldo y el cobro en el mostrador',
@@ -73,7 +74,7 @@ const SHOTS = [
       'Sin crear cuenta ni bajar nada: nombre, teléfono y listo.',
       'La reserva cae sola en tu agenda.',
     ],
-    src: '/panel/jugador.webp',
+    src: '/capturas/jugador.webp',
     width: 780,
     height: 1688,
     alt: 'Página de reservas de un club en el celular, eligiendo la hora',

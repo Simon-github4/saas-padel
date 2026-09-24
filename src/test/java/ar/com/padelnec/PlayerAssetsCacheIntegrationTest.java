@@ -54,6 +54,7 @@ class PlayerAssetsCacheIntegrationTest {
                 {"/favicon.svg", "image/svg+xml"},
                 {"/apple-touch-icon.png", "image/png"},
                 {"/marcas/mercado-pago-blanco.svg", "image/svg+xml"},
+                {"/capturas/cargar-turno.webp", "image/webp"},
         };
         for (String[] icon : icons) {
             client.get().uri(icon[0])
