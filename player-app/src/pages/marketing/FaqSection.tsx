@@ -3,12 +3,16 @@ import { ArrowGlyph, CONTAINER, Reveal, SectionHeading } from './motion';
 
 const FAQS = [
   {
+    q: '¿Tengo que confirmar cada reserva a mano?',
+    a: 'No. Si cobrás seña, el turno se confirma solo cuando Mercado Pago acredita el pago; si dejás reservar de palabra, queda confirmado al instante. En los dos casos aparece en tu agenda sin que toques nada.',
+  },
+  {
     q: '¿Tengo que cambiar cómo trabajo?',
     a: 'No. Seguís atendiendo por WhatsApp y en el mostrador como siempre; el sistema suma un canal más, no reemplaza el que ya usás.',
   },
   {
     q: '¿Y los turnos que entran por teléfono?',
-    a: 'Los cargás vos desde el panel, en la misma agenda: quedan igual de visibles que los que reservó el jugador solo.',
+    a: 'Los cargás vos desde el panel, en la misma agenda: quedan igual de visibles que los que reservó el jugador solo, y esa cancha deja de aparecer libre en tu link.',
   },
   {
     q: '¿La plata pasa por ustedes?',
@@ -32,7 +36,7 @@ const FAQS = [
   },
   {
     q: '¿Cómo es la prueba gratis?',
-    a: `Cargamos tu club y probás el sistema real, con tus canchas y tarifas, ${TRIAL_DAYS} días sin pagar nada. Recién después decidís si seguís.`,
+    a: `Cargamos tu club y probás el sistema real, con tus canchas y tarifas, ${TRIAL_DAYS} días sin pagar nada. No te pedimos tarjeta ni datos de pago: si no seguís, no hacés nada y no se te cobra.`,
   },
   {
     q: '¿Cómo se paga la suscripción?',

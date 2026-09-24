@@ -7,7 +7,7 @@ import { LiveAgenda } from './mockups/LiveAgenda';
 
 /** La del medio termina en el logo de Mercado Pago: es la que el club busca con el ojo. */
 const PROMISES = [
-  { text: `${TRIAL_DAYS} días gratis` },
+  { text: `${TRIAL_DAYS} días gratis, sin tarjeta` },
   { text: 'La seña va a tu', mercadoPago: true },
   { text: 'El jugador no crea cuenta' },
 ];
@@ -83,7 +83,8 @@ export function HeroSection() {
             style={delay(420)}
           >
             Tu WhatsApp deja de ser una fila de mensajes a la noche: el jugador abre
-            tu link, ve las canchas libres y reserva. Vos mirás la agenda.
+            tu link, ve las canchas libres y reserva solo, con seña o de palabra. Todo
+            cae en una sola agenda, junto con lo que cargás por teléfono.
           </p>
           <div
             className="mk-fade-up mt-9 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:justify-center lg:justify-start lg:bajo:mt-6"

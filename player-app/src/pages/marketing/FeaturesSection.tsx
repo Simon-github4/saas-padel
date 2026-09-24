@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from 'react';
-import { WhatsappGlyph } from '../../components/Ui';
 import {
   BrandVisual,
   ExpireVisual,
@@ -30,8 +29,8 @@ export function FeaturesSection() {
         <div className="mt-16 grid gap-4 md:mt-20 md:grid-cols-2 lg:grid-cols-3 lg:gap-5">
           <Feature
             wide
-            title="Imposible sobrevender"
-            text="Dos personas no pueden tomar la misma cancha al mismo horario: lo impide la base de datos, no una validación que se pueda pasar por alto."
+            title="Una sola agenda, cero sobreventa"
+            text="Lo que reserva el jugador, lo que entra por teléfono o mostrador y los turnos fijos caen en el mismo tablero. Y dos personas no pueden tomar la misma cancha: lo impide la base de datos, no una validación que se pueda pasar por alto."
             onEnter={() => setOverbookReplay((value) => value + 1)}
           >
             <OverbookVisual replay={overbookReplay} />
@@ -44,9 +43,8 @@ export function FeaturesSection() {
             <WaitlistVisual />
           </Feature>
           <Feature
-            title="El olvido se cae solo"
-            text="El turno sin confirmar se libera solo a los minutos, y la cancha vuelve a aparecer disponible."
-            note="Solo en la versión con WhatsApp incluido"
+            title="La seña impaga se cae sola"
+            text="Si el jugador arranca la reserva y no termina de pagar la seña, la cancha se libera sola a los minutos y vuelve a estar disponible."
           >
             <ExpireVisual />
           </Feature>
@@ -112,7 +110,6 @@ function Feature({
   wide = false,
   delay = 0,
   className = '',
-  note,
   onEnter,
 }: {
   title: string;
@@ -122,8 +119,6 @@ function Feature({
   delay?: number;
   /** Para la última angosta, que en dos columnas quedaría sola con un hueco al lado. */
   className?: string;
-  /** Aclaración de alcance: la función no viene en todas las versiones. */
-  note?: string;
   onEnter?: () => void;
 }) {
   return (
@@ -135,12 +130,6 @@ function Feature({
         <div className="min-h-44 flex-1">{children}</div>
         <h3 className="mt-8 text-2xl tracking-[0.05em] md:text-[1.75rem]">{title}</h3>
         <p className="mt-3 max-w-lg text-sm leading-relaxed text-ink-soft">{text}</p>
-        {note && (
-          <p className="mt-4 inline-flex items-center gap-2 self-start rounded-full border border-cal/10 bg-pista px-3 py-1.5 text-xs text-ink-soft">
-            <WhatsappGlyph className="size-3.5 shrink-0" />
-            {note}
-          </p>
-        )}
       </article>
     </Reveal>
   );

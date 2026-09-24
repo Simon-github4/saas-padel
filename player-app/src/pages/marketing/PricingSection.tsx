@@ -11,8 +11,9 @@ import {
 import { CONTAINER, CheckGlyph, Reveal, SectionHeading } from './motion';
 
 const INCLUDED = [
+  'Reservas online con seña o de palabra, que se confirman solas',
+  'Una sola agenda para web, teléfono, mostrador y turnos fijos',
   'Grilla online para tus canchas, con tu link y tu marca',
-  'Panel para cargar turnos de teléfono y mostrador',
   'Seña a tu propia cuenta de Mercado Pago, sin comisión nuestra',
   'Turnos fijos, lista de espera, alertas y jugadores',
   'Caja del día, buffet y estadísticas del club',
@@ -68,7 +69,9 @@ export function PricingSection() {
                   </span>
                   <p className="text-sm">
                     <span className="font-semibold">Días gratis</span>
-                    <span className="block text-ink-soft">para probarlo en tu club antes de pagar.</span>
+                    <span className="block text-ink-soft">
+                      para probarlo en tu club. Sin tarjeta ni datos de pago: si no seguís, no se te cobra nada.
+                    </span>
                   </p>
                 </div>
 
@@ -87,7 +90,7 @@ export function PricingSection() {
 
             <div className="flex flex-col border-t border-cal/10 bg-pista/50 p-5 sm:p-10 lg:border-l lg:border-t-0 lg:p-12">
               <p className="eyebrow text-ink-mute">Incluye todo</p>
-              <ul className="mt-5 space-y-4">
+              <ul className="mt-5 space-y-4 lg:flex-1">
                 {INCLUDED.map((item) => (
                   <li key={item} className="flex gap-3 text-[0.95rem] leading-relaxed text-arena">
                     <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ladrillo/15 text-ladrillo-claro">
@@ -98,7 +101,7 @@ export function PricingSection() {
                 ))}
               </ul>
 
-              <div className="mt-10 rounded-2xl border border-cal/10 bg-vidrio p-5 sm:p-6 lg:mt-auto">
+              <div className="mt-10 rounded-2xl border border-cal/10 bg-vidrio p-5 sm:p-6">
                 <div className="flex items-baseline justify-between gap-4">
                   <label htmlFor={sliderId} className="text-sm text-ink-soft">
                     ¿Cuánto cobrás por jugador?

@@ -24,6 +24,12 @@ export function subscribeWhatsappHref(): string {
   return whatsappLink(SALES_WHATSAPP, SUBSCRIBE_MESSAGE);
 }
 
+const GYM_MESSAGE = 'Hola, mi club también tiene gimnasio y quiero saber del módulo.';
+
+export function gymWhatsappHref(): string {
+  return whatsappLink(SALES_WHATSAPP, GYM_MESSAGE);
+}
+
 export function subscribeMailHref(): string {
   return `mailto:${SALES_EMAIL}?subject=${encodeURIComponent(SUBSCRIBE_SUBJECT)}&body=${encodeURIComponent(SUBSCRIBE_MESSAGE)}`;
 }

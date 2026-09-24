@@ -178,7 +178,7 @@ export function ExpireVisual() {
           key={String(released)}
           className={`mk-fade-in mt-1 text-xs ${released ? 'text-ladrillo-claro' : 'text-ink-soft'}`}
         >
-          {released ? 'Libre de nuevo para reservar' : 'Sin confirmar, se libera sola'}
+          {released ? 'Libre de nuevo para reservar' : 'Seña sin pagar, se libera sola'}
         </p>
       </div>
     </div>

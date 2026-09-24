@@ -173,7 +173,7 @@ public class SeoPageRenderer {
     /** Portada comercial: la que ve el dueno de un club que evalua el sistema. */
     public PageMeta landingMeta() {
         String description = "Sistema de reservas online para clubes de pádel: tus jugadores reservan y pagan la seña "
-                + "solos, con Mercado Pago, y vos manejás la agenda desde un panel. Con 7 días de prueba.";
+                + "solos, con Mercado Pago, y vos manejás la agenda desde un panel. 7 días de prueba gratis, sin tarjeta.";
 
         Map<String, Object> organization = new LinkedHashMap<>();
         organization.put("@type", "Organization");

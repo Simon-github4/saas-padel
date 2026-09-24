@@ -201,6 +201,24 @@
   }
 }
 
+/* Barra que se llena en la pestaña activa de las capturas: al terminar, pasa a
+   la siguiente (ver ShowcaseSection). Pausarla pausa también el avance. */
+.mk-progress {
+  transform-origin: left;
+  animation: mk-progress 3000ms linear forwards;
+}
+.mk-progress[data-paused] {
+  animation-play-state: paused;
+}
+@keyframes mk-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 /* Tilde de "reservado", que se dibuja. */
 .mk-check {
   stroke-dasharray: 1;
@@ -304,7 +322,8 @@
   .mk-fade-in,
   .mk-shake,
   .mk-breathe,
-  .mk-ping::after {
+  .mk-ping::after,
+  .mk-progress {
     animation: none;
   }
   .mk-draw,

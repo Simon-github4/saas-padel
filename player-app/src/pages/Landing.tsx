@@ -5,12 +5,14 @@ import { BRAND } from './marketing/config';
 import { DemoSection } from './marketing/DemoSection';
 import { FaqSection } from './marketing/FaqSection';
 import { FeaturesSection } from './marketing/FeaturesSection';
+import { GymSection } from './marketing/GymSection';
 import { HeroSection } from './marketing/HeroSection';
 import { MarketingFooter, MarketingNav } from './marketing/MarketingNav';
 import { MessagesMarquee } from './marketing/MessagesMarquee';
 import { NetworkSection } from './marketing/NetworkSection';
 import { PaymentsSection } from './marketing/PaymentsSection';
 import { PricingSection } from './marketing/PricingSection';
+import { ShowcaseSection } from './marketing/ShowcaseSection';
 import { StepsSection } from './marketing/StepsSection';
 import { TemaSwitch } from '../components/TemaSwitch';
 import './marketing/landing.css';
@@ -25,7 +27,8 @@ import './marketing/landing.css';
  *
  * <p>El orden cuenta una historia: la promesa andando (portada), el dolor de
  * hoy (los mensajes), probarlo con las propias manos (demo), el cobro de la seña, el detalle
- * (funciones), cómo se empieza, cuánto sale y las dudas.
+ * (funciones), las pantallas reales (capturas), cómo se empieza, cuánto sale, el módulo de gimnasio que se suma
+ * aparte (para el club que además lo tiene) y las dudas.
  */
 export function Landing() {
   // Mismos textos que SeoPageRenderer.landingMeta() en el backend, que es lo
@@ -34,7 +37,7 @@ export function Landing() {
     () =>
       setPageMeta(
         `Reservas online para tu club — ${BRAND}`,
-        'Sistema de reservas online para clubes de pádel: tus jugadores reservan y pagan la seña solos, con Mercado Pago, y vos manejás la agenda desde un panel. Con 7 días de prueba.',
+        'Sistema de reservas online para clubes de pádel: tus jugadores reservan y pagan la seña solos, con Mercado Pago, y vos manejás la agenda desde un panel. 7 días de prueba gratis, sin tarjeta.',
       ),
     [],
   );
@@ -48,9 +51,11 @@ export function Landing() {
         <DemoSection />
         <PaymentsSection />
         <FeaturesSection />
+        <ShowcaseSection />
         <NetworkSection />
         <StepsSection />
         <PricingSection />
+        <GymSection />
         <FaqSection />
         <ClosingSection />
       </main>

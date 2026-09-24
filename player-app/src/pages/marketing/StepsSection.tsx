@@ -8,7 +8,7 @@ const STEPS = [
   },
   {
     title: `Probás tu link ${TRIAL_DAYS} días`,
-    text: 'Gratis y con tus canchas reales. Vos decidís cuándo pasar a compartirlo.',
+    text: 'Gratis, con tus canchas reales y sin cargar tarjeta ni datos de pago. Si no te sirve, no hacés nada.',
   },
   {
     title: 'Lo compartís por WhatsApp e Instagram',
