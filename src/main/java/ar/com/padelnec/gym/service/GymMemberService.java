@@ -1,12 +1,17 @@
 package ar.com.padelnec.gym.service;
 
 import ar.com.padelnec.gym.domain.GymMember;
+import ar.com.padelnec.gym.domain.GymMembership;
+import ar.com.padelnec.gym.repository.GymCheckinRepository;
 import ar.com.padelnec.gym.repository.GymMemberRepository;
+import ar.com.padelnec.gym.repository.GymMembershipRepository;
 import ar.com.padelnec.gym.repository.GymSessionRepository;
 import ar.com.padelnec.web.BusinessRuleException;
 import ar.com.padelnec.web.ResourceNotFoundException;
+import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -35,6 +40,8 @@ public class GymMemberService {
 
     private final GymMemberRepository memberRepository;
     private final GymSessionRepository sessionRepository;
+    private final GymMembershipRepository membershipRepository;
+    private final GymCheckinRepository checkinRepository;
     private final PasswordEncoder passwordEncoder;
     private final Clock clock;
 
@@ -115,6 +122,42 @@ public class GymMemberService {
         member.setMustChangePassword(true);
         sessionRepository.revokeAllForMember(member.getId(), clock.instant());
         return temporary;
+    }
+
+    /**
+     * Lo que se pierde al eliminar a un socio, para que el mostrador lo vea antes de
+     * confirmar. {@code fees} y {@code total} son las cuotas vigentes (las anuladas ya
+     * no estan en la caja) y {@code paidDays} los dias de caja de donde salen.
+     */
+    public record DeletionImpact(boolean hasCheckins, int fees, BigDecimal total, List<LocalDate> paidDays) {
+    }
+
+    @Transactional(readOnly = true)
+    public DeletionImpact deletionImpact(UUID memberId) {
+        GymMember member = require(memberId);
+        List<GymMembership> paid =
+                membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(member.getId());
+        BigDecimal total = paid.stream().map(GymMembership::getPrice).reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<LocalDate> days = paid.stream().map(GymMembership::getPaidOn).distinct().sorted().toList();
+        return new DeletionImpact(checkinRepository.existsByMemberId(member.getId()), paid.size(), total, days);
+    }
+
+    /**
+     * Elimina a un socio cargado por error (duplicado, o dado de alta de mas), con sus
+     * cuotas y sus sesiones. Solo si nunca registro un ingreso: el socio con historia
+     * se deshabilita, asi no se pierden sus visitas ni sus cobros.
+     */
+    @Transactional
+    public void delete(UUID memberId) {
+        GymMember member = require(memberId);
+        if (checkinRepository.existsByMemberId(member.getId())) {
+            throw new BusinessRuleException(
+                    "Ya registró ingresos: no se puede eliminar sin perder su historia. Deshabilitalo.");
+        }
+        sessionRepository.deleteAllForMember(member.getId());
+        membershipRepository.deleteAll(membershipRepository.findAllByMemberId(member.getId()));
+        memberRepository.delete(member);
+        memberRepository.flush();
     }
 
     /** Deshabilitar corta el acceso al instante: sus sesiones se cierran. */

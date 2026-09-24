@@ -57,4 +57,7 @@ public interface GymMembershipRepository extends JpaRepository<GymMembership, UU
 
     /** Todas las cuotas pagas del socio, para calcular su deuda y su plan vigente. */
     List<GymMembership> findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(UUID memberId);
+
+    /** Todas las cuotas del socio, anuladas incluidas: para eliminar a un socio cargado por error. */
+    List<GymMembership> findAllByMemberId(UUID memberId);
 }

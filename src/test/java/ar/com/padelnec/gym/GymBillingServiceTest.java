@@ -387,4 +387,56 @@ class GymBillingServiceTest {
     private GymMember loadMember() {
         return memberRepository.findById(memberId).orElseThrow();
     }
+
+    @Test
+    @DisplayName("Corregir los dias de una cuota cobrada no cambia sus fechas ni agrega otra")
+    void correctingAFeeKeepsItsPeriod() {
+        chargeWithDates(1, LocalDate.of(2026, 9, 23), LocalDate.of(2026, 9, 2), null);
+        UUID fee = membershipService.feesOf(memberId).getFirst().id();
+
+        membershipService.correct(fee, 2, new BigDecimal("25000"));
+
+        assertThat(membershipService.feesOf(memberId)).singleElement().satisfies(corrected -> {
+            assertThat(corrected.startsOn()).isEqualTo(LocalDate.of(2026, 9, 2));
+            assertThat(corrected.endsOn()).isEqualTo(LocalDate.of(2026, 10, 1));
+            assertThat(corrected.daysPerWeek()).isEqualTo(2);
+            assertThat(corrected.price()).isEqualByComparingTo("25000");
+        });
+        assertThat(billing.status(memberId, LocalDate.of(2026, 9, 23)).planDaysPerWeek()).isEqualTo(2);
+        assertThatThrownBy(() -> membershipService.correct(fee, 8, new BigDecimal("25000")))
+                .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test
+    @DisplayName("Anular la cuota cobrada de mas deja al socio al dia hasta la anterior")
+    void voidingTheExtraFeeShortensThePaidPeriod() {
+        LocalDate today = LocalDate.of(2026, 9, 23);
+        chargeWithDates(1, today, LocalDate.of(2026, 9, 2), null);
+        chargeWithDates(1, today, null, null);
+        assertThat(billing.status(memberId, today).paidUntil()).isEqualTo(LocalDate.of(2026, 11, 1));
+
+        membershipService.voidMembership(membershipService.feesOf(memberId).getFirst().id());
+
+        // La anulada queda en la lista, de constancia.
+        assertThat(membershipService.feesOf(memberId)).extracting(GymMembershipService.Fee::voided)
+                .containsExactly(true, false);
+        Status status = billing.status(memberId, today);
+        assertThat(status.paidUntil()).isEqualTo(LocalDate.of(2026, 10, 1));
+        assertThat(status.anchor()).isEqualTo(LocalDate.of(2026, 9, 2));
+        assertThat(overviewService.paymentsOf(today)).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Si se anula la unica cuota, el socio vuelve a estar como el que nunca pago")
+    void voidingTheOnlyFeeResetsTheCycle() {
+        LocalDate today = LocalDate.of(2026, 9, 23);
+        chargeWithDates(1, today, LocalDate.of(2026, 9, 2), null);
+
+        membershipService.voidMembership(membershipService.feesOf(memberId).getFirst().id());
+
+        Status status = billing.status(memberId, today);
+        assertThat(status.anchor()).isNull();
+        assertThat(status.plan()).isNull();
+        assertThat(status.pending().getFirst().start()).isEqualTo(today);
+    }
 }

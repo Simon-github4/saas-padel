@@ -23,6 +23,12 @@ public interface GymSessionRepository extends JpaRepository<GymSession, UUID> {
     @Query("UPDATE GymSession s SET s.revokedAt = :now WHERE s.member.id = :memberId AND s.revokedAt IS NULL")
     int revokeAllForMember(@Param("memberId") UUID memberId, @Param("now") Instant now);
 
+    /** Borra las sesiones del socio, para poder eliminarlo. */
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM GymSession s WHERE s.member.id = :memberId")
+    int deleteAllForMember(@Param("memberId") UUID memberId);
+
     /** Sesiones vencidas, o cerradas hace mas de lo que hace falta guardarlas. */
     @Modifying
     @Transactional

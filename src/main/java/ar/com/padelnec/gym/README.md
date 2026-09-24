@@ -58,7 +58,11 @@ cuántos metros estaba (`gym_checkin.distance_m`).
 Con el perfil `dev`, `GymDevSeeder` prende el gimnasio en `club-necochea` (solo DNI) y
 carga dos sedes (Necochea y Quequén, sin ubicación) y tres socios: `30111222` (cuota
 vigente), `40222333` (vencida) y `50333444` (sin cuota). Si se prende el modo clave, la
-de los tres es `gimnasio1234`.
+de los tres es `gimnasio1234`. Suma además los casos del mostrador, aunque la base ya
+tuviera el gimnasio: socios sin DNI, el mismo socio cargado dos veces (Agustín Coupau),
+uno que adeuda meses (Facundo Molina), uno adelantado, uno con ingresos y una cuota
+anulada (Hernán Paz, `33444555`), uno deshabilitado, un cobro de ayer cargado hoy, una
+cuota que empieza en unos días y uno en el tope semanal.
 
 ```bash
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
@@ -82,6 +86,11 @@ Para probar sin cámara, pegar el link o el código en el campo del escáner.
   mostrador le cobra y le registra ingresos. Si se cambia el DNI de un socio, se cierran
   sus sesiones abiertas.
 - Un socio no puede tener dos cuotas que se pisen (constraint en la base).
+- Una cuota cobrada se corrige desde el menú del socio, en "Cuotas cobradas": los días
+  por semana y el monto cambian, las fechas no. Ahí también se anula la que se cobró de
+  más (sale de la caja); si era la única, el socio vuelve a estar como el que nunca pagó.
+- "Eliminar socio" es para el cargado por error o repetido: se borra con sus cuotas y
+  sesiones. Si ya registró ingresos no se puede, para no perder su historia: se deshabilita.
 - La fecha de cobro (`paid_on`) es aparte del período: un pago de otro día va a la caja
   de ese día, y pagar antes no adelanta el período.
 - Al cobrar, "Nuevo inicio de mes" es opcional. Vacío, el ciclo sigue como venía. Con

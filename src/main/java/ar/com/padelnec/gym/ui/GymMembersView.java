@@ -11,7 +11,9 @@ import ar.com.padelnec.gym.service.GymCheckinService;
 import ar.com.padelnec.gym.service.GymCheckinService.CheckInResult;
 import ar.com.padelnec.gym.service.GymMemberService;
 import ar.com.padelnec.gym.service.GymMemberService.CreatedMember;
+import ar.com.padelnec.gym.service.GymMemberService.DeletionImpact;
 import ar.com.padelnec.gym.service.GymMembershipService;
+import ar.com.padelnec.gym.service.GymMembershipService.Fee;
 import ar.com.padelnec.gym.service.GymOverviewService;
 import ar.com.padelnec.gym.service.GymOverviewService.MemberRow;
 import ar.com.padelnec.gym.service.GymSedeService;
@@ -228,7 +230,9 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         if (passwordRequired) {
             menu.addItem("Resetear clave", event -> confirmReset(row));
         }
+        menu.addItem("Cuotas cobradas", event -> openFees(row));
         menu.addItem(row.enabled() ? "Deshabilitar" : "Habilitar", event -> toggleEnabled(row));
+        menu.addItem("Eliminar socio", event -> confirmDelete(row));
 
         HorizontalLayout cell = new HorizontalLayout(charge, more);
         cell.setPadding(false);
@@ -371,6 +375,10 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         days.setValue(newPlan ? DEFAULT_DAYS_PER_WEEK : billing.planDaysPerWeek());
         days.setStepButtonsVisible(true);
         days.setWidthFull();
+        if (!newPlan) {
+            days.setHelperText("Vale para las cuotas que cobrás ahora. Para corregir una ya cobrada: "
+                    + "menú ⋮ → «Cuotas cobradas».");
+        }
 
         // La tarifa aparece como sugerencia (placeholder), no como monto cargado:
         // cambia solo si cambian los días por semana. El total usa la tarifa
@@ -546,6 +554,197 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), save);
         dialog.open();
+    }
+
+    /**
+     * Las cuotas cobradas del socio, para corregir un error de carga: cambiar días por
+     * semana y monto sin mover el período, o anular la que se cobró de más.
+     */
+    private void openFees(MemberRow row) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Cuotas cobradas · " + row.fullName());
+        dialog.setWidth("50em");
+
+        Paragraph note = new Paragraph("Corregí los días por semana o el monto de una cuota sin cambiar sus "
+                + "fechas, o anulá la que se cobró de más: deja de valer y sale de la caja. Las anuladas "
+                + "quedan tachadas, de constancia.");
+        note.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
+
+        Grid<Fee> fees = new Grid<>();
+        fees.addThemeVariants(GridVariant.LUMO_COMPACT, GridVariant.LUMO_ROW_STRIPES);
+        fees.setSelectionMode(Grid.SelectionMode.NONE);
+        fees.addComponentColumn(fee -> feeCell(fee,
+                        SHORT_DAY.format(fee.startsOn()) + " al " + SHORT_DAY.format(fee.endsOn())))
+                .setHeader("Período").setAutoWidth(true);
+        fees.addComponentColumn(fee -> feeCell(fee, String.valueOf(fee.daysPerWeek())))
+                .setHeader("Días").setAutoWidth(true).setFlexGrow(0);
+        fees.addComponentColumn(fee -> feeCell(fee, GymViewSupport.money(fee.price())))
+                .setHeader("Monto").setAutoWidth(true);
+        fees.addComponentColumn(fee -> feeCell(fee, SHORT_DAY.format(fee.paidOn()) + " · " + fee.payMethod().label()))
+                .setHeader("Cobrada").setAutoWidth(true);
+        Runnable reload = () -> fees.setItems(membershipService.feesOf(row.id()));
+        Runnable changed = () -> {
+            reload.run();
+            refresh();
+        };
+        fees.addComponentColumn(fee -> {
+            if (fee.voided()) {
+                return GymViewSupport.badge("Anulada el " + SHORT_DAY.format(fee.voidedOn()), "error small");
+            }
+            Button correct = new Button("Corregir", event -> openCorrectFee(fee, changed));
+            correct.addThemeVariants(ButtonVariant.LUMO_SMALL);
+            Button cancel = new Button("Anular", event -> confirmVoidFee(fee, changed));
+            cancel.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY);
+            HorizontalLayout actions = new HorizontalLayout(correct, cancel);
+            actions.setPadding(false);
+            return actions;
+        }).setAutoWidth(true).setFlexGrow(0);
+        fees.setEmptyStateText("No tiene cuotas cobradas.");
+        fees.setAllRowsVisible(true);
+        reload.run();
+
+        VerticalLayout body = new VerticalLayout(note, fees);
+        body.setPadding(false);
+        dialog.add(body);
+        dialog.getFooter().add(new Button("Cerrar", event -> dialog.close()));
+        dialog.open();
+    }
+
+    /** Un dato de la cuota; si está anulada, tachado y apagado. */
+    private static Span feeCell(Fee fee, String text) {
+        Span cell = new Span(text);
+        if (fee.voided()) {
+            cell.getStyle().set("text-decoration", "line-through");
+            cell.addClassNames(LumoUtility.TextColor.TERTIARY);
+        }
+        return cell;
+    }
+
+    private void openCorrectFee(Fee fee, Runnable onSaved) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Corregir cuota del " + SHORT_DAY.format(fee.startsOn()) + " al "
+                + SHORT_DAY.format(fee.endsOn()));
+
+        IntegerField days = new IntegerField("Días por semana");
+        days.setMin(1);
+        days.setMax(7);
+        days.setValue(fee.daysPerWeek());
+        days.setStepButtonsVisible(true);
+        BigDecimalField price = new BigDecimalField("Monto");
+        price.setPrefixComponent(new Span("$"));
+        price.setValue(fee.price());
+        // Al cambiar los días, propone la tarifa de esos días (se puede pisar a mano).
+        days.addValueChangeListener(event -> {
+            BigDecimal tariff = tariffFor(days);
+            if (tariff != null) {
+                price.setValue(tariff);
+            }
+        });
+
+        HorizontalLayout fields = new HorizontalLayout(days, price);
+        fields.setWidthFull();
+        fields.setPadding(false);
+        fields.setFlexGrow(1, days, price);
+        Paragraph note = new Paragraph("Las fechas de la cuota no cambian.");
+        note.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
+        VerticalLayout body = new VerticalLayout(fields, note);
+        body.setPadding(false);
+        dialog.add(body);
+
+        Button save = new Button("Guardar", event -> {
+            if (days.getValue() == null) {
+                GymViewSupport.error("Poné los días por semana.");
+                return;
+            }
+            try {
+                membershipService.correct(fee.id(), days.getValue(), price.getValue());
+                dialog.close();
+                onSaved.run();
+                GymViewSupport.ok("Cuota corregida");
+            } catch (BusinessRuleException ex) {
+                GymViewSupport.error(ex.getMessage());
+            }
+        });
+        save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+        dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), save);
+        dialog.open();
+    }
+
+    private void confirmVoidFee(Fee fee, Runnable onVoided) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Anular la cuota del " + SHORT_DAY.format(fee.startsOn()) + " al "
+                + SHORT_DAY.format(fee.endsOn()));
+        dialog.add(new Paragraph("Deja de valer para entrar y el cobro de " + GymViewSupport.money(fee.price())
+                + " sale de la caja del " + SHORT_DAY.format(fee.paidOn()) + ". No se puede deshacer."));
+
+        Button confirm = new Button("Anular cuota", event -> {
+            membershipService.voidMembership(fee.id());
+            dialog.close();
+            onVoided.run();
+            GymViewSupport.ok("Cuota anulada");
+        });
+        confirm.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_ERROR);
+        dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), confirm);
+        dialog.open();
+    }
+
+    private void confirmDelete(MemberRow row) {
+        DeletionImpact impact = memberService.deletionImpact(row.id());
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Eliminar a " + row.fullName());
+
+        if (impact.hasCheckins()) {
+            // Con ingresos no se elimina: se ofrece directamente lo que sí se puede hacer.
+            dialog.add(new Paragraph("Ya registró ingresos: no se puede eliminar sin perder sus visitas y sus "
+                    + "cobros. Si no viene más, deshabilitalo: deja de poder entrar y conserva su historia."));
+            Button disable = new Button("Deshabilitar", event -> {
+                memberService.setEnabled(row.id(), false);
+                dialog.close();
+                refresh();
+                GymViewSupport.ok(row.fullName() + " deshabilitado");
+            });
+            disable.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+            disable.setEnabled(row.enabled());
+            dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), disable);
+            dialog.open();
+            return;
+        }
+
+        String fees = impact.fees() == 0
+                ? "No tiene cuotas cobradas."
+                : "Se borra" + (impact.fees() == 1 ? " 1 cuota" : "n " + impact.fees() + " cuotas") + " por "
+                        + GymViewSupport.money(impact.total()) + ", que sale" + (impact.fees() == 1 ? "" : "n")
+                        + " de la caja " + cashDays(impact.paidDays()) + ".";
+        Paragraph impactLine = new Paragraph(fees);
+        impactLine.addClassNames(LumoUtility.FontWeight.SEMIBOLD);
+        Paragraph note = new Paragraph("Es para un socio cargado por error o repetido. No se puede deshacer.");
+        note.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
+        VerticalLayout body = new VerticalLayout(impactLine, note);
+        body.setPadding(false);
+        dialog.add(body);
+
+        Button confirm = new Button("Eliminar", event -> {
+            try {
+                memberService.delete(row.id());
+                dialog.close();
+                refresh();
+                GymViewSupport.ok(row.fullName() + " eliminado");
+            } catch (BusinessRuleException ex) {
+                dialog.close();
+                GymViewSupport.error(ex.getMessage());
+            }
+        });
+        confirm.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_ERROR);
+        dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), confirm);
+        dialog.open();
+    }
+
+    /** "del 22/09", "del 20/09 y 22/09" o "del 18/09, 20/09 y 22/09". */
+    private static String cashDays(List<LocalDate> days) {
+        List<String> labels = days.stream().map(SHORT_DAY::format).toList();
+        String joined = labels.size() == 1 ? labels.getFirst()
+                : String.join(", ", labels.subList(0, labels.size() - 1)) + " y " + labels.getLast();
+        return "del " + joined;
     }
 
     private void openEdit(MemberRow row) {

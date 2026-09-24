@@ -25,6 +25,9 @@ public interface GymCheckinRepository extends JpaRepository<GymCheckin, UUID> {
     /** Cuantos dias de la semana uso el socio (los dias se cuentan por fecha local del club). */
     long countByMemberIdAndLocalDateBetween(UUID memberId, LocalDate from, LocalDate to);
 
+    /** Si el socio registro algun ingreso alguna vez: con historia, no se lo puede eliminar. */
+    boolean existsByMemberId(UUID memberId);
+
     @EntityGraph(attributePaths = "sede")
     Optional<GymCheckin> findByMemberIdAndLocalDate(UUID memberId, LocalDate localDate);
 

@@ -186,13 +186,71 @@ public class GymMembershipService {
         return ids;
     }
 
-    /** Anula un cobro cargado por error: deja de valer y deja de contar en la liquidacion. */
+    /**
+     * Una cuota del socio, como la muestra el panel para corregirla. {@code voidedOn} es el
+     * dia (del club) en que se anulo, o null si sigue vigente.
+     */
+    public record Fee(UUID id, LocalDate startsOn, LocalDate endsOn, int daysPerWeek, BigDecimal price,
+                      PayMethod payMethod, LocalDate paidOn, LocalDate voidedOn) {
+
+        public boolean voided() {
+            return voidedOn != null;
+        }
+    }
+
+    /**
+     * Todas las cuotas del socio, anuladas incluidas (quedan de constancia), de la mas
+     * nueva a la mas vieja.
+     */
+    @Transactional(readOnly = true)
+    public List<Fee> feesOf(UUID memberId) {
+        java.time.ZoneId zone = tenantService.requireCurrent().zoneId();
+        return membershipRepository.findAllByMemberId(memberId).stream()
+                .sorted(java.util.Comparator.comparing(GymMembership::getStartsOn)
+                        .thenComparing(GymMembership::getCreatedAt).reversed())
+                .map(m -> new Fee(m.getId(), m.getStartsOn(), m.getEndsOn(), m.getDaysPerWeek(), m.getPrice(),
+                        m.getPayMethod(), m.getPaidOn(),
+                        m.getVoidedAt() == null ? null : m.getVoidedAt().atZone(zone).toLocalDate()))
+                .toList();
+    }
+
+    /**
+     * Corrige los dias por semana y el monto de una cuota ya cobrada, sin tocar su
+     * periodo: es para el error de carga ("le puse 3 dias y paga 2"), que cobrando
+     * otra cuota no se arregla (caeria en el mes siguiente).
+     */
+    @Transactional
+    public void correct(UUID membershipId, int daysPerWeek, BigDecimal price) {
+        if (daysPerWeek < 1 || daysPerWeek > 7) {
+            throw new BusinessRuleException("Los días por semana van de 1 a 7.");
+        }
+        if (price == null || price.signum() < 0) {
+            throw new BusinessRuleException("Poné un monto válido.");
+        }
+        GymMembership membership = membershipRepository.findById(membershipId)
+                .filter(m -> m.getVoidedAt() == null)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe esa cuota."));
+        membership.setDaysPerWeek(daysPerWeek);
+        membership.setPrice(price.setScale(2, java.math.RoundingMode.HALF_UP));
+    }
+
+    /**
+     * Anula un cobro cargado por error: deja de valer y deja de contar en la caja y en la
+     * liquidacion. Si era la unica cuota del socio, vuelve a estar como el que nunca pago:
+     * el proximo cobro arranca su ciclo de nuevo.
+     */
     @Transactional
     public void voidMembership(UUID membershipId) {
         GymMembership membership = membershipRepository.findById(membershipId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe esa cuota."));
-        if (membership.getVoidedAt() == null) {
-            membership.setVoidedAt(clock.instant());
+        if (membership.getVoidedAt() != null) {
+            return;
+        }
+        membership.setVoidedAt(clock.instant());
+        membershipRepository.flush();
+        GymMember member = membership.getMember();
+        if (membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(member.getId()).isEmpty()) {
+            member.setBillingAnchor(null);
         }
     }
 
