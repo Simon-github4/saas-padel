@@ -4,6 +4,7 @@ import { track } from '../analytics';
 import { ApiError, api } from '../api/client';
 import type { ClubOption, CourtRoof, CourtSurface, CourtWall, SearchMatch, SearchResult } from '../api/client';
 import { AccountButton } from '../components/AccountButton';
+import { InstallBanner } from '../components/InstallBanner';
 import { MonthCalendar } from '../components/MonthCalendar';
 import { TemaSwitch } from '../components/TemaSwitch';
 import { Alert, Badge, Button, Card, Screen, TopBar } from '../components/Ui';
@@ -307,6 +308,8 @@ export function SearchPage() {
           Buscá en todos los clubes a la vez y quedate con el horario que te sirva.
         </p>
       </div>
+
+      <InstallBanner />
 
       {/* ------------------------------------------------------- filtros */}
       <Card className="mt-8 space-y-7">

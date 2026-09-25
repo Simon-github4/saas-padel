@@ -72,6 +72,10 @@ server:
   # Sin esto, un redeploy corta requests y webhooks a mitad de camino: deja de
   # aceptar conexiones nuevas pero espera a que terminen las que ya estaban en vuelo.
   shutdown: graceful
+  # El manifest de la app instalable (player-app/public): sin esto sale como
+  # application/octet-stream, que no es el tipo que piden los navegadores.
+  mime-mappings:
+    webmanifest: application/manifest+json
   error:
     include-message: never
     include-stacktrace: never

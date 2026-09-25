@@ -55,6 +55,9 @@ class PlayerAssetsCacheIntegrationTest {
                 {"/apple-touch-icon.png", "image/png"},
                 {"/marcas/mercado-pago-blanco.svg", "image/svg+xml"},
                 {"/capturas/cargar-turno.webp", "image/webp"},
+                {"/icon-192.png", "image/png"},
+                {"/icon-512.png", "image/png"},
+                {"/icon-maskable-512.png", "image/png"},
         };
         for (String[] icon : icons) {
             client.get().uri(icon[0])
@@ -66,9 +69,24 @@ class PlayerAssetsCacheIntegrationTest {
     }
 
     @Test
+    @DisplayName("El manifest y el service worker de la app instalable se sirven sin sesion")
+    void installableAppFilesArePublic() {
+        client.get().uri("/manifest.webmanifest")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().value(HttpHeaders.CONTENT_TYPE,
+                        value -> assertThat(value).startsWith("application/manifest+json"));
+        client.get().uri("/sw.js")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().value(HttpHeaders.CONTENT_TYPE,
+                        value -> assertThat(value).contains("javascript"));
+    }
+
+    @Test
     @DisplayName("El index y las rutas de la SPA siguen sin cache")
     void indexIsNeverCached() {
-        for (String path : new String[] {"/", "/buscar", "/login"}) {
+        for (String path : new String[] {"/", "/buscar", "/login", "/instalar"}) {
             client.get().uri(path)
                     .exchange()
                     .expectStatus().isOk()

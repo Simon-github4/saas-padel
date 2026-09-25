@@ -1,0 +1,32 @@
+{
+  "id": "/buscar",
+  "name": "TurnosPadel · Reservar cancha",
+  "short_name": "TurnosPadel",
+  "description": "Buscá cancha de pádel libre en todos los clubes y reservala en un toque.",
+  "lang": "es-AR",
+  "start_url": "/buscar",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Buscar cancha para hoy",
+      "short_name": "Buscar cancha",
+      "url": "/buscar",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Mis turnos",
+      "short_name": "Mis turnos",
+      "url": "/account",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

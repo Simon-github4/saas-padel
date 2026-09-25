@@ -132,6 +132,10 @@ public class SecurityConfig {
                         // Iconos de la pestaña y del acceso directo del celular: sin
                         // esto caen en la cadena del panel y redirigen al login.
                         "/favicon.ico", "/favicon.svg", "/apple-touch-icon.png",
+                        // La app instalable: manifest, service worker e iconos del
+                        // inicio del celular. Misma razon: el navegador los pide sin sesion.
+                        "/manifest.webmanifest", "/sw.js", "/icon-192.png", "/icon-512.png",
+                        "/icon-maskable-512.png",
                         // Logos de otras marcas que muestra la landing (Mercado Pago):
                         // misma razon, sin esto la imagen llega como el login del panel.
                         "/marcas/**",
@@ -144,7 +148,7 @@ public class SecurityConfig {
                         "/google*.html",
                         "/buscar", "/club/**", "/manage/**", "/confirm/**", "/turno/**",
                         "/login", "/account", "/forgot-password", "/reset-password/**",
-                        "/privacidad", "/terminos")
+                        "/privacidad", "/terminos", "/instalar")
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

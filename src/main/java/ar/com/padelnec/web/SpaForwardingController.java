@@ -79,7 +79,7 @@ public class SpaForwardingController {
      */
     @GetMapping({"/manage/{token}", "/confirm/{token}", "/turno/{token}",
             "/login", "/account", "/forgot-password", "/reset-password/{token}",
-            "/privacidad", "/terminos"})
+            "/privacidad", "/terminos", "/instalar"})
     public String appRoutes() {
         return INDEX;
     }
