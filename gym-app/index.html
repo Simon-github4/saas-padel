@@ -8,11 +8,9 @@
     <meta name="description" content="Tu cuenta del gimnasio: cuántos días te quedan y tu ingreso con el QR de la entrada." />
     <!-- Es una app privada del club: que ningun buscador la indexe. -->
     <meta name="robots" content="noindex, nofollow" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- iOS lee estas metas para abrirla a pantalla completa desde el inicio. El
-         manifest de cada club lo agrega la app (ver useClub), porque su URL lleva
-         el slug. -->
+         backend agrega el manifest y los iconos del club en el HTML inicial;
+         useClub hace lo mismo cuando se usa el servidor de desarrollo. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />

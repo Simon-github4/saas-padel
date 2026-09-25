@@ -163,6 +163,18 @@
             <version>${zxing.version}</version>
         </dependency>
 
+        <!-- Portadas convertidas a PNG para los iconos instalables, incluido WebP. -->
+        <dependency>
+            <groupId>com.twelvemonkeys.imageio</groupId>
+            <artifactId>imageio-webp</artifactId>
+            <version>3.13.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+            <version>4.5.14</version>
+        </dependency>
+
         <!-- Postgres embebido para desarrollo local sin Docker -->
         <dependency>
             <groupId>io.zonky.test</groupId>

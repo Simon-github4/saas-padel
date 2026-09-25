@@ -6,6 +6,9 @@ import ar.com.padelnec.ClubFixture;
 import ar.com.padelnec.TestDatabaseConfig;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.domain.TenantHeroImage;
+import ar.com.padelnec.repository.TenantHeroImageRepository;
+import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.domain.PayMethod;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
@@ -14,6 +17,11 @@ import ar.com.padelnec.gym.service.GymMemberService.CreatedMember;
 import ar.com.padelnec.gym.service.GymMembershipService;
 import ar.com.padelnec.gym.service.GymRateLimits;
 import java.math.BigDecimal;
+import java.awt.Color;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import javax.imageio.ImageIO;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Map;
@@ -52,6 +60,8 @@ class GymApiIntegrationTest {
     @Autowired private GymMemberService memberService;
     @Autowired private GymMembershipService membershipService;
     @Autowired private GymCheckinRepository checkinRepository;
+    @Autowired private TenantHeroImageRepository heroImages;
+    @Autowired private TenantService tenants;
     // El limitador es un singleton compartido con el resto de la suite y todos los pedidos salen del
     // mismo origen local: sin mockearlo, el resultado dependeria del orden en que corren los tests.
     @MockitoBean private GymRateLimits rateLimits;
@@ -338,11 +348,60 @@ class GymApiIntegrationTest {
         assertThat(manifest.get("start_url").asText()).isEqualTo("/gym/los-troncos");
         assertThat(manifest.get("name").asText()).contains("Club los-troncos");
         assertThat(manifest.get("display").asText()).isEqualTo("standalone");
+        assertThat(manifest.get("id").asText()).isEqualTo("/gym/los-troncos");
+        assertThat(manifest.get("icons").get(0).get("src").asText()).isEqualTo("/gym/los-troncos/icon-192.png");
+        assertThat(manifest.get("icons").get(1).get("src").asText()).isEqualTo("/gym/los-troncos/icon-512.png");
+        assertThat(manifest.get("icons").get(1).get("type").asText()).isEqualTo("image/png");
 
         clubFixture.club("sin-gimnasio");
         client.get().uri("/gym/sin-gimnasio/manifest.webmanifest")
                 .exchange()
                 .expectStatus().isNotFound();
+        client.get().uri("/gym/sin-gimnasio/icon-192.png").exchange().expectStatus().isNotFound();
+        client.get().uri("/gym/no-existe/icon-192.png").exchange().expectStatus().isNotFound();
+    }
+
+    @Test
+    void installedIconsUseEachClubsCoverAndRefreshAfterAnUpload() throws Exception {
+        Tenant other = clubFixture.club("otro-gimnasio");
+        gym.enable(other, false);
+        setCover(club, Color.RED);
+        setCover(other, Color.BLUE);
+        for (int size : new int[] {180, 192, 512}) {
+            assertIcon("los-troncos", size, Color.RED);
+            assertIcon("otro-gimnasio", size, Color.BLUE);
+        }
+        setCover(club, Color.GREEN);
+        assertIcon("los-troncos", 192, Color.GREEN);
+        assertIcon("otro-gimnasio", 192, Color.BLUE);
+    }
+
+    private void setCover(Tenant tenant, Color color) throws Exception {
+        var source = new BufferedImage(900, 600, BufferedImage.TYPE_INT_RGB);
+        var graphics = source.createGraphics();
+        graphics.setColor(color);
+        graphics.fillRect(0, 0, 900, 600);
+        graphics.dispose();
+        var bytes = new ByteArrayOutputStream();
+        ImageIO.write(source, "png", bytes);
+        var cover = new TenantHeroImage();
+        cover.setTenantId(tenant.getId());
+        cover.setContentType("image/png");
+        cover.setData(bytes.toByteArray());
+        heroImages.saveAndFlush(cover);
+        tenants.update(tenant.getId(), current -> current.setHeroImageUrl("/api/public/" + tenant.getSlug() + "/hero-image"));
+    }
+
+    private void assertIcon(String slug, int size, Color color) throws Exception {
+        byte[] png = client.get().uri("/gym/" + slug + "/icon-" + size + ".png")
+                .exchange().expectStatus().isOk()
+                .expectHeader().contentType(MediaType.IMAGE_PNG)
+                .expectHeader().valueEquals("Cache-Control", "no-cache")
+                .expectBody(byte[].class).returnResult().getResponseBody();
+        var icon = ImageIO.read(new ByteArrayInputStream(png));
+        assertThat(icon.getWidth()).isEqualTo(size);
+        assertThat(icon.getHeight()).isEqualTo(size);
+        assertThat(icon.getRGB(size / 2, size / 2)).isEqualTo(color.getRGB());
     }
 
     @Test
@@ -352,9 +411,14 @@ class GymApiIntegrationTest {
             client.get().uri(path)
                     .exchange()
                     .expectStatus().isOk()
+                    .expectHeader().contentType("text/html;charset=UTF-8")
                     .expectHeader().valueEquals("Permissions-Policy", "camera=(self), geolocation=(self)")
                     .expectHeader().value("Content-Security-Policy",
-                            csp -> assertThat(csp).contains("script-src 'self';").doesNotContain("google"));
+                            csp -> assertThat(csp).contains("script-src 'self';").doesNotContain("google"))
+                    .expectBody(String.class).value(html -> assertThat(html)
+                            .contains("rel=\"manifest\" href=\"/gym/los-troncos/manifest.webmanifest\"")
+                            .contains("rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"/gym/los-troncos/icon-180.png\"")
+                            .doesNotContain("href=\"/apple-touch-icon.png\""));
         }
     }
 }

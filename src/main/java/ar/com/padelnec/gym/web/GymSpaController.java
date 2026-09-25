@@ -1,18 +1,25 @@
 package ar.com.padelnec.gym.web;
 
-import ar.com.padelnec.gym.GymModule;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.gym.GymModule;
+import ar.com.padelnec.service.TenantIconService;
 import ar.com.padelnec.service.TenantService;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.CacheControl;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
+import org.springframework.util.DigestUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.ResponseBody;
-import lombok.RequiredArgsConstructor;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Sirve la app del socio ({@code gym-app}) y su manifest.
@@ -32,11 +39,23 @@ public class GymSpaController {
 
     private final TenantService tenantService;
     private final GymModule gymModule;
+    private final TenantIconService tenantIconService;
 
     /** El deep link del QR ({@code /in/{token}}) abre la app y la app hace el check-in. */
     @GetMapping({"/gym/" + SLUG, "/gym/" + SLUG + "/in/{token}"})
-    public String app() {
-        return "forward:/gym-app/index.html";
+    @ResponseBody
+    public ResponseEntity<String> app(@PathVariable String slug) throws IOException {
+        String html = new ClassPathResource("static/gym-app/index.html")
+                .getContentAsString(StandardCharsets.UTF_8);
+        // Safari debe encontrar el icono del club en el HTML inicial, tambien al abrir un QR.
+        String metadata = """
+                <link rel="manifest" href="/gym/%1$s/manifest.webmanifest" />
+                <link rel="icon" type="image/png" sizes="192x192" href="/gym/%1$s/icon-192.png" />
+                <link rel="apple-touch-icon" sizes="180x180" href="/gym/%1$s/icon-180.png" />
+                """.formatted(slug);
+        return ResponseEntity.ok().contentType(new MediaType(MediaType.TEXT_HTML, StandardCharsets.UTF_8))
+                .cacheControl(CacheControl.noCache())
+                .body(html.replace("</head>", metadata + "</head>"));
     }
 
     /** Service worker de la PWA: vive bajo /gym/ para poder controlar cada club. */
@@ -77,11 +96,12 @@ public class GymSpaController {
         gymModule.requireEnabled();
 
         String shortName = clubName.length() <= 12 ? clubName : clubName.substring(0, 12).trim();
-        String icon = hasText(club.getHeroImageUrl()) ? club.getHeroImageUrl() : "/gym-app/icon-512.png";
+        String iconBase = "/gym/" + slug + "/icon-";
         String primary = colorOr(club.getPrimaryColor(), "#ea580c");
         // La app del socio es clara en todos los navegadores: el splash instalado usa ese mismo fondo.
         String background = "#f6f3ee";
         Map<String, Object> manifest = Map.of(
+                "id", "/gym/" + slug,
                 "name", clubName + " · Gimnasio",
                 "short_name", shortName,
                 "start_url", "/gym/" + slug,
@@ -91,13 +111,28 @@ public class GymSpaController {
                 "theme_color", primary,
                 "lang", "es-AR",
                 "icons", List.of(
-                        Map.of("src", icon, "sizes", "192x192", "purpose", "any"),
-                        Map.of("src", icon, "sizes", "512x512", "purpose", "any"),
-                        Map.of("src", icon, "sizes", "512x512", "purpose", "maskable")));
+                        Map.of("src", iconBase + "192.png", "sizes", "192x192", "type", "image/png", "purpose", "any"),
+                        Map.of("src", iconBase + "512.png", "sizes", "512x512", "type", "image/png", "purpose", "any maskable")));
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/manifest+json"))
                 .cacheControl(CacheControl.noCache())
                 .body(manifest);
+    }
+
+    @GetMapping(value = "/gym/" + SLUG + "/icon-{size:180|192|512}.png", produces = MediaType.IMAGE_PNG_VALUE)
+    @ResponseBody
+    public ResponseEntity<byte[]> icon(@PathVariable String slug, @PathVariable int size) {
+        Tenant club = tenantService.activate(slug);
+        gymModule.requireEnabled();
+        try {
+            byte[] png = tenantIconService.icon(club, size);
+            return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG)
+                    .cacheControl(CacheControl.noCache())
+                    .eTag('"' + DigestUtils.md5DigestAsHex(png) + '"')
+                    .body(png);
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "No se pudo generar el icono del club", e);
+        }
     }
 
     private static boolean hasText(String value) {

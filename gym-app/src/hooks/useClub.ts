@@ -44,14 +44,22 @@ export function useClub(slug: string): ClubState {
         }
       });
 
-    const link = document.createElement('link');
-    link.rel = 'manifest';
-    link.href = `/gym/${encodeURIComponent(slug)}/manifest.webmanifest`;
-    document.head.appendChild(link);
+    const base = `/gym/${encodeURIComponent(slug)}`;
+    const links = [
+      { rel: 'manifest', href: `${base}/manifest.webmanifest` },
+      { rel: 'icon', href: `${base}/icon-192.png`, sizes: '192x192', type: 'image/png' },
+      { rel: 'apple-touch-icon', href: `${base}/icon-180.png`, sizes: '180x180' },
+    ].map((attributes) => {
+      const link = document.querySelector<HTMLLinkElement>(`link[rel="${attributes.rel}"]`)
+        ?? document.createElement('link');
+      Object.assign(link, attributes);
+      if (!link.isConnected) document.head.appendChild(link);
+      return link;
+    });
 
     return () => {
       cancelled = true;
-      link.remove();
+      links.forEach((link) => link.remove());
     };
   }, [slug]);
 

@@ -29,6 +29,8 @@ export default defineConfig(({ command }) => ({
       // Y el manifest de cada club, que es dinamico. El resto de /gym/... lo
       // resuelve Vite (es la propia app).
       '^/gym/[^/]+/manifest\\.webmanifest$': 'http://localhost:8080',
+      '^/gym/[^/]+/icon-(180|192|512)\\.png$': 'http://localhost:8080',
+      '/gym/sw.js': 'http://localhost:8080',
     },
   },
 }));
