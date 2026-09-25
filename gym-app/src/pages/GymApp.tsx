@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { GymAuthProvider, useGymAuth } from '../auth/GymAuthContext';
+import { InstallButton } from '../components/InstallGuide';
 import { Alert, Button, Card, Loading, Screen, TopBar } from '../components/ui';
 import { useClub } from '../hooks/useClub';
 import { ChangePasswordScreen } from './ChangePasswordScreen';
@@ -89,15 +90,18 @@ function Shell({ slug, deepLinkToken }: { slug: string; deepLinkToken: string | 
     <TopBar
       name={`${clubName} · Gimnasio`}
       action={
-        ready ? (
-          <button
-            type="button"
-            onClick={() => void logout()}
-            className="text-xs text-ink-soft underline-offset-4 hover:underline"
-          >
-            Salir
-          </button>
-        ) : undefined
+        <div className="flex items-center gap-3">
+          <InstallButton autoOpen={ready} />
+          {ready && (
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="text-xs text-ink-soft underline-offset-4 hover:underline"
+            >
+              Salir
+            </button>
+          )}
+        </div>
       }
     />
   );

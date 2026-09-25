@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ApiError, gymApi, type Me } from '../api/gymClient';
 import { useGymAuth } from '../auth/GymAuthContext';
-import { InstallGuide } from '../components/InstallGuide';
 import { Alert, Badge, Button, Card, Loading, WeekDots } from '../components/ui';
 import { firstName, longDay, money, shortDay, weekUsage } from '../format';
 
@@ -62,7 +61,6 @@ export function HomeScreen({ onScan }: { onScan: () => void }) {
         Escanear QR de la entrada
       </Button>
 
-      <InstallGuide />
 
       {me.recent.length > 0 && (
         <section className="mt-10">

@@ -5,9 +5,9 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import './index.css';
 import { GymApp } from './pages/GymApp';
-import { registerGymServiceWorker } from './pwa';
+import { setupGymPwa } from './pwa';
 
-registerGymServiceWorker();
+setupGymPwa();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
