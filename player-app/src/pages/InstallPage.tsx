@@ -231,6 +231,11 @@ function pasosIphone(otroNavegador: boolean): Paso[] {
       ),
     },
     {
+      titulo: 'Tocá "Ver más"',
+      texto: 'Está abajo de las primeras opciones y abre la lista completa. Si ya ves Agregar a inicio, salteá este paso.',
+      muestra: <Opcion icono={<VerMasIcono />}>Ver más</Opcion>,
+    },
+    {
       titulo: 'Tocá "Agregar a inicio"',
       texto: 'Bajá un poco en la lista hasta encontrarlo.',
       muestra: <Opcion icono={<AgregarIcono />}>Agregar a inicio</Opcion>,
@@ -352,6 +357,15 @@ function PuntosIcono({ horizontal = false }: { horizontal?: boolean }) {
           <circle cx="12" cy="19" r="2" />
         </>
       )}
+    </svg>
+  );
+}
+
+/** La flecha para abajo del "Ver más" de la hoja de compartir. */
+function VerMasIcono() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="size-6">
+      <path d="m6 9 6 6 6-6" />
     </svg>
   );
 }
