@@ -158,7 +158,7 @@ export function Button({
     primary: 'bg-cal text-pista hover:bg-arena',
     accent: 'bg-ladrillo text-cal hover:bg-ladrillo/90 [box-shadow:var(--shadow-glow)]',
     secondary: 'border border-cal/10 bg-vidrio text-cal hover:border-cal/25 hover:bg-vidrio-alto',
-    danger: 'border border-red-500/25 bg-red-500/10 text-red-300 hover:bg-red-500/15',
+    danger: 'border border-red-500/25 bg-red-500/10 text-red-300 claro:text-red-700 hover:bg-red-500/15',
   }[variant];
 
   return (
@@ -217,9 +217,9 @@ export function Alert({
   tone?: 'error' | 'info' | 'success';
 }) {
   const styles = {
-    error: 'border-red-500/25 bg-red-500/10 text-red-300',
+    error: 'border-red-500/25 bg-red-500/10 text-red-300 claro:text-red-700',
     info: 'border-cal/10 bg-cal/[0.04] text-ink-soft',
-    success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
+    success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300 claro:text-emerald-700',
   }[tone];
 
   return <div className={`rounded-xl border px-4 py-3 text-sm ${styles}`}>{children}</div>;
@@ -259,7 +259,7 @@ export function Badge({
   const styles = {
     promo: 'border-ladrillo/30 bg-ladrillo/15 text-ladrillo-claro',
     neutral: 'border-cal/10 bg-cal/[0.06] text-ink-soft',
-    success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
+    success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300 claro:text-emerald-700',
   }[tone];
 
   return (
@@ -386,21 +386,21 @@ export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { text: string; className: string }> = {
     CONFIRMED: {
       text: 'Confirmado',
-      className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300',
+      className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300 claro:text-emerald-700',
     },
     AWAITING_CONFIRMATION: {
       text: 'Sin confirmar',
-      className: 'border-amber-500/25 bg-amber-500/10 text-amber-300',
+      className: 'border-amber-500/25 bg-amber-500/10 text-amber-300 claro:text-amber-700',
     },
     DRAFT: {
       text: 'Esperando pago',
-      className: 'border-amber-500/25 bg-amber-500/10 text-amber-300',
+      className: 'border-amber-500/25 bg-amber-500/10 text-amber-300 claro:text-amber-700',
     },
     COMPLETED: { text: 'Jugado', className: neutral },
-    CANCELLED: { text: 'Cancelado', className: 'border-red-500/25 bg-red-500/10 text-red-300' },
+    CANCELLED: { text: 'Cancelado', className: 'border-red-500/25 bg-red-500/10 text-red-300 claro:text-red-700' },
     NO_SHOW: {
       text: 'No te presentaste',
-      className: 'border-red-500/25 bg-red-500/10 text-red-300',
+      className: 'border-red-500/25 bg-red-500/10 text-red-300 claro:text-red-700',
     },
   };
   const badge = map[status] ?? { text: status, className: neutral };

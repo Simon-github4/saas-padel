@@ -107,6 +107,8 @@ class PublicApiIntegrationTest {
 
         assertThat(detail.get("courtName").asText()).isNotBlank();
         assertThat(detail.get("cancellableOnline").asBoolean()).isTrue();
+        // El portal se pinta con la paleta del club del turno.
+        assertThat(detail.get("themeMode").asText()).isIn("DARK", "LIGHT");
 
         JsonNode cancelled = client.post().uri("/api/public/manage/" + token + "/cancel")
                 .exchange()

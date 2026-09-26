@@ -10,11 +10,32 @@ export type ClubTheme = {
 const KEY = 'tema-ultimo-club';
 
 /**
- * Pone la paleta y los acentos del club como custom properties en <html>, así los
- * toma toda la hoja de estilos. Devuelve la limpieza, para no dejarle el tema de
- * un club pegado a otra ruta.
+ * Pinta la pantalla con la apariencia de un club: la paleta y los acentos van
+ * como custom properties en <html>, así los toma toda la hoja de estilos, y se
+ * limpian al salir para no dejarle el tema de un club pegado a otra ruta.
+ *
+ * <p>Con el tema del club a mano (su página, el portal de un turno suyo) usa ese
+ * y lo anota. Sin él (todavía cargando, o "Ver turnos", que no es de ningún
+ * club) usa el del último club que el jugador abrió en este dispositivo: es de
+ * donde viene. Si nunca abrió ninguno, el tema del teléfono o la compu, y claro
+ * si no se sabe. Layout effect para no pintar un instante con otro tema.
  */
-export function applyClubTheme(theme: ClubTheme): () => void {
+export function useClubTheme(theme?: ClubTheme | null) {
+  const mode = theme?.themeMode;
+  const primary = theme?.primaryColor ?? null;
+  const secondary = theme?.secondaryColor ?? null;
+
+  useLayoutEffect(() => {
+    if (mode) {
+      const current: ClubTheme = { themeMode: mode, primaryColor: primary, secondaryColor: secondary };
+      remember(current);
+      return apply(current);
+    }
+    return apply(lastClubTheme() ?? deviceTheme());
+  }, [mode, primary, secondary]);
+}
+
+function apply(theme: ClubTheme): () => void {
   const root = document.documentElement;
   root.dataset.theme = theme.themeMode === 'LIGHT' ? 'light' : 'dark';
   if (theme.primaryColor) {
@@ -30,12 +51,11 @@ export function applyClubTheme(theme: ClubTheme): () => void {
   };
 }
 
-/** Lo anota la página del club, para que "Ver turnos" se vea como el club de donde se vino. */
-export function rememberClubTheme({ themeMode, primaryColor, secondaryColor }: ClubTheme) {
+function remember(theme: ClubTheme) {
   try {
-    window.localStorage.setItem(KEY, JSON.stringify({ themeMode, primaryColor, secondaryColor }));
+    window.localStorage.setItem(KEY, JSON.stringify(theme));
   } catch {
-    // Sin almacenamiento (navegación privada) la página anda igual, con el tema del dispositivo.
+    // Sin almacenamiento (navegación privada) todo anda igual, sin recordar el club.
   }
 }
 
@@ -48,17 +68,7 @@ function lastClubTheme(): ClubTheme | null {
   }
 }
 
-/**
- * Las pantallas de "Ver turnos" (login y Mis turnos) no son de un club, pero el
- * jugador llega desde uno: se ven con el tema del último club que abrió en este
- * dispositivo. Si nunca abrió ninguno, con el del teléfono o la compu, y claro si
- * no se sabe. Layout effect para no pintar un instante con otro tema.
- */
-export function useLastClubTheme() {
-  useLayoutEffect(() => {
-    const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
-    return applyClubTheme(
-      lastClubTheme() ?? { themeMode: prefersDark ? 'DARK' : 'LIGHT', primaryColor: null, secondaryColor: null },
-    );
-  }, []);
+function deviceTheme(): ClubTheme {
+  const dark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+  return { themeMode: dark ? 'DARK' : 'LIGHT', primaryColor: null, secondaryColor: null };
 }

@@ -166,6 +166,9 @@ export interface BookingDetail {
   cancellationLimitHours: number;
   cancellationHint: string | null;
   shareUrl: string;
+  themeMode: 'DARK' | 'LIGHT';
+  primaryColor: string | null;
+  secondaryColor: string | null;
 }
 
 /** Lo que ve un tercero que recibe el link para compartir el turno: sin datos de pago. */

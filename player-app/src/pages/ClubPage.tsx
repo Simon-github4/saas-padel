@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { track } from '../analytics';
 import { api, ApiError, type Availability, type Slot } from '../api/client';
-import { applyClubTheme, rememberClubTheme } from '../clubTheme';
+import { useClubTheme } from '../clubTheme';
 import { roofFromParam, surfaceFromParam, wallFromParam } from '../courtFeatures';
 import { addDays, clockTime, longDate, perPerson, todayIso, whatsappLink } from '../format';
 import { setPageMeta, setStructuredData } from '../seo';
@@ -82,16 +82,9 @@ export function ClubPage() {
     void load();
   }, [load]);
 
-  // La paleta la elige el club (ver clubTheme.ts). Se anota además para que
-  // "Ver turnos" se vea como este club.
-  useEffect(() => {
-    const club = data?.club;
-    if (!club) {
-      return;
-    }
-    rememberClubTheme(club);
-    return applyClubTheme(club);
-  }, [data?.club]);
+  // La paleta la elige el club (ver clubTheme.ts). Queda anotada para que "Ver
+  // turnos" se vea como este club.
+  useClubTheme(data?.club);
 
   // Sin esto, Google ve el mismo título y descripción genéricos de
   // index.html en la página de cada club, y un resultado de búsqueda no

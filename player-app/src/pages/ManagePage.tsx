@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, ApiError, type BookingDetail, type Cancellation } from '../api/client';
+import { useClubTheme } from '../clubTheme';
 import { clockTime, longDate, money, shareBooking, slotLine, whatsappLink } from '../format';
 import { forgetGuestBooking } from '../guestBookings';
 import {
@@ -30,6 +31,8 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  // Con la apariencia del club del turno; mientras carga, la del último club abierto.
+  useClubTheme(booking);
 
   useEffect(() => {
     (async () => {

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { usePlayerAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
-import { useLastClubTheme } from '../clubTheme';
+import { useClubTheme } from '../clubTheme';
 import { Alert, Button, Card, Field, Screen, SectionTitle } from '../components/Ui';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 
@@ -11,7 +11,7 @@ import { GoogleSignInButton } from '../components/GoogleSignInButton';
  * teléfono + código por WhatsApp -- ya no hace falta WhatsApp para entrar.
  */
 export function LoginPage() {
-  useLastClubTheme();
+  useClubTheme();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();

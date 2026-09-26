@@ -28,7 +28,7 @@ export function AccountButton() {
         className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 pl-3 pr-4 transition hover:border-emerald-500/50"
       >
         <span className="size-1.5 rounded-full bg-emerald-400" aria-hidden />
-        <span className="max-w-28 truncate text-sm font-semibold text-emerald-300">
+        <span className="max-w-28 truncate text-sm font-semibold text-emerald-300 claro:text-emerald-700">
           {session.displayName ?? session.email}
         </span>
       </Link>

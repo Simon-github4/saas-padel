@@ -72,7 +72,11 @@ public final class BookingDtos {
             boolean cancellableOnline,
             int cancellationLimitHours,
             String cancellationHint,
-            String shareUrl) {
+            String shareUrl,
+            // La apariencia del club del turno, para que el portal se vea como su pagina.
+            String themeMode,
+            String primaryColor,
+            String secondaryColor) {
 
         public static BookingDetailResponse of(Tenant club, Booking booking, Instant now, String shareUrl) {
             boolean cancellable = booking.getStatus().isCancellable()
@@ -98,7 +102,10 @@ public final class BookingDtos {
                     cancellable,
                     club.getCancellationLimitHours(),
                     hint,
-                    shareUrl);
+                    shareUrl,
+                    club.getThemeMode().name(),
+                    club.getPrimaryColor(),
+                    club.getSecondaryColor());
         }
     }
 
