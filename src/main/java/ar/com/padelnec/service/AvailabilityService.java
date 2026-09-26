@@ -124,13 +124,21 @@ public class AvailabilityService {
     /** Indica si una cancha concreta esta libre en una franja concreta. */
     @Transactional(readOnly = true)
     public boolean isCourtFree(Court court, Instant start, Instant end) {
-        boolean taken = bookingRepository.findOverlapping(start, end, BLOCKING).stream()
+        return !isCourtOccupied(court, start, end) && !isCourtSuspended(court, start, end);
+    }
+
+    /** Una excepcion administrativa puede ignorar cierres, nunca otra reserva. */
+    @Transactional(readOnly = true)
+    public boolean isCourtOccupied(Court court, Instant start, Instant end) {
+        return bookingRepository.findOverlapping(start, end, BLOCKING).stream()
                 .anyMatch(booking -> booking.getCourt().getId().equals(court.getId()));
-        if (taken) {
-            return false;
-        }
+    }
+
+    /** Bloqueo puntual por torneo, mantenimiento, feriado u otro motivo. */
+    @Transactional(readOnly = true)
+    public boolean isCourtSuspended(Court court, Instant start, Instant end) {
         return blackoutRepository.findOverlapping(start, end).stream()
-                .noneMatch(blackout -> blackout.appliesTo(court) && blackout.overlaps(start, end));
+                .anyMatch(blackout -> blackout.appliesTo(court) && blackout.overlaps(start, end));
     }
 
     /**

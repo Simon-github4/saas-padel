@@ -14,6 +14,7 @@ import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Anchor;
@@ -69,7 +70,8 @@ class ManualBookingDialog extends Dialog {
     ManualBookingDialog(Tenant club, Court court, Instant startsAt,
                         BookingService bookingService, CustomerService customerService,
                         NotificationService notificationService,
-                        PhoneNumbers phoneNumbers, Consumer<Booking> onSaved) {
+                        PhoneNumbers phoneNumbers, String availabilityException,
+                        Consumer<Booking> onSaved) {
         this.club = club;
         this.notificationService = notificationService;
         this.phoneNumbers = phoneNumbers;
@@ -104,24 +106,44 @@ class ManualBookingDialog extends Dialog {
         form.setColspan(player, 2);
         add(form);
 
-        Button save = new Button("Cargar turno", event -> {
+        Runnable create = () -> {
             try {
                 PlayerOption chosen = player.getValue();
                 Booking booking = bookingService.createManual(club, court.getId(), startsAt,
                         chosen == null ? null : chosen.name(), phone.getValue(),
-                        price.getValue(), notes.getValue());
+                        price.getValue(), notes.getValue(), availabilityException != null);
                 onSaved.accept(booking);
                 showConfirmationStep(booking);
             } catch (BusinessRuleException ex) {
                 // El mensaje ya viene escrito para leerse en pantalla.
                 Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
             }
+        };
+
+        Button save = new Button("Cargar turno", event -> {
+            if (availabilityException == null) {
+                create.run();
+                return;
+            }
+            confirmAvailabilityException(availabilityException, create);
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
         Button cancel = new Button("Cancelar", event -> close());
         cancel.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
         getFooter().add(cancel, save);
+    }
+
+    /** La excepcion se confirma en el ultimo paso, con el formulario ya completo. */
+    private void confirmAvailabilityException(String reason, Runnable create) {
+        ConfirmDialog confirm = new ConfirmDialog();
+        confirm.setHeader("Cargar turno como excepción");
+        confirm.setText(reason + " ¿Querés cargar el turno igualmente?");
+        confirm.setCancelable(true);
+        confirm.setCancelText("Volver");
+        confirm.setConfirmText("Cargar como excepción");
+        confirm.addConfirmListener(event -> create.run());
+        confirm.open();
     }
 
     /**

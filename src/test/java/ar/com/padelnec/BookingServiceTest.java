@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ar.com.padelnec.config.TenantContext;
+import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Customer;
@@ -14,6 +15,7 @@ import ar.com.padelnec.domain.enums.BookingSource;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CancellationReason;
 import ar.com.padelnec.notification.NewBookingFeed;
+import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CustomerRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
@@ -71,6 +73,7 @@ class BookingServiceTest {
     @Autowired private CustomerService customerService;
     @Autowired private CustomerRepository customerRepository;
     @Autowired private BookingRepository bookingRepository;
+    @Autowired private BlackoutRepository blackoutRepository;
     @Autowired private OperationalAlertRepository alertRepository;
     @Autowired private PlayerAccountRepository playerAccountRepository;
     @Autowired private NewBookingFeed newBookingFeed;
@@ -540,6 +543,32 @@ class BookingServiceTest {
         assertThat(booking.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
         assertThat(booking.getSource().name()).isEqualTo("ADMIN");
         assertThat(booking.getTotalPrice()).isEqualByComparingTo("20000");
+    }
+
+    @Test
+    @DisplayName("El club puede cargar una excepcion en una suspension, pero nunca pisar otro turno")
+    void manualAvailabilityExceptionStillRejectsOverlaps() {
+        Instant start = slotAt(LocalTime.of(20, 0));
+        Blackout blackout = new Blackout();
+        blackout.setCourt(court1);
+        blackout.setStartTime(start);
+        blackout.setEndTime(start.plus(Duration.ofMinutes(90)));
+        blackout.setReason("Torneo");
+        blackoutRepository.saveAndFlush(blackout);
+
+        assertThatThrownBy(() -> bookingService.createManual(club, court1.getId(), start,
+                "Grupo del martes", "2262415000", null, null))
+                .isInstanceOf(SlotUnavailableException.class)
+                .hasMessageContaining("suspendido");
+
+        Booking exception = bookingService.createManual(club, court1.getId(), start,
+                "Grupo del martes", "2262415000", null, null, true);
+        assertThat(exception.getStatus()).isEqualTo(BookingStatus.CONFIRMED);
+
+        assertThatThrownBy(() -> bookingService.createManual(club, court1.getId(), start,
+                "Otro grupo", "2262415111", null, null, true))
+                .isInstanceOf(SlotUnavailableException.class)
+                .hasMessageContaining("ocupado");
     }
 
     @Test

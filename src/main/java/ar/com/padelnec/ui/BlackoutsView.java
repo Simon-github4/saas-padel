@@ -8,13 +8,12 @@ import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CourtRepository;
-import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.SlotGenerator;
 import ar.com.padelnec.service.TenantService;
-import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
@@ -42,7 +41,6 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 
@@ -52,10 +50,8 @@ import java.util.Locale;
  *
  * <p>No hace nada nuevo por debajo: {@link Blackout} ya lo bloquea en la
  * grilla publica y en el alta de turnos (ver {@code AvailabilityService}).
- * Esta pantalla solo carga esa fila y, si el club lo pide, da de baja los
- * turnos que ya estaban confirmados en esa franja con el mismo mecanismo que
- * el boton "Dar de baja" del panel ({@link BookingService#cancelByClub}), asi
- * que el jugador se entera por WhatsApp igual que en cualquier otra baja.
+ * Esta pantalla solo carga esa fila. Los turnos que ya existian permanecen:
+ * cerrar disponibilidad nunca modifica reservas silenciosamente.
  */
 @Route(value = "suspensiones", layout = MainLayout.class)
 @PageTitle("Suspensiones | Panel del club")
@@ -69,7 +65,6 @@ public class BlackoutsView extends VerticalLayout {
             DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", ES_AR);
     private static final DateTimeFormatter TIME_LABEL = DateTimeFormatter.ofPattern("HH:mm", ES_AR);
 
-    private final BookingService bookingService;
     private final BookingRepository bookingRepository;
     private final BlackoutRepository blackoutRepository;
     private final CourtRepository courtRepository;
@@ -80,10 +75,9 @@ public class BlackoutsView extends VerticalLayout {
     private final Span count = new Span();
     private Tenant club;
 
-    public BlackoutsView(BookingService bookingService, BookingRepository bookingRepository,
-                         BlackoutRepository blackoutRepository, CourtRepository courtRepository,
+    public BlackoutsView(BookingRepository bookingRepository, BlackoutRepository blackoutRepository,
+                         CourtRepository courtRepository,
                          SlotGenerator slotGenerator, TenantService tenantService) {
-        this.bookingService = bookingService;
         this.bookingRepository = bookingRepository;
         this.blackoutRepository = blackoutRepository;
         this.courtRepository = courtRepository;
@@ -97,9 +91,8 @@ public class BlackoutsView extends VerticalLayout {
         add.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
         Paragraph help = new Paragraph(
-                "La cancha suspendida desaparece de la grilla pública y no se pueden cargar "
-                        + "turnos nuevos ahí. Si ya había turnos confirmados, se pueden dar de baja "
-                        + "avisando al jugador por WhatsApp.");
+                "La cancha suspendida desaparece de la grilla pública. Los turnos que ya estaban "
+                        + "reservados siguen vigentes y el panel te avisa para que los revises.");
         help.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.FontSize.SMALL,
                 LumoUtility.Margin.NONE, LumoUtility.MaxWidth.SCREEN_SMALL);
 
@@ -207,9 +200,6 @@ public class BlackoutsView extends VerticalLayout {
         TextField reason = new TextField("Motivo");
         reason.setPlaceholder("Feriado, torneo, refacción...");
 
-        Checkbox cancelExisting =
-                new Checkbox("Cancelar turnos confirmados y avisar por WhatsApp", true);
-
         Button confirm = new Button("Suspender", event -> {
             if (reason.getValue() == null || reason.getValue().isBlank()) {
                 Notification.show("El motivo es obligatorio").addThemeVariants(NotificationVariant.LUMO_ERROR);
@@ -236,11 +226,7 @@ public class BlackoutsView extends VerticalLayout {
                 return;
             }
 
-            try {
-                int cancelled = cancelExisting.getValue()
-                        ? cancelOverlapping(start, end, court.getValue(), reason.getValue())
-                        : 0;
-
+            Runnable save = () -> {
                 Blackout blackout = new Blackout();
                 blackout.setCourt(court.getValue());
                 blackout.setStartTime(start);
@@ -248,23 +234,24 @@ public class BlackoutsView extends VerticalLayout {
                 blackout.setReason(reason.getValue());
                 blackoutRepository.save(blackout);
 
-                Notification.show(cancelled > 0
-                        ? "%d turno%s cancelado%s. Día suspendido."
-                                .formatted(cancelled, cancelled == 1 ? "" : "s", cancelled == 1 ? "" : "s")
-                        : "Día suspendido.");
+                Notification.show("Día suspendido. Los turnos existentes siguen vigentes.");
                 dialog.close();
                 refresh();
-            } catch (BusinessRuleException ex) {
-                Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+            };
+
+            int affected = overlappingBookings(start, end, court.getValue()).size();
+            if (affected == 0) {
+                save.run();
+            } else {
+                confirmExistingBookings(affected, save);
             }
         });
         confirm.addThemeVariants(ButtonVariant.LUMO_ERROR);
 
-        FormLayout form = new FormLayout(date, allDay, startTime, endTime, court, reason, cancelExisting);
+        FormLayout form = new FormLayout(date, allDay, startTime, endTime, court, reason);
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1),
                 new FormLayout.ResponsiveStep("26em", 2));
         form.setColspan(reason, 2);
-        form.setColspan(cancelExisting, 2);
 
         dialog.setWidth("30rem");
         dialog.add(form);
@@ -272,25 +259,27 @@ public class BlackoutsView extends VerticalLayout {
         dialog.open();
     }
 
-    /**
-     * Da de baja los turnos que todavia pueden cancelarse (DRAFT, sin
-     * confirmar o confirmados) y se solapan con la franja suspendida, con el
-     * mismo camino que ya usa el boton "Dar de baja" del panel.
-     */
-    private int cancelOverlapping(Instant start, Instant end, Court court, String reason) {
+    /** Turnos vigentes que el cierre no va a tocar y el club tiene que revisar. */
+    private List<Booking> overlappingBookings(Instant start, Instant end, Court court) {
         List<Booking> overlapping = bookingRepository.findOverlapping(start, end,
-                EnumSet.of(BookingStatus.DRAFT, BookingStatus.AWAITING_CONFIRMATION,
-                        BookingStatus.CONFIRMED));
+                java.util.EnumSet.of(BookingStatus.DRAFT, BookingStatus.AWAITING_CONFIRMATION,
+                        BookingStatus.CONFIRMED, BookingStatus.COMPLETED));
+        return overlapping.stream()
+                .filter(booking -> court == null || booking.getCourt().getId().equals(court.getId()))
+                .toList();
+    }
 
-        int cancelled = 0;
-        for (Booking booking : overlapping) {
-            if (court != null && !booking.getCourt().getId().equals(court.getId())) {
-                continue;
-            }
-            bookingService.cancelByClub(club, booking.getId(), reason);
-            cancelled++;
-        }
-        return cancelled;
+    private void confirmExistingBookings(int affected, Runnable save) {
+        ConfirmDialog confirm = new ConfirmDialog();
+        confirm.setHeader(affected == 1 ? "Hay un turno ya reservado"
+                : "Hay %d turnos ya reservados".formatted(affected));
+        confirm.setText("La suspensión no los cancela. Revisalos para decidir si siguen, se reubican "
+                + "o se dan de baja.");
+        confirm.setCancelable(true);
+        confirm.setCancelText("Volver");
+        confirm.setConfirmText("Suspender igualmente");
+        confirm.addConfirmListener(event -> save.run());
+        confirm.open();
     }
 
     /** Cancelar es terciario: al lado del primario tiene que pesar menos. */

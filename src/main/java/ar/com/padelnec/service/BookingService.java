@@ -103,7 +103,7 @@ public class BookingService {
                 .filter(Court::isActive)
                 .orElseThrow(() -> new ResourceNotFoundException("La cancha no existe o no está activa"));
 
-        ResolvedSlot slot = openSlot(club, court, request.startTime());
+        ResolvedSlot slot = openSlot(club, court, request.startTime(), false);
 
         Instant now = clock.instant();
         validateWindow(club, slot, now);
@@ -173,9 +173,20 @@ public class BookingService {
     @Transactional
     public Booking createManual(Tenant club, UUID courtId, Instant startTime, String fullName,
                                 String phoneNumber, BigDecimal priceOverride, String notes) {
+        return createManual(club, courtId, startTime, fullName, phoneNumber, priceOverride, notes, false);
+    }
+
+    /**
+     * Alta administrativa, con la posibilidad explicita de ignorar el horario o
+     * una suspension. La excepcion nunca permite pisar otra reserva.
+     */
+    @Transactional
+    public Booking createManual(Tenant club, UUID courtId, Instant startTime, String fullName,
+                                String phoneNumber, BigDecimal priceOverride, String notes,
+                                boolean allowAvailabilityException) {
         Court court = courtRepository.findById(courtId)
                 .orElseThrow(() -> new ResourceNotFoundException("La cancha no existe"));
-        ResolvedSlot slot = openSlot(club, court, startTime);
+        ResolvedSlot slot = openSlot(club, court, startTime, allowAvailabilityException);
 
         BigDecimal price = priceOverride != null ? priceOverride : pricingService
                 .resolve(club, pricingService.rulesFor(club, slot.operatingDate().getDayOfWeek()),
@@ -183,9 +194,12 @@ public class BookingService {
                 .map(PricingService.ResolvedPrice::totalPrice)
                 .orElse(BigDecimal.ZERO);
 
-        if (!availabilityService.isCourtFree(court, slot.slot().startsAt(), slot.slot().endsAt())) {
-            throw new SlotUnavailableException(
-                    "Ese horario no está disponible (ya está ocupado o el día está suspendido).");
+        if (availabilityService.isCourtOccupied(court, slot.slot().startsAt(), slot.slot().endsAt())) {
+            throw new SlotUnavailableException("Ese horario ya está ocupado.");
+        }
+        if (!allowAvailabilityException
+                && availabilityService.isCourtSuspended(court, slot.slot().startsAt(), slot.slot().endsAt())) {
+            throw new SlotUnavailableException("Ese horario está suspendido.");
         }
 
         // El club tampoco renombra al jugador desde un turno: si el nombre esta mal,
@@ -212,11 +226,14 @@ public class BookingService {
     }
 
     /** El turno de la grilla que arranca en {@code startTime}, si esa cancha abre a esa hora. */
-    private ResolvedSlot openSlot(Tenant club, Court court, Instant startTime) {
+    private ResolvedSlot openSlot(Tenant club, Court court, Instant startTime,
+                                  boolean allowAvailabilityException) {
         SlotGenerator.ResolvedPlan resolved = slotGenerator.resolveWithPlan(club, startTime)
+                .or(() -> allowAvailabilityException
+                        ? slotGenerator.resolveAgainstClubHours(club, startTime) : java.util.Optional.empty())
                 .orElseThrow(() -> new BusinessRuleException(
                         "Ese horario no forma parte de la grilla del club"));
-        if (!resolved.opens(court)) {
+        if (!allowAvailabilityException && !resolved.opens(court)) {
             throw new BusinessRuleException("%s no abre en ese horario".formatted(court.getName()));
         }
         return resolved.resolved();

@@ -2,6 +2,7 @@ package ar.com.padelnec.ui;
 
 import ar.com.padelnec.domain.ClubAmenity;
 import ar.com.padelnec.domain.ClubUser;
+import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.CourtSchedule;
 import ar.com.padelnec.domain.PricingRule;
@@ -13,8 +14,10 @@ import ar.com.padelnec.domain.enums.CourtSurface;
 import ar.com.padelnec.domain.enums.CourtWall;
 import ar.com.padelnec.domain.enums.HeroVariant;
 import ar.com.padelnec.domain.enums.ThemeMode;
+import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.payment.MercadoPagoOAuthService;
 import ar.com.padelnec.repository.ClubAmenityRepository;
+import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.CourtScheduleRepository;
 import ar.com.padelnec.repository.PricingRuleRepository;
@@ -23,6 +26,7 @@ import ar.com.padelnec.repository.TenantHeroImageRepository;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.ClubUserService;
 import ar.com.padelnec.service.ProductService;
+import ar.com.padelnec.service.SlotGenerator;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.support.GoogleMapsLinkResolver;
 import ar.com.padelnec.support.ImageSignature;
@@ -78,6 +82,8 @@ import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
+import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -142,9 +148,11 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver,
     private final CourtRepository courtRepository;
     private final PricingRuleRepository pricingRuleRepository;
     private final CourtScheduleRepository courtScheduleRepository;
+    private final BookingRepository bookingRepository;
     private final ClubAmenityRepository amenityRepository;
     private final ProductRepository productRepository;
     private final ProductService productService;
+    private final SlotGenerator slotGenerator;
     private final ClubUserService clubUserService;
     private final GoogleMapsLinkResolver mapsLinkResolver;
     private final transient AuthenticationContext authenticationContext;
@@ -183,8 +191,10 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver,
                         TenantHeroImageRepository tenantHeroImageRepository,
                         CourtRepository courtRepository, PricingRuleRepository pricingRuleRepository,
                         CourtScheduleRepository courtScheduleRepository,
+                        BookingRepository bookingRepository,
                         ClubAmenityRepository amenityRepository, ProductRepository productRepository,
-                        ProductService productService, ClubUserService clubUserService,
+                        ProductService productService, SlotGenerator slotGenerator,
+                        ClubUserService clubUserService,
                         GoogleMapsLinkResolver mapsLinkResolver,
                         AuthenticationContext authenticationContext,
                         MercadoPagoOAuthService mercadoPagoOAuthService, Clock clock) {
@@ -193,9 +203,11 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver,
         this.courtRepository = courtRepository;
         this.pricingRuleRepository = pricingRuleRepository;
         this.courtScheduleRepository = courtScheduleRepository;
+        this.bookingRepository = bookingRepository;
         this.amenityRepository = amenityRepository;
         this.productRepository = productRepository;
         this.productService = productService;
+        this.slotGenerator = slotGenerator;
         this.clubUserService = clubUserService;
         this.mapsLinkResolver = mapsLinkResolver;
         this.authenticationContext = authenticationContext;
@@ -1096,8 +1108,17 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver,
                 .setPartNameGenerator(schedule -> "tabular");
         scheduleGrid.addComponentColumn(schedule -> {
             Button delete = new Button("Borrar", event -> {
-                courtScheduleRepository.delete(schedule);
-                refreshSchedules();
+                List<CourtSchedule> current = courtScheduleRepository.findAllWithCourt();
+                List<CourtSchedule> proposed = current.stream()
+                        .filter(item -> !item.getId().equals(schedule.getId()))
+                        .toList();
+                Runnable remove = () -> {
+                    courtScheduleRepository.delete(schedule);
+                    refreshSchedules();
+                    Notification.show("Horario eliminado");
+                };
+                int affected = affectedByScheduleChange(schedule.getCourt(), current, proposed);
+                confirmScheduleImpact(affected, "Eliminar horario", remove);
             });
             delete.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY);
             return delete;
@@ -1147,11 +1168,18 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver,
             schedule.setClosed(isClosed);
             schedule.setStartTime(isClosed ? null : from.getValue());
             schedule.setEndTime(isClosed ? null : to.getValue());
-            courtScheduleRepository.save(schedule);
-            dayChecks.values().forEach(check -> check.setValue(false));
-            closed.clear();
-            refreshSchedules();
-            Notification.show("Horario de %s guardado".formatted(schedule.getCourt().getName()));
+            List<CourtSchedule> current = courtScheduleRepository.findAllWithCourt();
+            List<CourtSchedule> proposed = new ArrayList<>(current);
+            proposed.add(schedule);
+            Runnable save = () -> {
+                courtScheduleRepository.save(schedule);
+                dayChecks.values().forEach(check -> check.setValue(false));
+                closed.clear();
+                refreshSchedules();
+                Notification.show("Horario de %s guardado".formatted(schedule.getCourt().getName()));
+            };
+            int affected = affectedByScheduleChange(schedule.getCourt(), current, proposed);
+            confirmScheduleImpact(affected, "Guardar horario", save);
         });
         add.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
 
@@ -1183,6 +1211,51 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver,
                 + "(de 13:30 a 22:30 da 13:30, 15:00 ... 21:00). Un turno que no entra completo antes "
                 + "de \"Hasta\" no se ofrece.").formatted(club.getOpenTime(), club.getCloseTime(),
                 club.getDefaultSlotDuration()));
+    }
+
+    /**
+     * Cuenta solo los turnos que estaban dentro del horario anterior y quedan
+     * fuera con el nuevo. Las excepciones que ya estaban fuera no son afectadas
+     * por este cambio y no deben inflar el aviso.
+     */
+    private int affectedByScheduleChange(Court court, List<CourtSchedule> current,
+                                         List<CourtSchedule> proposed) {
+        List<Court> courts = courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc();
+        return (int) bookingRepository.findFutureForCourt(court.getId(), clock.instant(),
+                        EnumSet.of(BookingStatus.DRAFT, BookingStatus.AWAITING_CONFIRMATION,
+                                BookingStatus.CONFIRMED, BookingStatus.COMPLETED)).stream()
+                .filter(booking -> movesOutsideSchedule(booking, court, courts, current, proposed))
+                .count();
+    }
+
+    private boolean movesOutsideSchedule(Booking booking, Court court, List<Court> courts,
+                                         List<CourtSchedule> current, List<CourtSchedule> proposed) {
+        java.time.LocalDate operatingDate = slotGenerator
+                .resolveWithPlan(club, booking.getStartTime(), courts, current)
+                .map(resolved -> resolved.resolved().operatingDate())
+                .orElse(booking.getStartTime().atZone(club.zoneId()).toLocalDate());
+        boolean wasOpen = slotGenerator.plan(club, operatingDate, courts, current)
+                .openFor(court, booking.getStartTime(), booking.getEndTime());
+        boolean remainsOpen = slotGenerator.plan(club, operatingDate, courts, proposed)
+                .openFor(court, booking.getStartTime(), booking.getEndTime());
+        return wasOpen && !remainsOpen;
+    }
+
+    private void confirmScheduleImpact(int affected, String action, Runnable proceed) {
+        if (affected == 0) {
+            proceed.run();
+            return;
+        }
+        ConfirmDialog confirm = new ConfirmDialog();
+        confirm.setHeader(affected == 1 ? "Hay un turno ya reservado"
+                : "Hay %d turnos ya reservados".formatted(affected));
+        confirm.setText("El cambio de horario no los cancela. Revisalos para decidir si siguen, se "
+                + "reubican o se dan de baja.");
+        confirm.setCancelable(true);
+        confirm.setCancelText("Volver");
+        confirm.setConfirmText(action);
+        confirm.addConfirmListener(event -> proceed.run());
+        confirm.open();
     }
 
     private String hoursText(CourtSchedule schedule) {

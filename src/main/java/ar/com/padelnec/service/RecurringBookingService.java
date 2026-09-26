@@ -1,11 +1,13 @@
 package ar.com.padelnec.service;
 
 import ar.com.padelnec.config.AppProperties;
+import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.RecurringBooking;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CancellationReason;
+import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.RecurringBookingRepository;
 import ar.com.padelnec.web.ResourceNotFoundException;
@@ -58,11 +60,17 @@ public class RecurringBookingService {
     private final RecurringOccurrenceWriter occurrenceWriter;
     private final AlertService alertService;
     private final PricingService pricingService;
+    private final BlackoutRepository blackoutRepository;
+    private final SlotGenerator slotGenerator;
     private final AppProperties properties;
     private final Clock clock;
 
     /** Una fecha del turno fijo que no se pudo generar porque la cancha ya estaba tomada, y por quien. */
     public record Conflict(LocalDate date, String occupant) {
+    }
+
+    /** Fecha que puede generarse, pero requiere aceptar un cierre o suspension. */
+    public record Restriction(LocalDate date, String reason) {
     }
 
     /**
@@ -186,6 +194,50 @@ public class RecurringBookingService {
     @Transactional(readOnly = true)
     public List<Conflict> conflicts(Tenant club, RecurringBooking fixed) {
         return conflicts(club, List.of(fixed)).get(fixed);
+    }
+
+    /**
+     * Cierres y suspensiones conocidas dentro del horizonte que el turno fijo
+     * atravesaria. No son choques: el club puede confirmarlos como excepcion.
+     */
+    @Transactional(readOnly = true)
+    public List<Restriction> restrictions(Tenant club, RecurringBooking fixed) {
+        ZoneId zone = club.zoneId();
+        Instant now = clock.instant();
+        LocalDate today = today(club);
+        LocalDate horizon = horizon(today);
+        List<Blackout> blackouts = blackoutRepository.findOverlapping(
+                today.atStartOfDay(zone).toInstant(),
+                horizon.plusDays(2).atStartOfDay(zone).toInstant());
+
+        List<Restriction> found = new ArrayList<>();
+        for (LocalDate date = today; !date.isAfter(horizon); date = date.plusDays(1)) {
+            if (!fixed.appliesOn(date)) {
+                continue;
+            }
+            Instant start = date.atTime(fixed.getStartTime()).atZone(zone).toInstant();
+            Instant end = start.plus(Duration.ofMinutes(fixed.getDurationMinutes()));
+            if (!start.isAfter(now)) {
+                continue;
+            }
+
+            List<String> reasons = new ArrayList<>();
+            if (!slotGenerator.plan(club, date).openFor(fixed.getCourt(), start, end)) {
+                reasons.add("cancha cerrada");
+            }
+            blackouts.stream()
+                    .filter(blackout -> blackout.appliesTo(fixed.getCourt())
+                            && blackout.overlaps(start, end))
+                    .findFirst()
+                    .ifPresent(blackout -> reasons.add(blackout.getReason() == null
+                            || blackout.getReason().isBlank()
+                            ? "cancha suspendida"
+                            : "suspendida por «%s»".formatted(blackout.getReason())));
+            if (!reasons.isEmpty()) {
+                found.add(new Restriction(date, String.join(" y ", reasons)));
+            }
+        }
+        return found;
     }
 
     private static boolean isOccurrenceOf(Booking booking, RecurringBooking fixed) {

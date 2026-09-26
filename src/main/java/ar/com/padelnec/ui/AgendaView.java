@@ -237,8 +237,21 @@ public class AgendaView extends VerticalLayout {
         plan = slotGenerator.plan(club, date);
         blackouts = blackoutRepository.findOverlapping(plan.start(), plan.end());
 
+        // Si el horario se achico despues de reservar, el turno sigue vigente y
+        // necesita una fila propia aunque ya no forme parte de la grilla actual.
+        // La reserva manda visualmente sobre el cierre, igual que con suspensiones.
+        Map<Instant, Slot> visibleSlots = new LinkedHashMap<>();
+        List<Slot> scheduleSlots = plan.slots().isEmpty()
+                ? slotGenerator.clubPlan(club, date).slots() : plan.slots();
+        scheduleSlots.forEach(slot -> visibleSlots.put(slot.startsAt(), slot));
+        bookings.forEach(booking -> visibleSlots.putIfAbsent(booking.getStartTime(),
+                new Slot(booking.getStartTime().atZone(club.zoneId()).toLocalTime(),
+                        booking.getEndTime().atZone(club.zoneId()).toLocalTime(),
+                        booking.getStartTime(), booking.getEndTime())));
+
         List<AgendaRow> rows = new ArrayList<>();
-        for (Slot slot : plan.slots()) {
+        for (Slot slot : visibleSlots.values().stream()
+                .sorted(Comparator.comparing(Slot::startsAt)).toList()) {
             Map<UUID, Booking> byCourt = new LinkedHashMap<>();
             for (Booking booking : bookings) {
                 if (booking.overlaps(slot.startsAt(), slot.endsAt())) {
@@ -374,7 +387,7 @@ public class AgendaView extends VerticalLayout {
                 .<Component>map(booking -> row.slot().startsAt().equals(bookingRows.get(booking.getId()))
                         ? bookedCard(booking) : new Div())
                 .orElseGet(() -> plan.opens(court, row.slot()) ? freeCard(row, court)
-                        : plan.openDuring(court, row.slot()) ? new Div() : closedCard());
+                        : plan.openDuring(court, row.slot()) ? new Div() : closedCard(row, court));
     }
 
     /**
@@ -382,13 +395,19 @@ public class AgendaView extends VerticalLayout {
      * Canchas). Si abre pero sus turnos arrancan a otra hora (13:30 contra el 14:00
      * de las demas), la fila no le corresponde y la celda queda en blanco.
      */
-    private Component closedCard() {
-        Button button = new Button("Cerrada");
+    private Component closedCard(AgendaRow row, Court court) {
+        Button button = new Button("Cerrada",
+                event -> openManualBooking(row, court, "La cancha está cerrada en este horario."));
         button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         button.addClassName("agenda-card__button");
         button.setWidthFull();
-        button.setEnabled(false);
-        return card(button, "agenda-card--suspended", "agenda-card--disabled");
+        button.setEnabled(row.slot().startsAt().isAfter(clock.instant()));
+        button.getElement().setAttribute("title", "Podés cargar un turno manual como excepción");
+        Div wrapper = card(button, "agenda-card--suspended");
+        if (!button.isEnabled()) {
+            wrapper.addClassName("agenda-card--disabled");
+        }
+        return wrapper;
     }
 
     private Component bookedCard(Booking booking) {
@@ -456,12 +475,18 @@ public class AgendaView extends VerticalLayout {
     private Component freeCard(AgendaRow row, Court court) {
         Optional<Blackout> suspension = suspensionFor(row, court);
         boolean blocked = suspension.isPresent();
-        // Un turno que ya empezo no se puede cargar hacia atras, y una franja
-        // suspendida tampoco: cargarla igual solo pasa la pelota a que el
-        // service la rechace despues de llenar el formulario entero.
-        boolean enabled = !blocked && row.slot().startsAt().isAfter(clock.instant());
+        // Un turno que ya empezo no se puede cargar hacia atras. Una suspension
+        // futura si admite una carga administrativa, con confirmacion explicita.
+        boolean enabled = row.slot().startsAt().isAfter(clock.instant());
 
-        Button button = new Button(blocked ? "Suspendido" : "Libre", event -> openManualBooking(row, court));
+        String exception = suspension.map(blackout -> {
+            String reason = blackout.getReason();
+            return reason == null || reason.isBlank()
+                    ? "La cancha está suspendida en este horario."
+                    : "La cancha está suspendida por «%s».".formatted(reason);
+        }).orElse(null);
+        Button button = new Button(blocked ? "Suspendido" : "Libre",
+                event -> openManualBooking(row, court, exception));
         button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         button.addClassName("agenda-card__button");
         button.setWidthFull();
@@ -494,8 +519,8 @@ public class AgendaView extends VerticalLayout {
                 productRepository, phoneNumbers, notificationService, userId, this::refresh).open();
     }
 
-    private void openManualBooking(AgendaRow row, Court court) {
+    private void openManualBooking(AgendaRow row, Court court, String availabilityException) {
         new ManualBookingDialog(club, court, row.slot().startsAt(), bookingService, customerService,
-                notificationService, phoneNumbers, saved -> refresh()).open();
+                notificationService, phoneNumbers, availabilityException, saved -> refresh()).open();
     }
 }

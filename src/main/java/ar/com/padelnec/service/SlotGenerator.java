@@ -58,6 +58,10 @@ public class SlotGenerator {
         boolean overlaps(LocalDateTime from, LocalDateTime to) {
             return from.isBefore(end) && start.isBefore(to);
         }
+
+        boolean contains(LocalDateTime from, LocalDateTime to) {
+            return !from.isBefore(start) && !to.isAfter(end);
+        }
     }
 
     /** La grilla de un dia operativo y en que canchas se juega cada turno. */
@@ -105,6 +109,14 @@ public class SlotGenerator {
                     .anyMatch(window -> window.overlaps(from, to));
         }
 
+        /** Si la cancha permanece abierta durante toda la franja indicada. */
+        public boolean openFor(Court court, Instant startsAt, Instant endsAt) {
+            LocalDateTime from = LocalDateTime.ofInstant(startsAt, zone);
+            LocalDateTime to = LocalDateTime.ofInstant(endsAt, zone);
+            return windowsByCourt.getOrDefault(court.getId(), generalWindows).stream()
+                    .anyMatch(window -> window.contains(from, to));
+        }
+
         /** Cuantos turnos del dia ofrece la cancha. */
         public long slotsOpenIn(Court court) {
             return slots.stream().filter(slot -> opens(court, slot)).count();
@@ -124,6 +136,11 @@ public class SlotGenerator {
     public DayPlan plan(Tenant club, LocalDate date) {
         return plan(club, date, courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc(),
                 courtScheduleRepository.findAllWithCourt());
+    }
+
+    /** Grilla general del club, aun cuando todas las canchas esten cerradas ese dia. */
+    public DayPlan clubPlan(Tenant club, LocalDate date) {
+        return plan(club, date, List.of(), List.of());
     }
 
     /**
@@ -241,6 +258,11 @@ public class SlotGenerator {
     public Optional<ResolvedPlan> resolveWithPlan(Tenant club, Instant startsAt) {
         return resolveWithPlan(club, startsAt, courtRepository.findAllByActiveTrueOrderByDisplayOrderAscNameAsc(),
                 courtScheduleRepository.findAllWithCourt());
+    }
+
+    /** Resuelve contra el horario general, para una excepcion administrativa. */
+    public Optional<ResolvedPlan> resolveAgainstClubHours(Tenant club, Instant startsAt) {
+        return resolveWithPlan(club, startsAt, List.of(), List.of());
     }
 
     /** Igual que {@link #resolveWithPlan(Tenant, Instant)}, sobre canchas y horarios ya cargados. */

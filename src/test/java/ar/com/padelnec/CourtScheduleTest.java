@@ -220,9 +220,25 @@ class CourtScheduleTest {
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Cancha 1 no abre");
 
+        Booking exception = bookingService.createManual(club, court1.getId(), morning,
+                "Excepción administrativa", "2262415222", null, null, true);
+        assertThat(exception.getStatus()).isEqualTo(ar.com.padelnec.domain.enums.BookingStatus.CONFIRMED);
+
         Booking afternoon = bookingService.create(club, new NewBooking(court1.getId(), at(TUESDAY, 14, 0),
                 "Jugador", "2262415000", PaymentChoice.PAY_AT_CLUB));
         assertThat(afternoon.getId()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Si todas las canchas estan cerradas, el panel conserva la grilla general para excepciones")
+    void allClosedCourtsStillAllowAnAdministrativeException() {
+        fixture.courtClosed(court1, DayOfWeek.TUESDAY);
+        fixture.courtClosed(court2, DayOfWeek.TUESDAY);
+
+        Booking exception = bookingService.createManual(club, court1.getId(), at(TUESDAY, 20, 0),
+                "Excepción administrativa", "2262415222", null, null, true);
+
+        assertThat(exception.getStatus()).isEqualTo(ar.com.padelnec.domain.enums.BookingStatus.CONFIRMED);
     }
 
     @Test

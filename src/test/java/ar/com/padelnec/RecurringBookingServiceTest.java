@@ -3,6 +3,7 @@ package ar.com.padelnec;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ar.com.padelnec.config.TenantContext;
+import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Customer;
@@ -11,6 +12,7 @@ import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
 import ar.com.padelnec.domain.enums.BookingSource;
 import ar.com.padelnec.domain.enums.BookingStatus;
+import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
 import ar.com.padelnec.repository.RecurringBookingRepository;
@@ -72,6 +74,7 @@ class RecurringBookingServiceTest {
     @Autowired private BookingService bookingService;
     @Autowired private AvailabilityService availabilityService;
     @Autowired private BookingRepository bookingRepository;
+    @Autowired private BlackoutRepository blackoutRepository;
     @Autowired private OperationalAlertRepository alertRepository;
     @Autowired private CustomerService customerService;
     @Autowired private ClubFixture fixture;
@@ -255,6 +258,45 @@ class RecurringBookingServiceTest {
                 .hasSize(5)
                 .allSatisfy(conflict -> assertThat(conflict.occupant())
                         .isEqualTo("Grupo del martes (turno fijo)"));
+    }
+
+    @Test
+    @DisplayName("Antes de guardar se ven las suspensiones que el turno fijo atravesaria")
+    void previewShowsAvailabilityRestrictions() {
+        LocalDate suspended = TODAY.plusWeeks(1);
+        Instant start = suspended.atTime(20, 0).atZone(ZONE).toInstant();
+        Blackout blackout = new Blackout();
+        blackout.setCourt(court);
+        blackout.setStartTime(start);
+        blackout.setEndTime(start.plus(java.time.Duration.ofMinutes(90)));
+        blackout.setReason("Torneo");
+        blackoutRepository.saveAndFlush(blackout);
+
+        RecurringBooking fixed = new RecurringBooking();
+        fixed.setCourt(court);
+        fixed.setDay(DayOfWeek.TUESDAY);
+        fixed.setStartTime(LocalTime.of(20, 0));
+        fixed.setDurationMinutes(90);
+        fixed.setValidFrom(TODAY);
+
+        assertThat(recurringBookingService.restrictions(club, fixed))
+                .singleElement()
+                .satisfies(restriction -> {
+                    assertThat(restriction.date()).isEqualTo(suspended);
+                    assertThat(restriction.reason()).contains("Torneo");
+                });
+    }
+
+    @Test
+    @DisplayName("Un cierre semanal se advierte, pero no impide materializar la excepcion confirmada")
+    void closedCourtCanMaterializeConfirmedFixedBooking() {
+        fixture.courtClosed(court, DayOfWeek.TUESDAY);
+        RecurringBooking fixed = fixedBooking(LocalTime.of(20, 0), null);
+
+        assertThat(recurringBookingService.restrictions(club, fixed)).hasSize(5)
+                .allSatisfy(restriction -> assertThat(restriction.reason()).contains("cerrada"));
+        assertThat(recurringBookingService.materializeNew(club, fixed)).isEqualTo(5);
+        assertThat(occurrences()).hasSize(5);
     }
 
     @Test

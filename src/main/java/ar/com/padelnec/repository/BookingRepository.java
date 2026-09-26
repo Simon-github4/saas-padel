@@ -184,6 +184,18 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     List<Booking> findMaterialized(@Param("recurringId") UUID recurringId,
                                    @Param("from") Instant from);
 
+    /** Turnos futuros de una cancha para advertir antes de achicar su horario. */
+    @Query("""
+            SELECT b FROM Booking b
+            WHERE b.court.id = :courtId
+              AND b.endTime > :from
+              AND b.status IN :statuses
+            ORDER BY b.startTime ASC
+            """)
+    List<Booking> findFutureForCourt(@Param("courtId") UUID courtId,
+                                     @Param("from") Instant from,
+                                     @Param("statuses") Collection<BookingStatus> statuses);
+
     /**
      * Reservas activas del mismo telefono que empiezan en {@code [from, until)},
      * sin contar las de un origen (los turnos fijos). Sirve para frenar al que

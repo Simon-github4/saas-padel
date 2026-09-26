@@ -7,6 +7,7 @@ import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.service.CustomerService;
 import ar.com.padelnec.service.RecurringBookingService;
 import ar.com.padelnec.service.RecurringBookingService.Conflict;
+import ar.com.padelnec.service.RecurringBookingService.Restriction;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.component.Component;
@@ -20,6 +21,8 @@ import com.vaadin.flow.component.grid.ColumnTextAlign;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.html.Paragraph;
+import com.vaadin.flow.component.html.ListItem;
+import com.vaadin.flow.component.html.UnorderedList;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.html.Span;
@@ -283,11 +286,17 @@ public class RecurringView extends VerticalLayout {
             // Los choques se muestran antes de guardar: el club decide en el momento,
             // en vez de enterarse despues por una pila de alertas.
             List<Conflict> conflicts = recurringBookingService.conflicts(club, fixed);
+            List<Restriction> restrictions = recurringBookingService.restrictions(club, fixed).stream()
+                    // Si la misma fecha tambien esta ocupada, manda el choque duro:
+                    // no se va a generar aunque el cierre admita excepcion.
+                    .filter(restriction -> conflicts.stream()
+                            .noneMatch(conflict -> conflict.date().equals(restriction.date())))
+                    .toList();
             Runnable create = () -> create(fixed, name.getValue(), phone.getValue(), conflicts.size(), dialog);
-            if (conflicts.isEmpty()) {
+            if (conflicts.isEmpty() && restrictions.isEmpty()) {
                 create.run();
             } else {
-                confirmConflicts(conflicts, create);
+                confirmCreation(conflicts, restrictions, create);
             }
         });
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -316,19 +325,50 @@ public class RecurringView extends VerticalLayout {
         }
     }
 
-    private void confirmConflicts(List<Conflict> conflicts, Runnable create) {
+    private void confirmCreation(List<Conflict> conflicts, List<Restriction> restrictions, Runnable create) {
         ConfirmDialog confirm = new ConfirmDialog();
-        confirm.setHeader(conflicts.size() == 1 ? "Una fecha ya está ocupada"
-                : conflicts.size() + " fechas ya están ocupadas");
-        Paragraph intro = new Paragraph("En estas fechas la cancha ya está tomada y el turno fijo no se "
-                + "va a generar. Se muestran las próximas semanas que se generan por adelantado.");
-        intro.addClassNames(LumoUtility.Margin.Top.NONE);
-        confirm.setText(new VerticalLayout(intro, conflictList(conflicts)));
+        confirm.setHeader(restrictions.isEmpty() ? (conflicts.size() == 1
+                ? "Una fecha ya está ocupada" : conflicts.size() + " fechas ya están ocupadas")
+                : "Revisá las fechas del turno fijo");
+
+        VerticalLayout content = new VerticalLayout();
+        content.setPadding(false);
+        content.setSpacing(false);
+        content.addClassNames(LumoUtility.Gap.MEDIUM);
+
+        if (!restrictions.isEmpty()) {
+            Paragraph intro = new Paragraph(restrictions.size() == 1
+                    ? "Hay una fecha en la que la cancha está cerrada o suspendida. Si continuás, se "
+                            + "genera igualmente como excepción."
+                    : ("Hay %d fechas en las que la cancha está cerrada o suspendida. Si continuás, se "
+                            + "generan igualmente como excepción.").formatted(restrictions.size()));
+            intro.addClassNames(LumoUtility.Margin.NONE);
+            content.add(intro, restrictionList(restrictions));
+        }
+        if (!conflicts.isEmpty()) {
+            Paragraph intro = new Paragraph("Las fechas ocupadas no se pueden sobreescribir y quedarán "
+                    + "sin generar.");
+            intro.addClassNames(LumoUtility.Margin.NONE);
+            content.add(intro, conflictList(conflicts));
+        }
+        confirm.setText(content);
         confirm.setCancelable(true);
         confirm.setCancelText("Volver");
-        confirm.setConfirmText("Crear igual");
+        confirm.setConfirmText(restrictions.isEmpty() ? "Crear igualmente" : "Confirmar excepciones");
         confirm.addConfirmListener(event -> create.run());
         confirm.open();
+    }
+
+    private static UnorderedList restrictionList(List<Restriction> restrictions) {
+        UnorderedList list = new UnorderedList();
+        list.addClassNames(LumoUtility.Margin.NONE);
+        restrictions.forEach(restriction -> {
+            ListItem item = new ListItem("%s · %s".formatted(
+                    SHORT_DATE.format(restriction.date()), restriction.reason()));
+            item.addClassNames(LumoUtility.Margin.Vertical.XSMALL);
+            list.add(item);
+        });
+        return list;
     }
 
     /** Bloque de campos con titulo, para que el dialogo no sea una lista larga. */
