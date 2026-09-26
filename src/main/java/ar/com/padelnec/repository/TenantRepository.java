@@ -19,6 +19,9 @@ public interface TenantRepository extends JpaRepository<Tenant, UUID> {
 
     List<Tenant> findAllByActiveTrue();
 
+    /** Los que se muestran en la busqueda general y el sitemap: activos y marcados visibles. */
+    List<Tenant> findAllByActiveTrueAndListedInSearchTrue();
+
     boolean existsBySlugIgnoreCase(String slug);
 
     /** Clubes conectados por OAuth cuyo access token vence dentro de la ventana de renovacion. */

@@ -163,11 +163,16 @@ class SeoPagesIntegrationTest {
         Tenant club = fixture.club("necochea-padel");
         club.setCity("Necochea");
         tenantRepository.saveAndFlush(club);
+        // Todavia se configura: no se ofrece a los buscadores.
+        Tenant hidden = fixture.club("en-configuracion");
+        hidden.setListedInSearch(false);
+        tenantRepository.saveAndFlush(hidden);
 
         client.get().uri("/sitemap.xml").exchange()
                 .expectStatus().isOk()
                 .expectBody(String.class)
                 .value(xml -> assertThat(xml)
+                        .doesNotContain("/club/en-configuracion")
                         .containsPattern("<loc>http://localhost:8080/club/necochea-padel</loc><lastmod>\\d{4}-\\d{2}-\\d{2}T[^<]+Z</lastmod>")
                         .contains("<url><loc>http://localhost:8080/buscar</loc></url>")
                         .contains("<url><loc>http://localhost:8080/buscar?localidad=necochea-quequen</loc></url>"));

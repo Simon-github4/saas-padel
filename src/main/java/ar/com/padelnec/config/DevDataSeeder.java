@@ -107,6 +107,7 @@ public class DevDataSeeder {
         Tenant club = new Tenant();
         club.setName("Pádel Necochea");
         club.setSlug(SLUG);
+        club.setListedInSearch(true);
         club.setWhatsappNumber("+542262400000");
         club.setTagline("Reservá tu cancha y jugá al lado del mar");
         club.setAddress("Av. 59 nº 440");
@@ -171,6 +172,7 @@ public class DevDataSeeder {
         Tenant club = new Tenant();
         club.setName("Costa Verde Pádel");
         club.setSlug("costa-verde");
+        club.setListedInSearch(true);
         club.setWhatsappNumber("+542262400001");
         club.setTagline("Dos canchas, cero vueltas");
         club.setAddress("Calle 502 nº 1250");
@@ -207,6 +209,7 @@ public class DevDataSeeder {
         Tenant club = new Tenant();
         club.setName("El Muelle Pádel");
         club.setSlug("el-muelle");
+        club.setListedInSearch(true);
         club.setWhatsappNumber("+542262400002");
         club.setTagline("Cuatro canchas techadas en el centro");
         club.setAddress("Calle 83 nº 2100");

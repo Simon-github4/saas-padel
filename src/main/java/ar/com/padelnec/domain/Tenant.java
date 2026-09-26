@@ -157,6 +157,13 @@ public class Tenant extends BaseEntity {
     @Column(nullable = false)
     private boolean active = true;
 
+    /**
+     * Si aparece en la busqueda general de clubes y en el sitemap. Arranca oculto
+     * mientras el club se configura; su pagina propia anda igual.
+     */
+    @Column(name = "listed_in_search", nullable = false)
+    private boolean listedInSearch;
+
     /** Frase corta bajo el nombre, ej. "Reservá tu cancha". */
     @Column(length = 160)
     private String tagline;

@@ -233,15 +233,17 @@ class CourtSearchServiceTest {
     }
 
     @Test
-    @DisplayName("El club de ejemplo de la landing no aparece ni en los resultados ni en el filtro")
-    void hidesDemoClub() {
-        withClub(CourtSearchService.DEMO_CLUB_SLUG, club -> {
+    @DisplayName("Un club marcado como oculto no aparece ni en los resultados ni en el filtro, aunque lo pidan")
+    void hidesClubsNotListedInSearch() {
+        Tenant hidden = withClub("en-configuracion", club -> {
             fixture.court("Cancha 1", 1);
             fixture.allDayPrice(TODAY.getDayOfWeek(), "18000");
         });
+        hidden.setListedInSearch(false);
+        fixture.save(hidden);
 
         CourtSearchResponse result = courtSearchService.search(TODAY, TODO_EL_DIA_DESDE, TODO_EL_DIA_HASTA,
-                Set.of(CourtSearchService.DEMO_CLUB_SLUG, "costa-verde"));
+                Set.of("en-configuracion", "costa-verde"));
 
         assertThat(result.matches()).extracting(Match::clubSlug).containsOnly("costa-verde");
         assertThat(result.clubs()).extracting(CourtSearchResponse.ClubOption::slug)

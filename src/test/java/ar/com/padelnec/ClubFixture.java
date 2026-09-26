@@ -92,6 +92,8 @@ public class ClubFixture {
         Tenant club = new Tenant();
         club.setName("Club " + slug);
         club.setSlug(slug);
+        // Un club de prueba ya esta configurado: se ve en la busqueda y el sitemap.
+        club.setListedInSearch(true);
         club.setWhatsappNumber("+542262400000");
         club.setOpenTime(LocalTime.of(8, 0));
         club.setCloseTime(LocalTime.of(23, 0));

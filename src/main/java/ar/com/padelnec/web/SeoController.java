@@ -3,7 +3,6 @@ package ar.com.padelnec.web;
 import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.repository.TenantRepository;
-import ar.com.padelnec.service.CourtSearchService;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -56,13 +55,14 @@ public class SeoController {
                 """.formatted(properties.getBaseUrl());
     }
 
-    /** Un link por club activo, para que no dependan de que alguien los enlace primero. */
+    /**
+     * Un link por club activo y visible, para que no dependan de que alguien los
+     * enlace primero. El que todavia se configura (Tenant.listedInSearch) no va.
+     */
     @GetMapping(value = "/sitemap.xml", produces = MediaType.APPLICATION_XML_VALUE)
     public String sitemap() {
         String base = properties.getBaseUrl();
-        List<Tenant> clubs = tenantRepository.findAllByActiveTrue().stream()
-                .filter(CourtSearchService::listedPublicly)
-                .toList();
+        List<Tenant> clubs = tenantRepository.findAllByActiveTrueAndListedInSearchTrue();
 
         StringBuilder xml = new StringBuilder();
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");

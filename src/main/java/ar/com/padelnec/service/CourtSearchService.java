@@ -53,20 +53,8 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class CourtSearchService {
 
-    /**
-     * El club de ejemplo al que lleva "Ver un club real" desde la landing comercial.
-     * Tiene datos de prueba, asi que no se ofrece a quien busca donde jugar: solo se
-     * llega por ese link.
-     */
-    public static final String DEMO_CLUB_SLUG = "simon";
-
     private final TenantRepository tenantRepository;
     private final AvailabilityService availabilityService;
-
-    /** Si el club se muestra en los listados generales (busqueda, sitemap). */
-    public static boolean listedPublicly(Tenant club) {
-        return !DEMO_CLUB_SLUG.equalsIgnoreCase(club.getSlug());
-    }
 
     /**
      * Que tiene que tener la cancha para que el turno cuente. Un campo nulo es "me da
@@ -101,9 +89,9 @@ public class CourtSearchService {
             throw new BusinessRuleException("La hora de inicio no puede ser posterior a la de fin.");
         }
 
-        List<Tenant> active = tenantRepository.findAllByActiveTrue().stream()
-                .filter(CourtSearchService::listedPublicly)
-                .toList();
+        // Solo los marcados visibles (Tenant.listedInSearch): un club que todavia se
+        // configura no se le ofrece a quien busca donde jugar.
+        List<Tenant> active = tenantRepository.findAllByActiveTrueAndListedInSearchTrue();
         Set<String> wanted = slugs.stream()
                 .map(slug -> slug.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toSet());
