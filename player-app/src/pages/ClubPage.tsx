@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { track } from '../analytics';
 import { api, ApiError, type Availability, type Slot } from '../api/client';
+import { applyClubTheme, rememberClubTheme } from '../clubTheme';
 import { roofFromParam, surfaceFromParam, wallFromParam } from '../courtFeatures';
 import { addDays, clockTime, longDate, perPerson, todayIso, whatsappLink } from '../format';
 import { setPageMeta, setStructuredData } from '../seo';
@@ -81,28 +82,15 @@ export function ClubPage() {
     void load();
   }, [load]);
 
-  // La paleta la elige el club: paleta clara/oscura y los dos acentos de
-  // marca se aplican como custom properties en <html>, asi las toma toda la
-  // hoja de estilos sin repetir la logica en cada seccion. Se limpia al salir
-  // de la pagina para no dejarle el tema de un club pegado a otra ruta.
+  // La paleta la elige el club (ver clubTheme.ts). Se anota además para que
+  // "Ver turnos" se vea como este club.
   useEffect(() => {
     const club = data?.club;
     if (!club) {
       return;
     }
-    const root = document.documentElement;
-    root.dataset.theme = club.themeMode === 'LIGHT' ? 'light' : 'dark';
-    if (club.primaryColor) {
-      root.style.setProperty('--color-ladrillo', club.primaryColor);
-    }
-    if (club.secondaryColor) {
-      root.style.setProperty('--color-ladrillo-claro', club.secondaryColor);
-    }
-    return () => {
-      delete root.dataset.theme;
-      root.style.removeProperty('--color-ladrillo');
-      root.style.removeProperty('--color-ladrillo-claro');
-    };
+    rememberClubTheme(club);
+    return applyClubTheme(club);
   }, [data?.club]);
 
   // Sin esto, Google ve el mismo título y descripción genéricos de

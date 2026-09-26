@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useLocation } from 'react-router-dom';
 import { usePlayerAuth } from '../auth/AuthContext';
+import { useLastClubTheme } from '../clubTheme';
 import { ApiError, playerApi, type BookingHistoryItem, type WaitlistItem } from '../api/client';
 import { clockTime, formatHours, longDate, money } from '../format';
 import { readGuestBookings, type GuestBooking } from '../guestBookings';
@@ -23,6 +24,7 @@ import { summarize, type Period } from '../stats';
  * existe esta lista.
  */
 export function AccountPage() {
+  useLastClubTheme();
   const { session, logout, clearExpiredSession } = usePlayerAuth();
   const [history, setHistory] = useState<BookingHistoryItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
