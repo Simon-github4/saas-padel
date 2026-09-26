@@ -106,10 +106,15 @@ export function AccountPage() {
       }
     >
       <div className="mb-5 mt-6 flex items-start justify-between gap-4">
-        <SectionTitle
-          title={session.displayName ?? 'Mis turnos'}
-          subtitle={session.email}
-        />
+        <div>
+          <SectionTitle
+            title={session.displayName ?? 'Mis turnos'}
+            subtitle={session.email}
+          />
+          {session.phoneNumber && (
+            <p className="mt-0.5 text-sm tabular-nums text-ink-soft">{session.phoneNumber}</p>
+          )}
+        </div>
         <Button variant="secondary" className="w-auto px-4" onClick={logout}>
           Cerrar sesión
         </Button>
