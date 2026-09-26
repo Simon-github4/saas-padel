@@ -194,7 +194,8 @@ class WaitlistServiceTest {
                 .singleElement()
                 .satisfies(alert -> {
                     assertThat(alert.getType()).isEqualTo(AlertType.WAITLIST_SLOT_FREED);
-                    assertThat(alert.getMessage()).contains("El club dio de baja", "20:00", "Hay 1 anotado");
+                    assertThat(alert.getMessage()).contains("El club dio de baja", "20:00", "Hay 1 anotado",
+                            "aviso automático por mail");
                 });
     }
 

@@ -100,7 +100,8 @@ public class AlertService {
                 ? "El club dio de baja"
                 : "Se canceló por la web";
         raise(AlertType.WAITLIST_SLOT_FREED, booking, ("%s el turno de %s del %s a las %s hs. "
-                + "%s en la lista de espera: avisales por WhatsApp.").formatted(
+                + "%s en la lista de espera: les llega un aviso automático por mail, "
+                + "pero conviene escribirles también por WhatsApp.").formatted(
                 who, booking.getCourt().getName(), start.format(DAY), start.format(TIME),
                 waiting == 1 ? "Hay 1 anotado" : "Hay " + waiting + " anotados"));
     }

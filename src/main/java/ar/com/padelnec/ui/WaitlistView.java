@@ -13,6 +13,7 @@ import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.H3;
+import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
 import com.vaadin.flow.component.orderedlayout.FlexComponent.JustifyContentMode;
@@ -95,7 +96,15 @@ public class WaitlistView extends VerticalLayout implements BeforeEnterObserver 
         slots.setSpacing(false);
         slots.addClassNames(LumoUtility.Gap.LARGE);
 
-        add(toolbar, slots);
+        // Dice como funciona el aviso, no si ya salio: eso no se puede afirmar
+        // por anotado (ver el javadoc de la clase).
+        Paragraph automaticNotice = new Paragraph("Cuando se libera un horario, a los anotados les llega "
+                + "un aviso automático por mail. Con el botón de cada uno les podés escribir también "
+                + "por WhatsApp.");
+        automaticNotice.addClassNames(LumoUtility.Margin.NONE, LumoUtility.FontSize.SMALL,
+                LumoUtility.TextColor.SECONDARY);
+
+        add(automaticNotice, toolbar, slots);
     }
 
     @Override
