@@ -7,7 +7,7 @@ import { AccountButton } from '../components/AccountButton';
 import { InstallBanner } from '../components/InstallBanner';
 import { MonthCalendar } from '../components/MonthCalendar';
 import { TemaSwitch } from '../components/TemaSwitch';
-import { Alert, Badge, Button, Card, Screen, TopBar } from '../components/Ui';
+import { Alert, Badge, Button, Card, InstagramGlyph, Screen, TopBar } from '../components/Ui';
 import {
   ROOF_LABEL,
   SURFACE_LABEL,
@@ -33,7 +33,7 @@ import {
   sortByDistance,
 } from '../searchResults';
 import { setPageMeta } from '../seo';
-import { BRAND } from './marketing/config';
+import { BRAND, INSTAGRAM_HANDLE, INSTAGRAM_URL } from './marketing/config';
 
 /** Primera y última hora que ofrece el selector, en pasos de media hora. */
 const FIRST_HOUR = 0;
@@ -495,7 +495,17 @@ export function SearchPage() {
         la portada. Acá abajo va con el texto de a quién le sirve: esa página le
         vende sobre todo al dueño del club.
       */}
-      <footer className="mt-16 border-t border-cal/10 pt-8 text-center">
+      <footer className="mt-16 flex flex-col items-center gap-5 border-t border-cal/10 pt-8 text-center">
+        {/* Canchas liberadas, clubes nuevos: lo que se cuenta en Instagram le sirve al jugador. */}
+        <a
+          href={INSTAGRAM_URL}
+          target="_blank"
+          rel="noreferrer"
+          aria-label={`Instagram de ${BRAND}: @${INSTAGRAM_HANDLE}`}
+          className="inline-flex items-center gap-2 rounded-full border border-cal/10 px-4 py-2 text-sm font-semibold text-cal transition hover:border-cal/25"
+        >
+          <InstagramGlyph className="size-4" />@{INSTAGRAM_HANDLE}
+        </a>
         <Link
           to="/"
           className="eyebrow text-ink-soft underline-offset-4 transition hover:text-cal hover:underline"

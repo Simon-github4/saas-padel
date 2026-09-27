@@ -40,6 +40,9 @@ public class SeoPageRenderer {
 
     private static final String LOGO_PATH = "/apple-touch-icon.png";
 
+    /** Instagram de la marca, igual a {@code INSTAGRAM_URL} en player-app/src/pages/marketing/config.ts. */
+    static final String INSTAGRAM_URL = "https://www.instagram.com/turnospadel/";
+
     /**
      * Ciudades pegadas que para el jugador son un mismo lugar, igual que {@code ZONAS} en
      * SearchPage.tsx: ahi agrupa las secciones de resultados, aca le da a esa zona su propio
@@ -180,6 +183,7 @@ public class SeoPageRenderer {
         organization.put("name", SITE_NAME);
         organization.put("url", absolute("/"));
         organization.put("logo", absolute(LOGO_PATH));
+        organization.put("sameAs", List.of(INSTAGRAM_URL));
 
         Map<String, Object> software = new LinkedHashMap<>();
         software.put("@type", "SoftwareApplication");

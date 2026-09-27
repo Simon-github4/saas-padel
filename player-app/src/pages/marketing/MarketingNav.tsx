@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { BrandLogo } from '../../components/BrandLogo';
-import { SearchGlyph } from '../../components/Ui';
-import { BRAND, SALES_EMAIL, salesWhatsappHref } from './config';
+import { InstagramGlyph, SearchGlyph } from '../../components/Ui';
+import { BRAND, INSTAGRAM_HANDLE, INSTAGRAM_URL, SALES_EMAIL, salesWhatsappHref } from './config';
 import { WhatsappPulse } from './Cta';
 import { CONTAINER } from './motion';
 
@@ -269,6 +269,15 @@ export function MarketingFooter() {
             <BrandLogo />
           </p>
           <p className="mt-3 max-w-xs text-sm text-ink-mute">Reservas online para tu club de pádel.</p>
+          <a
+            href={INSTAGRAM_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Instagram de ${BRAND}: @${INSTAGRAM_HANDLE}`}
+            className="mt-5 inline-flex items-center gap-2 rounded-full border border-cal/10 px-4 py-2 text-sm font-semibold text-cal transition hover:border-cal/25"
+          >
+            <InstagramGlyph className="size-4" />@{INSTAGRAM_HANDLE}
+          </a>
         </div>
         <FooterColumn title="Jugadores">
           <Link to="/buscar" className={`${linkClass} font-semibold text-cal`}>

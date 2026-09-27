@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom';
-import { SALES_EMAIL, salesWhatsappHref } from './config';
+import { InstagramGlyph } from '../../components/Ui';
+import { INSTAGRAM_HANDLE, INSTAGRAM_URL, SALES_EMAIL, salesWhatsappHref } from './config';
 import { DEMO_CLUB_PATH, WhatsappCta } from './Cta';
 import { CourtLines, Reveal, useInView } from './motion';
 
 /**
- * Cierre de la landing: el mismo par de contactos que la barra, sin más rodeos.
+ * Cierre de la landing: los contactos de la barra, más el Instagram, sin más rodeos.
  * Detrás, la cancha vista desde arriba se dibuja al llegar, con el llamado
  * parado sobre la red; las líneas se apagan hacia el centro para no cruzar
  * el texto.
@@ -42,6 +43,14 @@ export function ClosingSection() {
               className="text-sm font-semibold uppercase tracking-[0.12em] text-ink-soft transition hover:text-cal"
             >
               {SALES_EMAIL}
+            </a>
+            <a
+              href={INSTAGRAM_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-ink-soft transition hover:text-cal"
+            >
+              <InstagramGlyph className="size-4" />@{INSTAGRAM_HANDLE}
             </a>
           </div>
           <p className="mt-10 text-sm text-ink-soft">

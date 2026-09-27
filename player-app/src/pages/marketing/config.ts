@@ -6,6 +6,9 @@ export const BRAND_PARTS = ['Turnos', 'Padel'] as const;
 export const BRAND = BRAND_PARTS.join('');
 export const SALES_WHATSAPP = '5492262566185';
 export const SALES_EMAIL = 'diazsimon1230@gmail.com';
+/** Instagram de la marca, sin @. El mismo va en el JSON-LD de la portada (SeoPageRenderer.INSTAGRAM_URL). */
+export const INSTAGRAM_HANDLE = 'turnospadel';
+export const INSTAGRAM_URL = `https://www.instagram.com/${INSTAGRAM_HANDLE}/`;
 export const SALES_MESSAGE =
   'Hola, tengo un club y quiero ver cómo funciona el sistema de reservas.';
 
