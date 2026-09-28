@@ -42,9 +42,13 @@ public record CourtSearchResponse(
      *                     La distancia se calcula en el navegador: la ubicacion del
      *                     jugador nunca viaja al servidor. Null, junto con
      *                     {@code longitude}, si el club no cargo su ubicacion.
+     * @param comingSoon   el club todavia se configura: aparece con su nombre y su
+     *                     foto como "proximamente", sin horarios. Nunca trae turnos
+     *                     en {@code matches}.
      */
     public record ClubOption(String slug, String name, String city, int bookingHorizonDays,
-                             String heroImageUrl, BigDecimal latitude, BigDecimal longitude) {
+                             String heroImageUrl, BigDecimal latitude, BigDecimal longitude,
+                             boolean comingSoon) {
     }
 
     /** Un horario libre en un club concreto. */

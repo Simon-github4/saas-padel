@@ -233,8 +233,8 @@ class CourtSearchServiceTest {
     }
 
     @Test
-    @DisplayName("Un club marcado como oculto no aparece ni en los resultados ni en el filtro, aunque lo pidan")
-    void hidesClubsNotListedInSearch() {
+    @DisplayName("Un club que todavia se configura aparece como proximamente, sin horarios aunque lo pidan")
+    void clubsNotListedInSearchComeSoon() {
         Tenant hidden = withClub("en-configuracion", club -> {
             fixture.court("Cancha 1", 1);
             fixture.allDayPrice(TODAY.getDayOfWeek(), "18000");
@@ -246,8 +246,28 @@ class CourtSearchServiceTest {
                 Set.of("en-configuracion", "costa-verde"));
 
         assertThat(result.matches()).extracting(Match::clubSlug).containsOnly("costa-verde");
-        assertThat(result.clubs()).extracting(CourtSearchResponse.ClubOption::slug)
-                .containsExactlyInAnyOrder("club-necochea", "costa-verde");
+        assertThat(result.clubs())
+                .extracting(CourtSearchResponse.ClubOption::slug, CourtSearchResponse.ClubOption::comingSoon)
+                .containsExactlyInAnyOrder(
+                        tuple("club-necochea", false),
+                        tuple("costa-verde", false),
+                        tuple("en-configuracion", true));
+    }
+
+    @Test
+    @DisplayName("El club de demostracion no aparece en la busqueda, ni siquiera como proximamente")
+    void demoClubIsNeverListed() {
+        Tenant demo = withClub("simon", club -> {
+            fixture.court("Cancha 1", 1);
+            fixture.allDayPrice(TODAY.getDayOfWeek(), "18000");
+        });
+        demo.setListedInSearch(false);
+        fixture.save(demo);
+
+        CourtSearchResponse result = searchAllDay();
+
+        assertThat(result.matches()).extracting(Match::clubSlug).doesNotContain("simon");
+        assertThat(result.clubs()).extracting(CourtSearchResponse.ClubOption::slug).doesNotContain("simon");
     }
 
     @Test

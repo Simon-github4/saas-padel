@@ -53,6 +53,13 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class CourtSearchService {
 
+    /**
+     * El club de demostracion de la landing ({@code DEMO_CLUB_PATH} en la app): se
+     * entra solo desde su link. No es un club de verdad, asi que en la busqueda no
+     * aparece ni como "proximamente".
+     */
+    static final String DEMO_CLUB_SLUG = "simon";
+
     private final TenantRepository tenantRepository;
     private final AvailabilityService availabilityService;
 
@@ -89,15 +96,20 @@ public class CourtSearchService {
             throw new BusinessRuleException("La hora de inicio no puede ser posterior a la de fin.");
         }
 
-        // Solo los marcados visibles (Tenant.listedInSearch): un club que todavia se
-        // configura no se le ofrece a quien busca donde jugar.
-        List<Tenant> active = tenantRepository.findAllByActiveTrueAndListedInSearchTrue();
+        List<Tenant> active = tenantRepository.findAllByActiveTrue().stream()
+                .filter(club -> !DEMO_CLUB_SLUG.equalsIgnoreCase(club.getSlug()))
+                .toList();
         Set<String> wanted = slugs.stream()
                 .map(slug -> slug.toLowerCase(Locale.ROOT))
                 .collect(Collectors.toSet());
 
         List<Match> matches = new ArrayList<>();
         for (Tenant club : active) {
+            // Un club que todavia se configura (Tenant.listedInSearch) aparece como
+            // "proximamente", pero sus horarios no se le ofrecen a nadie.
+            if (!club.isListedInSearch()) {
+                continue;
+            }
             if (!wanted.isEmpty() && !wanted.contains(club.getSlug().toLowerCase(Locale.ROOT))) {
                 continue;
             }
@@ -174,7 +186,8 @@ public class CourtSearchService {
                     return new ClubOption(club.getSlug(), club.getName(), club.getCity(),
                             club.getBookingHorizonDays(), heroImageOf(club),
                             located ? club.getLatitude() : null,
-                            located ? club.getLongitude() : null);
+                            located ? club.getLongitude() : null,
+                            !club.isListedInSearch());
                 })
                 .toList();
     }

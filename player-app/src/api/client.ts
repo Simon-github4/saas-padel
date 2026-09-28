@@ -106,6 +106,11 @@ export interface ClubOption {
    */
   latitude: number | null;
   longitude: number | null;
+  /**
+   * El club todavía se configura: aparece con nombre y foto como "Próximamente",
+   * sin horarios. Nunca trae turnos en la búsqueda.
+   */
+  comingSoon: boolean;
 }
 
 /** Un horario libre en un club concreto, ya listo para pintar como resultado. */

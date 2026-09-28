@@ -242,7 +242,14 @@ export function SearchPage() {
     update({ clubes: next.join(',') });
   };
 
-  const clubs = data?.clubs ?? [];
+  // Los que todavía se configuran no tienen horarios: no entran en los filtros ni en
+  // el calendario, solo se muestran como "Próximamente" en su localidad.
+  const clubs = useMemo(() => data?.clubs.filter((club) => !club.comingSoon) ?? [], [data]);
+  // Con clubes elegidos se busca en esos: los de "Próximamente" no son ninguno de ellos.
+  const comingSoon = useMemo(
+    () => (selectedClubs.length === 0 ? (data?.clubs.filter((club) => club.comingSoon) ?? []) : []),
+    [data, selectedClubs],
+  );
   // El horizonte más largo entre los clubes: el calendario es uno solo para todos.
   const horizon = clubs.length > 0
     ? Math.max(...clubs.map((club) => club.bookingHorizonDays))
@@ -256,8 +263,8 @@ export function SearchPage() {
     ? clubs.filter((club) => localityOf(club.city).key === activeLocality.key)
     : clubs;
   const sections = useMemo(
-    () => buildSections(data?.matches ?? [], activeLocality?.key ?? null),
-    [data, activeLocality],
+    () => buildSections(data?.matches ?? [], comingSoon, activeLocality?.key ?? null),
+    [data, comingSoon, activeLocality],
   );
   const visibleMatches = sections.reduce((sum, section) => sum + section.matches.length, 0);
 
@@ -420,16 +427,32 @@ export function SearchPage() {
           // nueva, en vez de desaparecer y dejar la página saltando.
           <div className={`transition-opacity duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
             {visibleMatches === 0 ? (
-              <EmptyResults
-                date={date}
-                todoElDia={todoElDia}
-                otherLocalities={activeLocality ? (data.matches.length > 0) : false}
-                courtFiltered={wall !== null || surface !== null || roof !== null}
-                onAllDay={() => update({ desde: '00:00', hasta: LAST_HALF })}
-                onNextDay={() => update({ fecha: addDays(date, 1) })}
-                onAllLocalities={() => pickLocality('')}
-                onAnyCourt={() => update({ paredes: '', piso: '', techo: '' })}
-              />
+              <>
+                <EmptyResults
+                  date={date}
+                  todoElDia={todoElDia}
+                  otherLocalities={activeLocality ? (data.matches.length > 0) : false}
+                  courtFiltered={wall !== null || surface !== null || roof !== null}
+                  onAllDay={() => update({ desde: '00:00', hasta: LAST_HALF })}
+                  onNextDay={() => update({ fecha: addDays(date, 1) })}
+                  onAllLocalities={() => pickLocality('')}
+                  onAnyCourt={() => update({ paredes: '', piso: '', techo: '' })}
+                />
+                {/* Sin turnos quedan solo los clubes que se suman pronto. */}
+                {sections.length > 0 && (
+                  <div className="mt-10 space-y-10">
+                    {sections.map((section) => (
+                      <LocalitySection
+                        key={section.key}
+                        section={section}
+                        clubs={clubs}
+                        date={data.date}
+                        courtQuery={courtQuery(wall, surface, roof)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 {/* Con una sola zona, la cuenta total repetía la de su encabezado. Por
@@ -467,6 +490,12 @@ export function SearchPage() {
                           position={index + 1}
                           courtQuery={courtQuery(wall, surface, roof)}
                         />
+                      </li>
+                    ))}
+                    {/* Sin horarios no compiten por cercanía: van al final. */}
+                    {sections.flatMap((section) => section.comingSoon).map((club, index) => (
+                      <li key={club.slug}>
+                        <ComingSoonCard club={club} position={byDistance.length + index + 1} />
                       </li>
                     ))}
                   </ul>
@@ -1137,6 +1166,7 @@ function LocalitySection({
   courtQuery: string;
 }) {
   const groups = groupByClub(section.matches, clubs);
+  const clubCount = groups.length + section.comingSoon.length;
   return (
     <section aria-label={section.name}>
       <header className="mb-4 flex flex-col gap-1 border-b border-cal/10 pb-3 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
@@ -1148,13 +1178,20 @@ function LocalitySection({
           </h3>
         </div>
         <p className="shrink-0 text-sm text-ink-soft tabular-nums sm:pb-1">
-          {groups.length === 1 ? '1 club' : `${groups.length} clubes`} · {resultsTitle(section.matches)}
+          {clubCount === 1 ? '1 club' : `${clubCount} clubes`} ·{' '}
+          {section.matches.length > 0 ? resultsTitle(section.matches) : 'Próximamente'}
         </p>
       </header>
       <ul className="space-y-4">
         {groups.map((group, index) => (
           <li key={group.slug}>
             <ClubCard club={group} date={date} position={index + 1} courtQuery={courtQuery} />
+          </li>
+        ))}
+        {/* Después de los que tienen horarios: lo primero es dónde se puede jugar hoy. */}
+        {section.comingSoon.map((club, index) => (
+          <li key={club.slug}>
+            <ComingSoonCard club={club} position={groups.length + index + 1} />
           </li>
         ))}
       </ul>
@@ -1259,6 +1296,31 @@ function ClubCard({
           </li>
         ))}
       </ul>
+    </article>
+  );
+}
+
+/**
+ * Un club que todavía se configura: solo su foto y su nombre, y "Próximamente"
+ * donde irían los horarios. No lleva link: su página todavía puede estar a medio
+ * armar, y no tiene turnos para ofrecer.
+ */
+function ComingSoonCard({ club, position }: { club: ClubOption; position: number }) {
+  return (
+    <article
+      style={{ animationDelay: `${Math.min(position - 1, 8) * 60}ms` }}
+      className="ficha-in overflow-hidden rounded-3xl border border-dashed border-cal/15"
+    >
+      <div className="flex items-center gap-4 p-3 pr-4">
+        <ClubPhoto name={club.name} url={club.heroImageUrl} />
+        <div className="min-w-0 flex-1">
+          <h4 className="display truncate text-[1.7rem] leading-none tracking-[0.04em]">{club.name}</h4>
+          {club.city && <p className="mt-1.5 truncate text-xs text-ink-mute">{townOf(club.city)}</p>}
+        </div>
+      </div>
+      <p className="eyebrow border-t border-dashed border-cal/15 p-3 text-center text-ladrillo-claro">
+        Próximamente
+      </p>
     </article>
   );
 }
@@ -1469,7 +1531,8 @@ function PinGlyph({ className }: { className?: string }) {
 
 type Locality = { key: string; name: string; region: string | null };
 type LocalityCount = Locality & { matches: number };
-type Section = Locality & { matches: SearchMatch[] };
+/** Una localidad con sus turnos y los clubes que se suman pronto, que no tienen turnos. */
+type Section = Locality & { matches: SearchMatch[]; comingSoon: ClubOption[] };
 
 const NO_LOCALITY: Locality = { key: 'otras', name: 'Otras localidades', region: null };
 
@@ -1597,17 +1660,27 @@ function saveNearby(on: boolean) {
   }
 }
 
-/** Los resultados agrupados por localidad, cada grupo en el orden por horario que manda el backend. */
-function buildSections(matches: SearchMatch[], onlyKey: string | null): Section[] {
+/**
+ * Los resultados agrupados por localidad, cada grupo en el orden por horario que
+ * manda el backend. Los clubes de "Próximamente" van en la suya, aunque sea todo lo
+ * que hay ahí: una localidad sin turnos igual muestra quién está por llegar.
+ */
+function buildSections(matches: SearchMatch[], comingSoon: ClubOption[], onlyKey: string | null): Section[] {
   const byKey = new Map<string, Section>();
-  for (const match of matches) {
-    const locality = localityOf(match.city);
+  const sectionOf = (city: string | null): Section | null => {
+    const locality = localityOf(city);
     if (onlyKey && locality.key !== onlyKey) {
-      continue;
+      return null;
     }
-    const section = byKey.get(locality.key) ?? { ...locality, matches: [] };
-    section.matches.push(match);
+    const section = byKey.get(locality.key) ?? { ...locality, matches: [], comingSoon: [] };
     byKey.set(locality.key, section);
+    return section;
+  };
+  for (const match of matches) {
+    sectionOf(match.city)?.matches.push(match);
+  }
+  for (const club of comingSoon) {
+    sectionOf(club.city)?.comingSoon.push(club);
   }
   return [...byKey.values()].sort(compareLocalities);
 }

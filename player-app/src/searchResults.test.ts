@@ -26,7 +26,7 @@ function club(
   heroImageUrl: string | null,
   location: { latitude: number | null; longitude: number | null } = { latitude: null, longitude: null },
 ): ClubOption {
-  return { slug, name: `Club ${slug}`, city: 'Necochea, Buenos Aires', bookingHorizonDays: 21, heroImageUrl, ...location };
+  return { slug, name: `Club ${slug}`, city: 'Necochea, Buenos Aires', bookingHorizonDays: 21, heroImageUrl, ...location, comingSoon: false };
 }
 
 // Puntos reales de Necochea, para que las distancias sean creíbles.

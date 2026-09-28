@@ -158,8 +158,9 @@ public class Tenant extends BaseEntity {
     private boolean active = true;
 
     /**
-     * Si aparece en la busqueda general de clubes y en el sitemap. Arranca oculto
-     * mientras el club se configura; su pagina propia anda igual.
+     * Si ofrece sus horarios en la busqueda general de clubes y aparece en el
+     * sitemap. Arranca apagado mientras el club se configura: en la busqueda se ve
+     * como "proximamente", solo con nombre y foto. Su pagina propia anda igual.
      */
     @Column(name = "listed_in_search", nullable = false)
     private boolean listedInSearch;
