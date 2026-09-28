@@ -6,6 +6,7 @@ import ar.com.padelnec.domain.enums.PageEventName;
 import ar.com.padelnec.repository.PageEventRepository;
 import ar.com.padelnec.repository.TenantRepository;
 import ar.com.padelnec.service.BookingService.PaymentChoice;
+import ar.com.padelnec.support.UserAgents;
 import ar.com.padelnec.web.dto.PageEventDtos.TrackRequest;
 import ar.com.padelnec.web.dto.PageEventDtos.TrackedEvent;
 import java.time.Instant;
@@ -64,14 +65,6 @@ public class PageEventService {
             "bot|crawl|spider|slurp|facebookexternalhit|headless|lighthouse|preview|scrape",
             Pattern.CASE_INSENSITIVE);
 
-    /**
-     * Telefono o computadora, nada mas fino. Las tablets no se distinguen de forma
-     * confiable -- el iPad moderno se anuncia como escritorio -- y una categoria
-     * que miente es peor que no tenerla.
-     */
-    private static final Pattern MOBILE = Pattern.compile(
-            "mobi|android|iphone|ipod", Pattern.CASE_INSENSITIVE);
-
     private final PageEventRepository pageEventRepository;
     private final TenantRepository tenantRepository;
     private final AppProperties properties;
@@ -96,7 +89,7 @@ public class PageEventService {
             return;
         }
 
-        List<PageEvent> pending = build(request, device(userAgent));
+        List<PageEvent> pending = build(request, UserAgents.device(userAgent));
         if (pending.isEmpty()) {
             return;
         }
@@ -250,12 +243,5 @@ public class PageEventService {
         } catch (RuntimeException ex) {
             return null;
         }
-    }
-
-    private String device(String userAgent) {
-        if (userAgent == null || userAgent.isBlank()) {
-            return null;
-        }
-        return MOBILE.matcher(userAgent).find() ? "mobile" : "desktop";
     }
 }
