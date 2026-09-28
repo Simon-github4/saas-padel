@@ -49,3 +49,6 @@ pgdata/
 # Auditorias de producto y crecimiento: notas de trabajo locales, no van al repo.
 /MARKETING_PRODUCT_AUDIT.md
 /docs/GROWTH_AUDIT.md
+
+# Material de marketing (piezas, textos, imagenes): trabajo local, no va al repo.
+/marketing/
