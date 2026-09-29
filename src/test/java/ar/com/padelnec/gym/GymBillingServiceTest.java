@@ -439,4 +439,35 @@ class GymBillingServiceTest {
         assertThat(status.plan()).isNull();
         assertThat(status.pending().getFirst().start()).isEqualTo(today);
     }
+
+    @Test
+    @DisplayName("Una cuota que empieza en unos dias muestra su propio mes, no el anterior")
+    void aFeeThatStartsLaterShowsItsOwnPeriod() {
+        LocalDate today = LocalDate.of(2026, 9, 24);
+        chargeWithDates(1, today, LocalDate.of(2026, 9, 29), null);
+
+        Status status = billing.status(memberId, today);
+        assertThat(status.started()).isFalse();
+        assertThat(status.canEnter()).isFalse();
+        assertThat(status.periodStart()).isEqualTo(LocalDate.of(2026, 9, 29));
+        assertThat(status.periodEnd()).isEqualTo(LocalDate.of(2026, 10, 28));
+        assertThat(status.paidUntil()).isEqualTo(LocalDate.of(2026, 10, 28));
+        assertThat(status.monthsLate()).isZero();
+        assertThat(status.pending().getFirst().start()).isEqualTo(LocalDate.of(2026, 10, 29));
+        assertThat(status.active().getStartsOn()).isEqualTo(LocalDate.of(2026, 9, 29));
+    }
+
+    @Test
+    @DisplayName("La cuota que rige hoy es la corriente aunque haya un adelanto con otros dias")
+    void theActiveFeeIsTodaysOne() {
+        LocalDate today = LocalDate.of(2026, 9, 23);
+        chargeWithDates(1, today, LocalDate.of(2026, 9, 2), null);
+        membershipService.charge(memberId, 1, new BigDecimal("25000"), 2, PayMethod.CASH,
+                sede.getId(), Set.of(sede.getId()), null, today, null, null);
+
+        Status status = billing.status(memberId, today);
+        assertThat(status.plan().getDaysPerWeek()).isEqualTo(2);
+        assertThat(status.active().getDaysPerWeek()).isEqualTo(3);
+        assertThat(status.active().getStartsOn()).isEqualTo(LocalDate.of(2026, 9, 2));
+    }
 }

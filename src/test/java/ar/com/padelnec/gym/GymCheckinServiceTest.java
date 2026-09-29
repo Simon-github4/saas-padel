@@ -430,4 +430,31 @@ class GymCheckinServiceTest {
     void referenceDayIsAMonday() {
         assertThat(MONDAY.getDayOfWeek()).isEqualTo(DayOfWeek.MONDAY);
     }
+
+    @Test
+    @DisplayName("Con un adelanto de otro plan, el ingreso usa la cuota de hoy: su tope, sus sedes y su id")
+    void anAdvanceWithAnotherPlanDoesNotChangeToday() {
+        UUID current = gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea);
+        gym.sell(club, memberId, MONDAY.plusDays(30), MONDAY.plusDays(59), 1, necochea, quequen);
+
+        assertThatThrownBy(() -> scan(quequen))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Tu cuota no incluye Quequén");
+        CheckInResult result = scan(necochea);
+
+        assertThat(result.weekLimit()).isEqualTo(3);
+        assertThat(checkinRepository.findByMemberIdAndLocalDate(memberId, MONDAY).orElseThrow()
+                .getMembership().getId()).isEqualTo(current);
+    }
+
+    @Test
+    @DisplayName("Con dos cuotas que todavia no empezaron, el aviso dice cuando empieza la primera")
+    void twoFutureFeesAnnounceTheFirstStart() {
+        gym.sell(club, memberId, MONDAY.plusDays(3), MONDAY.plusDays(32), 3, necochea);
+        gym.sell(club, memberId, MONDAY.plusDays(33), MONDAY.plusDays(62), 3, necochea);
+
+        assertThatThrownBy(() -> scan(necochea))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Tu cuota empieza el 17/09/2026");
+    }
 }

@@ -51,11 +51,18 @@ public class GymBillingService {
      * corriente si esta pago, o mas alla si se adelantaron cuotas). {@code pending} son las
      * cuotas que se pueden cobrar ahora, de la mas vieja a la mas nueva: la deuda y hasta
      * {@link #LOOK_AHEAD} cuotas a futuro.
+     *
+     * <p>{@code plan} es la ultima cuota paga (la mas lejana, aunque sea un adelanto): de ahi
+     * salen los valores por defecto del proximo cobro. {@code active} es la cuota que rige HOY:
+     * la que cubre hoy, o si no la ultima que ya empezo (el mes impago con gracia), o si todavia
+     * ninguna empezo la primera que va a empezar. Los dias por semana, las sedes y la cuota a la
+     * que se asocia un ingreso salen siempre de {@code active}: un adelanto con otro plan no
+     * cambia lo que vale hoy.
      */
     public record Status(GymMember member, LocalDate anchor, boolean started, LocalDate periodStart,
                          LocalDate periodEnd, LocalDate paidUntil, boolean paidCurrent, int monthsLate,
                          BigDecimal owedTotal, List<Period> pending, GymMembership plan, int planDaysPerWeek,
-                         boolean canEnter) {
+                         boolean canEnter, GymMembership active) {
     }
 
     /** El periodo que arranca en ese mes, dado el ancla. */
@@ -130,7 +137,8 @@ public class GymBillingService {
                 }
             }
             return new Status(member, null, false, shown.start(), shown.end(),
-                    null, false, 0, BigDecimal.ZERO, pending, plan, plan != null ? plan.getDaysPerWeek() : 0, false);
+                    null, false, 0, BigDecimal.ZERO, pending, plan, plan != null ? plan.getDaysPerWeek() : 0, false,
+                    activeOf(paid, today));
         }
         if (anchor == null) {
             // Socios de antes de la migracion (o registros sin backfill): su primera cuota es el ancla.
@@ -138,8 +146,10 @@ public class GymBillingService {
         }
 
         YearMonth anchorMonth = YearMonth.from(anchor);
-        YearMonth currentMonth = currentYearMonth(anchor, today);
         boolean started = !today.isBefore(periodStart(anchor, anchorMonth));
+        // Si el ciclo todavia no empezo (una cuota que arranca en unos dias), su mes "corriente" es el
+        // primero: el anterior al ancla no es del socio.
+        YearMonth currentMonth = started ? currentYearMonth(anchor, today) : anchorMonth;
 
         List<Period> owed = new ArrayList<>();
         int monthsLate = 0;
@@ -162,9 +172,6 @@ public class GymBillingService {
                     }
                 }
             }
-        }
-        if (anchorMonth.isAfter(currentMonth)) {
-            current = periodOf(anchor, currentMonth);
         }
 
         List<Period> pending = new ArrayList<>(owed);
@@ -199,7 +206,17 @@ public class GymBillingService {
                 current == null ? periodStart(anchor, currentMonth) : current.start(),
                 current == null ? periodEnd(anchor, currentMonth) : current.end(),
                 paidUntil, isPaid(paid, current), monthsLate, owedTotal, pending, plan,
-                plan != null ? plan.getDaysPerWeek() : 0, canEnter);
+                plan != null ? plan.getDaysPerWeek() : 0, canEnter, activeOf(paid, today));
+    }
+
+    /**
+     * La cuota que rige hoy, de las pagas ordenadas de la mas nueva a la mas vieja: la que cubre
+     * hoy; si no, la ultima que ya empezo; si no, la primera que va a empezar (null sin cuotas).
+     */
+    private static GymMembership activeOf(List<GymMembership> paid, LocalDate today) {
+        return paid.stream().filter(m -> m.covers(today)).findFirst()
+                .or(() -> paid.stream().filter(m -> !m.getStartsOn().isAfter(today)).findFirst())
+                .orElse(paid.isEmpty() ? null : paid.getLast());
     }
 
     private static Period periodOf(LocalDate anchor, YearMonth month) {

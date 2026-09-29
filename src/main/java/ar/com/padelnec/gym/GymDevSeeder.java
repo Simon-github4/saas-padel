@@ -14,6 +14,7 @@ import ar.com.padelnec.gym.service.GymMemberService;
 import ar.com.padelnec.gym.service.GymMembershipService;
 import ar.com.padelnec.gym.service.GymMembershipService.Sale;
 import ar.com.padelnec.gym.service.GymOverviewService;
+import ar.com.padelnec.gym.service.GymQr;
 import ar.com.padelnec.gym.service.GymSedeService;
 import ar.com.padelnec.gym.service.GymTariffService;
 import ar.com.padelnec.gym.service.GymWeek;
@@ -68,6 +69,7 @@ class GymDevSeeder {
     private final GymTariffService tariffService;
     private final GymMembershipRepository membershipRepository;
     private final GymCheckinRepository checkinRepository;
+    private final GymQr qr;
     private final PasswordEncoder passwordEncoder;
 
     /**
@@ -100,6 +102,57 @@ class GymDevSeeder {
         if (memberRepository.findByDni(CASES_MARKER_DNI).isEmpty()) {
             seedCases();
         }
+        if (memberRepository.findByDni(ADVANCE_CASES_MARKER_DNI).isEmpty()) {
+            seedAdvanceCases();
+        }
+    }
+
+    /** El DNI de Rocio Luna, que marca que los casos de adelantos ya se sembraron. */
+    private static final String ADVANCE_CASES_MARKER_DNI = "38222333";
+
+    /**
+     * Casos de una cuota vigente con un adelanto de otro plan, y de dos cuotas que todavia no
+     * empezaron: lo que vale hoy (tope, sedes, fechas) tiene que salir de la cuota de hoy, no del
+     * adelanto. Necesita las dos sedes del club de ejemplo.
+     */
+    private void seedAdvanceCases() {
+        List<GymSede> sedes = sedeService.active();
+        GymSede necochea = sedes.stream().filter(s -> s.getName().equals("Necochea")).findFirst().orElse(null);
+        GymSede quequen = sedes.stream().filter(s -> s.getName().equals("Quequén")).findFirst().orElse(null);
+        if (necochea == null || quequen == null) {
+            return;
+        }
+        LocalDate today = overviewService.today();
+        Set<UUID> soloNecochea = Set.of(necochea.getId());
+        Set<UUID> lasDos = Set.of(necochea.getId(), quequen.getId());
+
+        // Hoy: 3 dias por semana, solo Necochea. Adelanto del mes que viene: 1 dia, las dos sedes.
+        // Ya vino una vez esta semana: con el tope de hoy (3) puede volver a entrar.
+        UUID pablo = memberService.create("38111222", "Pablo Ríos", null).id();
+        membershipService.charge(pablo, 1, null, 3, PayMethod.CASH, necochea.getId(), soloNecochea, null, today,
+                today.minusDays(10), today.minusDays(10));
+        UUID pabloHoy = membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(pablo)
+                .getFirst().getId();
+        membershipService.charge(pablo, 1, null, 1, PayMethod.CASH, necochea.getId(), lasDos, null, today,
+                null, null);
+        LocalDate thisWeek = GymWeek.of(today).monday();
+        checkIn(pablo, pabloHoy, necochea, thisWeek.isBefore(today) ? thisWeek : today.minusDays(1));
+
+        // El mismo plan que Pablo, sin ingresos: su cuota de hoy no incluye Quequén.
+        UUID sofia = memberService.create("38333444", "Sofía Castro", null).id();
+        membershipService.charge(sofia, 1, null, 3, PayMethod.CASH, necochea.getId(), soloNecochea, null, today,
+                today.minusDays(10), today.minusDays(10));
+        membershipService.charge(sofia, 1, null, 1, PayMethod.CASH, necochea.getId(), lasDos, null, today,
+                null, null);
+
+        // Dos cuotas que todavia no empezaron: empieza en 3 dias, y el mes siguiente ya pago.
+        UUID rocio = memberService.create(ADVANCE_CASES_MARKER_DNI, "Rocío Luna", null).id();
+        membershipService.charge(rocio, 2, null, 3, PayMethod.CASH, necochea.getId(), soloNecochea, null, today,
+                today.plusDays(3), null);
+
+        log.info("Gimnasio de ejemplo: casos de adelantos sembrados (Pablo Ríos 38111222, Sofía Castro 38333444, "
+                + "Rocío Luna 38222333). Links del QR: Necochea {} · Quequén {}",
+                qr.checkInUrl(CLUB_SLUG, necochea.getQrToken()), qr.checkInUrl(CLUB_SLUG, quequen.getQrToken()));
     }
 
     private void seedBase() {

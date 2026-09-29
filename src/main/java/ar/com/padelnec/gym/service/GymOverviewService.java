@@ -38,7 +38,7 @@ public class GymOverviewService {
     /**
      * Un socio con su estado de cuotas. {@code billing} es el ciclo completo del
      * socio: el periodo corriente, la deuda, si puede entrar y que le falta pagar.
-     * {@code sedes} son las sedes donde vale la ultima cuota paga.
+     * {@code sedes} son las sedes donde vale la cuota que rige hoy.
      */
     public record MemberRow(UUID id, String dni, String fullName, String phone, boolean enabled,
                             boolean mustChangePassword, int weekUsed,
@@ -97,7 +97,7 @@ public class GymOverviewService {
     }
 
     private static MemberRow row(GymMember member, GymBillingService.Status billing, int weekUsed) {
-        GymMembership plan = billing.plan();
+        GymMembership plan = billing.active();
         List<String> sedes = plan == null ? List.of() : plan.getSedes().stream()
                 .map(GymSede::getName).sorted(Comparator.naturalOrder()).toList();
         return new MemberRow(member.getId(), member.getDni(), member.getFullName(), member.getPhone(),

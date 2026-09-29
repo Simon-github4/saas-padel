@@ -190,7 +190,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             return GymViewSupport.badge(billing.anchor() == null ? "Sin cuota" : "Sin cuota vigente", "contrast");
         }
         if (!billing.started()) {
-            return GymViewSupport.badge("Empieza el " + SHORT_DAY.format(billing.plan().getStartsOn()), "contrast");
+            return GymViewSupport.badge("Empieza el " + SHORT_DAY.format(billing.active().getStartsOn()), "contrast");
         }
         if (billing.monthsLate() >= 2) {
             return GymViewSupport.badge("Adeudás " + billing.monthsLate() + " cuotas", "error");
@@ -206,8 +206,10 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         if (row.billing().plan() == null || !row.billing().started()) {
             return new Span("—");
         }
-        Span usage = new Span(row.weekUsed() + " de " + row.billing().planDaysPerWeek());
-        if (row.weekUsed() >= row.billing().planDaysPerWeek()) {
+        // El tope de la cuota que rige hoy, no el de un adelanto con otros días.
+        int limit = row.billing().active().getDaysPerWeek();
+        Span usage = new Span(row.weekUsed() + " de " + limit);
+        if (row.weekUsed() >= limit) {
             usage.getElement().getThemeList().add("badge contrast small");
         }
         return usage;

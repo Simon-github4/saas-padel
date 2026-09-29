@@ -104,7 +104,9 @@ public class GymCheckinService {
         LocalDate today = now.atZone(zone).toLocalDate();
 
         GymBillingService.Status status = billingService.status(member, today);
-        GymMembership membership = status.plan();
+        // La cuota que rige hoy, no la ultima cobrada: un adelanto con otros dias o sedes no cambia
+        // lo que vale hoy, y el ingreso queda asociado al periodo en que ocurrio.
+        GymMembership membership = status.active();
         if (membership == null) {
             throw new BusinessRuleException("No tenés una cuota vigente. Consultá en el mostrador.");
         }

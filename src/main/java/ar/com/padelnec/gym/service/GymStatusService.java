@@ -36,7 +36,8 @@ public class GymStatusService {
     }
 
     /**
-     * {@code membership} es la ultima cuota paga del socio (su plan), o null si
+     * {@code membership} es la cuota que rige hoy (la que cubre hoy, o la ultima que ya empezo,
+     * o la primera que va a empezar), o null si
      * nunca pago. {@code valid} y {@code canEnter} dicen si puede entrar hoy:
      * con la corriente impaga entra (gracia); con dos o mas cuotas, no.
      */
@@ -53,7 +54,8 @@ public class GymStatusService {
                 .orElseThrow(() -> new UnauthorizedSessionException("Tu sesión venció. Volvé a iniciar sesión."));
         LocalDate today = clock.instant().atZone(tenantService.requireCurrent().zoneId()).toLocalDate();
         GymBillingService.Status billing = billingService.status(member, today);
-        GymMembership plan = billing.plan();
+        // La que rige hoy, no la ultima cobrada: un adelanto con otro plan no cambia el tope de hoy.
+        GymMembership plan = billing.active();
 
         GymWeek week = GymWeek.of(today);
         int weekUsed = (int) checkinRepository.countByMemberIdAndLocalDateBetween(
