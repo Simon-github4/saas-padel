@@ -18,11 +18,13 @@ import ar.com.padelnec.support.PhoneNumbers;
 import ar.com.padelnec.support.TokenHash;
 import ar.com.padelnec.support.Tokens;
 import ar.com.padelnec.web.BusinessRuleException;
+import ar.com.padelnec.web.BusinessRuleException.Reason;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.hibernate.Hibernate;
@@ -54,6 +56,7 @@ public class PlayerAuthService {
     private final PlayerSessionRepository playerSessionRepository;
     private final BookingRepository bookingRepository;
     private final PhoneNumbers phoneNumbers;
+    private final PhoneVerificationService phoneVerificationService;
     private final PasswordEncoder passwordEncoder;
     private final EmailSender emailSender;
     private final GoogleIdTokenVerifier googleIdTokenVerifier;
@@ -348,6 +351,69 @@ public class PlayerAuthService {
                     session.setRevokedAt(clock.instant());
                     playerSessionRepository.save(session);
                 });
+    }
+
+    // ------------------------------------------------------- telefono de la cuenta
+
+    /**
+     * Si el telefono de la cuenta ya no se puede cambiar: esta verificado, y con la
+     * sesion iniciada se reserva siempre con ese numero.
+     *
+     * <p>Mientras no este verificado el jugador lo puede corregir en el checkout, que
+     * es justamente lo que necesita quien se registro con un numero mal escrito: el
+     * codigo le llegaria al numero equivocado y no podria reservar nunca. Con la
+     * verificacion apagada no hay nada que esperar, y queda fijo apenas tiene uno,
+     * como siempre.
+     */
+    public boolean isPhoneLocked(PlayerAccount account) {
+        String phone = account.getPhoneNumber();
+        return phone != null
+                && (!phoneVerificationService.isActive() || phoneVerificationService.isVerified(phone));
+    }
+
+    /**
+     * Antes de reservar con sesion: una cuenta con el telefono fijo reserva con ese
+     * numero y no con otro.
+     */
+    @Transactional(readOnly = true)
+    public void requireAccountPhone(UUID accountId, String rawPhone) {
+        PlayerAccount account = playerAccountRepository.findById(accountId).orElse(null);
+        if (account == null || !isPhoneLocked(account)) {
+            return;
+        }
+        if (!account.getPhoneNumber().equals(phoneNumbers.normalize(rawPhone))) {
+            throw new BusinessRuleException(Reason.ACCOUNT_PHONE_LOCKED,
+                    "Con tu cuenta reservás con el %s. Para reservar con otro número, cerrá sesión."
+                            .formatted(phoneNumbers.forDisplay(account.getPhoneNumber())));
+        }
+    }
+
+    /**
+     * Despues de verificar el telefono de una reserva con sesion: si la cuenta no
+     * tenia uno verificado, ese pasa a ser el suyo y queda fijo.
+     *
+     * <p>Solo con la verificacion prendida, que es la que garantiza que el numero se
+     * probo antes de llegar aca. Si el numero ya es de otra cuenta no se mueve: la
+     * reserva sale igual y la cuenta queda como estaba.
+     */
+    @Transactional
+    public void adoptVerifiedPhone(UUID accountId, String rawPhone) {
+        if (!phoneVerificationService.isActive()) {
+            return;
+        }
+        PlayerAccount account = playerAccountRepository.findById(accountId).orElse(null);
+        if (account == null || isPhoneLocked(account)) {
+            return;
+        }
+        String phone = phoneNumbers.normalize(rawPhone);
+        if (phone.equals(account.getPhoneNumber())) {
+            return;
+        }
+        if (playerAccountRepository.existsByPhoneNumber(phone)) {
+            log.info("El telefono {} ya es de otra cuenta: no se asigna a {}", Masking.phone(phone), accountId);
+            return;
+        }
+        account.setPhoneNumber(phone);
     }
 
     /** Nombre y telefono de contacto. El telefono solo se completa si la cuenta todavia no tenia uno. */

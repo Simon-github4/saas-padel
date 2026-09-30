@@ -143,7 +143,7 @@ public class PlayerAuthController {
             @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
         PlayerAccount account = playerAuthService.resolveSession(bearerToken(authorization));
         return new MeResponse(account.getId(), account.getEmail(), account.isEmailVerified(),
-                account.getPhoneNumber(), account.getDisplayName());
+                account.getPhoneNumber(), playerAuthService.isPhoneLocked(account), account.getDisplayName());
     }
 
     /** Nombre y telefono de contacto del jugador. */
@@ -210,7 +210,8 @@ public class PlayerAuthController {
     private SessionResponse toResponse(IssuedSession issued) {
         PlayerAccount account = issued.session().getPlayer();
         return new SessionResponse(issued.token(), issued.session().getExpiresAt(), account.getId(),
-                account.getEmail(), account.isEmailVerified(), account.getPhoneNumber(), account.getDisplayName());
+                account.getEmail(), account.isEmailVerified(), account.getPhoneNumber(),
+                playerAuthService.isPhoneLocked(account), account.getDisplayName());
     }
 
     /**

@@ -74,6 +74,8 @@ public final class PlayerAuthDtos {
             String email,
             boolean emailVerified,
             String phoneNumber,
+            // Verificado: el checkout lo muestra fijo y no deja reservar con otro.
+            boolean phoneLocked,
             String displayName) {
     }
 
@@ -82,6 +84,7 @@ public final class PlayerAuthDtos {
             String email,
             boolean emailVerified,
             String phoneNumber,
+            boolean phoneLocked,
             String displayName) {
     }
 

@@ -207,6 +207,11 @@ export interface PlayerSession {
   emailVerified: boolean;
   /** Dato de contacto, no la identidad de la cuenta. Null hasta que reserva logueado la primera vez. */
   phoneNumber: string | null;
+  /**
+   * El teléfono está verificado: con la sesión iniciada se reserva siempre con ese.
+   * Mientras no lo esté, el checkout deja corregirlo.
+   */
+  phoneLocked: boolean;
   /** Nombre con el que el jugador reservó algún turno logueado. Null si todavía no. */
   displayName: string | null;
 }
@@ -434,6 +439,9 @@ export const playerApi = {
     request<void>('/player/password/reset', { method: 'POST', body: JSON.stringify({ token, newPassword }) }),
 
   /** Guarda el nombre (y, si todavía no tenía, el teléfono) con el que se presentó al reservar. */
+  /** La cuenta como está ahora en el servidor, para no depender de lo guardado al iniciar sesión. */
+  me: (token: string) => request<Omit<PlayerSession, 'token' | 'expiresAt'>>('/player/me', { token }),
+
   updateProfile: (token: string, name: string, phoneNumber?: string) =>
     request<void>('/player/profile', { method: 'PUT', token, body: JSON.stringify({ name, phoneNumber }) }),
 

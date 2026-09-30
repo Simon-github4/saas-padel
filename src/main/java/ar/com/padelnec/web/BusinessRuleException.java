@@ -33,7 +33,9 @@ public class BusinessRuleException extends RuntimeException {
         /** El codigo vencio o se agotaron los intentos: hay que pedir otro. */
         VERIFICATION_CODE_EXPIRED,
         VERIFICATION_CODE_NOT_SENT,
-        VERIFICATION_LIMIT
+        VERIFICATION_LIMIT,
+        /** Reserva con sesion y un telefono distinto al verificado de la cuenta. */
+        ACCOUNT_PHONE_LOCKED
     }
 
     private final Reason reason;

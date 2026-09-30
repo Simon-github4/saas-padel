@@ -13,12 +13,15 @@ import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.PhoneVerification;
+import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.notification.whatsapp.NotificationTemplate;
 import ar.com.padelnec.notification.whatsapp.WhatsAppSender;
 import ar.com.padelnec.repository.PhoneVerificationRepository;
+import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.CustomerService;
+import ar.com.padelnec.support.PhoneNumbers;
 import ar.com.padelnec.web.api.BookingRateLimiter;
 import java.time.Duration;
 import java.time.Instant;
@@ -37,6 +40,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.client.RestTestClient;
@@ -65,6 +69,9 @@ class PhoneVerificationApiIntegrationTest {
     @Autowired private BookingService bookingService;
     @Autowired private CustomerService customerService;
     @Autowired private PhoneVerificationRepository verifications;
+    @Autowired private PlayerAccountRepository playerAccounts;
+    @Autowired private PasswordEncoder passwordEncoder;
+    @Autowired private PhoneNumbers phoneNumbers;
 
     @MockitoBean private WhatsAppSender sender;
     // Aca se prueban decenas de reservas seguidas desde el mismo origen; el cupo por
@@ -199,7 +206,78 @@ class PhoneVerificationApiIntegrationTest {
         assertThat(verifications.count()).isZero();
     }
 
+    // ------------------------------------------------ telefono de la cuenta
+
+    @Test
+    @DisplayName("Una cuenta con el numero mal cargado lo corrige en la reserva y, verificado, queda fijo")
+    void accountWithWrongPhoneFixesItAndLocksIt() {
+        String token = account("simon@example.com", "2262555123");
+        assertThat(me(token).get("phoneLocked").asBoolean()).isFalse();
+
+        // Reserva con su numero de verdad: le llega el codigo ahi, no al de la cuenta.
+        assertThat(requestCode(NEW_PHONE)).isTrue();
+        book(slot(0), NEW_PHONE, lastCodeSent(), token).expectStatus().isCreated();
+
+        JsonNode me = me(token);
+        assertThat(me.get("phoneNumber").asText()).isEqualTo("+5492262415000");
+        assertThat(me.get("phoneLocked").asBoolean()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Con el telefono de la cuenta verificado, no se reserva con otro numero")
+    void lockedAccountPhoneCannotBeSwapped() {
+        String token = account("simon@example.com", NEW_PHONE);
+        requestCode(NEW_PHONE);
+        book(slot(0), NEW_PHONE, lastCodeSent(), token).expectStatus().isCreated();
+
+        JsonNode error = book(slot(1), "2262555123", null, token)
+                .expectStatus().isEqualTo(422)
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+
+        assertThat(error.get("reason").asText()).isEqualTo("ACCOUNT_PHONE_LOCKED");
+    }
+
+    @Test
+    @DisplayName("Un numero que ya es de otra cuenta no se mueve: la reserva sale y la cuenta queda como estaba")
+    void phoneOfAnotherAccountIsNotTaken() {
+        account("otra@example.com", NEW_PHONE);
+        String token = account("simon@example.com", null);
+
+        requestCode(NEW_PHONE);
+        book(slot(0), NEW_PHONE, lastCodeSent(), token).expectStatus().isCreated();
+
+        assertThat(me(token).get("phoneNumber").isNull()).isTrue();
+    }
+
     // ------------------------------------------------------------ helpers
+
+    /** Cuenta con email verificado y el telefono tal cual se registro; devuelve el token de sesion. */
+    private String account(String email, String phone) {
+        PlayerAccount account = new PlayerAccount();
+        account.setEmail(email);
+        account.setEmailVerified(true);
+        account.setPasswordHash(passwordEncoder.encode("clave-segura-123"));
+        account.setPhoneNumber(phone == null ? null : phoneNumbers.normalize(phone));
+        playerAccounts.save(account);
+        return client.post().uri("/api/public/player/login")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("email", email, "password", "clave-segura-123"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody()
+                .get("token").asText();
+    }
+
+    private JsonNode me(String token) {
+        return client.get().uri("/api/public/player/me")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+    }
 
     private boolean requestCode(String phone) {
         return client.post().uri("/api/public/club-necochea/phone-verification")
@@ -245,6 +323,10 @@ class PhoneVerificationApiIntegrationTest {
     }
 
     private RestTestClient.ResponseSpec book(JsonNode slot, String phone, String code) {
+        return book(slot, phone, code, null);
+    }
+
+    private RestTestClient.ResponseSpec book(JsonNode slot, String phone, String code, String token) {
         Map<String, Object> body = new HashMap<>();
         body.put("courtId", slot.get("available").get(0).get("courtId").asText());
         body.put("startTime", Instant.parse(slot.get("startsAt").asText()).toString());
@@ -254,10 +336,12 @@ class PhoneVerificationApiIntegrationTest {
         if (code != null) {
             body.put("verificationCode", code);
         }
-        return client.post().uri("/api/public/club-necochea/bookings")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .exchange();
+        var request = client.post().uri("/api/public/club-necochea/bookings")
+                .contentType(MediaType.APPLICATION_JSON);
+        if (token != null) {
+            request = request.header("Authorization", "Bearer " + token);
+        }
+        return request.body(body).exchange();
     }
 
     private JsonNode bookError(JsonNode slot, String phone, String code) {

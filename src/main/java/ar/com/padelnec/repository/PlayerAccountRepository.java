@@ -13,6 +13,9 @@ public interface PlayerAccountRepository extends JpaRepository<PlayerAccount, UU
 
     Optional<PlayerAccount> findByEmail(String email);
 
+    /** El telefono de una cuenta es unico en toda la plataforma. */
+    boolean existsByPhoneNumber(String phoneNumber);
+
     /** Los telefonos de la lista que tienen una cuenta cargada con ese numero. */
     @Query("SELECT a.phoneNumber FROM PlayerAccount a WHERE a.phoneNumber IN :phones")
     List<String> findPhoneNumbersIn(@Param("phones") Collection<String> phones);

@@ -225,15 +225,25 @@ public class PublicBookingController {
         rateLimiter.check(ClientIp.of(httpRequest));
 
         Tenant club = tenantService.activate(slug);
+        UUID accountId = playerAccountId(authorization);
+        // Con sesion y el telefono de la cuenta ya verificado, se reserva con ese.
+        if (accountId != null) {
+            playerAuthService.requireAccountPhone(accountId, request.phoneNumber());
+        }
         // Antes de tocar la grilla: un numero nuevo sin el codigo no llega a tomar la cancha.
         phoneVerificationService.requireVerified(request.phoneNumber(), request.verificationCode());
+        // Ya probado, pasa a ser el de la cuenta si esta no tenia uno verificado. Antes
+        // de reservar: si despues le ganan el turno, el numero ya quedo corregido.
+        if (accountId != null) {
+            playerAuthService.adoptVerifiedPhone(accountId, request.phoneNumber());
+        }
         CheckoutResult result = checkoutService.checkout(club, new NewBooking(
                 request.courtId(),
                 request.startTime(),
                 request.fullName(),
                 request.phoneNumber(),
                 PaymentChoice.valueOf(request.paymentChoice().name()),
-                playerAccountId(authorization)));
+                accountId));
 
         return new CreateBookingResponse(
                 result.booking().getId(),

@@ -62,6 +62,16 @@ public class PhoneVerificationService {
     }
 
     /**
+     * Si el numero ya probo ser real: verifico con el codigo, estaba en la lista de
+     * algun club al lanzar la verificacion, o ya reservo alguna vez.
+     *
+     * @param phone en E.164
+     */
+    public boolean isVerified(String phone) {
+        return repository.isRegistered(phone);
+    }
+
+    /**
      * Manda el codigo si este numero lo necesita.
      *
      * @return si hace falta el codigo para reservar con este numero

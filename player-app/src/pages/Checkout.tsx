@@ -48,7 +48,7 @@ export function Checkout({
   onBack: () => void;
   onSlotTaken: () => void;
 }) {
-  const { session, updateLocalProfile } = usePlayerAuth();
+  const { session, updateLocalProfile, refreshProfile } = usePlayerAuth();
   // Arranca en una cancha como la que se buscó: si pidió techada o pared, que no
   // le toque otra por ser la primera de la lista. Sin preferencia, la primera libre.
   const [court, setCourt] = useState<CourtAvailability>(
@@ -56,10 +56,24 @@ export function Checkout({
       slot.available.find((option) => courtMatches(option, preferredWall, preferredSurface, preferredRoof)) ??
       slot.available[0],
   );
-  // Con sesión iniciada el teléfono ya es de quien reserva: no se vuelve a pedir,
-  // y el nombre se precarga con el que quedó guardado en la cuenta.
+  // Con sesión iniciada y el teléfono de la cuenta verificado, se reserva con ese:
+  // no se vuelve a pedir ni se puede cambiar. Sin verificar se muestra escrito y
+  // editable, porque si se registró con un número mal escrito el código de
+  // WhatsApp nunca le llegaría. El nombre se precarga con el de la cuenta.
+  const phoneFixed = Boolean(session?.phoneLocked && session.phoneNumber);
   const [fullName, setFullName] = useState(session?.displayName ?? '');
   const [phone, setPhone] = useState(session?.phoneNumber ?? '');
+
+  // La sesión guardada es de cuando inició sesión: el teléfono pudo verificarse
+  // después, en otra reserva o en otro dispositivo.
+  useEffect(() => {
+    void refreshProfile();
+  }, [refreshProfile]);
+  useEffect(() => {
+    if (phoneFixed && session?.phoneNumber) {
+      setPhone(session.phoneNumber);
+    }
+  }, [phoneFixed, session?.phoneNumber]);
   const [error, setError] = useState<string | null>(null);
   // Lo que está mal en cada campo, abajo del campo y no en el cartel general: así
   // el jugador ve qué corregir sin buscarlo.
@@ -134,7 +148,7 @@ export function Checkout({
   function validate(): boolean {
     const missingName = fullName.trim() ? null : 'Necesitamos tu nombre para reservar el turno.';
     // Con sesión el teléfono es el de la cuenta y no se muestra: no hay nada que corregir.
-    const badPhone = session?.phoneNumber ? null : phoneProblem(phone);
+    const badPhone = phoneFixed ? null : phoneProblem(phone);
     setNameError(missingName);
     setPhoneError(badPhone);
     return !missingName && !badPhone;
@@ -188,10 +202,13 @@ export function Checkout({
       // escribió le quedan guardados a la cuenta, para no volver a pedírselos.
       if (session) {
         const name = fullName.trim();
+        const saved = name ? playerApi.updateProfile(session.token, name, phone).catch(() => {}) : Promise.resolve();
         if (name) {
-          void playerApi.updateProfile(session.token, name, phone).catch(() => {});
           updateLocalProfile(name, phone);
         }
+        // Si el teléfono se verificó en esta reserva, el servidor ya lo hizo el de
+        // la cuenta y quedó fijo: se trae para que la próxima lo muestre así.
+        void saved.then(() => refreshProfile());
       } else {
         // Sin cuenta, este dispositivo es la unica forma de volver a
         // /manage/:token despues de salir de esta pantalla.
@@ -243,8 +260,12 @@ export function Checkout({
         void resendCode();
         return;
       }
+      if (err instanceof ApiError && err.reason === 'ACCOUNT_PHONE_LOCKED') {
+        // La cuenta ya tenía el número verificado y esta sesión no lo sabía.
+        void refreshProfile();
+      }
       // Con el teléfono de la cuenta el campo no se muestra: ahí el error va al cartel general.
-      if (err instanceof ApiError && isPhoneError(err) && !session?.phoneNumber) {
+      if (err instanceof ApiError && isPhoneError(err) && !phoneFixed) {
         setPhoneError(err.message);
         return;
       }
@@ -350,7 +371,7 @@ export function Checkout({
           autoComplete="name"
           error={nameError}
         />
-        {session?.phoneNumber ? (
+        {phoneFixed ? (
           <div className="rounded-xl border border-cal/10 bg-vidrio px-4 py-3">
             <span className="eyebrow block text-ink-soft">Reservás con</span>
             <p className="text-sm font-semibold tabular-nums">{phone}</p>
@@ -410,7 +431,7 @@ export function Checkout({
             >
               {canResend ? 'Reenviar código' : 'Reenviar en un minuto'}
             </button>
-            {!session?.phoneNumber && (
+            {!phoneFixed && (
               <button
                 type="button"
                 onClick={closeVerification}

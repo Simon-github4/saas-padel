@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { forgetGuestBooking, readGuestBookings } from '../guestBookings';
-import { playerApi, type PlayerSession } from '../api/client';
+import { ApiError, playerApi, type PlayerSession } from '../api/client';
 
 /**
  * Sesion del jugador, el primer estado global de la app.
@@ -18,6 +18,8 @@ export interface AuthState {
   email: string;
   emailVerified: boolean;
   phoneNumber: string | null;
+  /** Verificado: el checkout lo muestra fijo. Ver {@link PlayerSession.phoneLocked}. */
+  phoneLocked: boolean;
   displayName: string | null;
 }
 
@@ -34,6 +36,8 @@ interface AuthContextValue {
   updateLocalProfile: (name: string, phoneNumber?: string) => void;
   /** El backend respondio SESSION_EXPIRED: se cae la sesion sin volver a llamar a nadie. */
   clearExpiredSession: () => void;
+  /** Trae del servidor el teléfono y el nombre de la cuenta como están ahora. */
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -45,6 +49,7 @@ function toAuthState(session: PlayerSession): AuthState {
     email: session.email,
     emailVerified: session.emailVerified,
     phoneNumber: session.phoneNumber,
+    phoneLocked: session.phoneLocked,
     displayName: session.displayName,
   };
 }
@@ -63,6 +68,9 @@ function readStoredSession(): AuthState | null {
           email: parsed.email,
           emailVerified: parsed.emailVerified ?? false,
           phoneNumber: parsed.phoneNumber ?? null,
+          // Una sesión guardada antes de que existiera el dato: como era hasta
+          // entonces, fijo si tiene teléfono. refreshProfile lo corrige.
+          phoneLocked: parsed.phoneLocked ?? parsed.phoneNumber != null,
           displayName: parsed.displayName ?? null,
         }
       : null;
@@ -191,6 +199,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
   }, []);
 
+  // La sesión guardada es una foto del login: el teléfono pudo verificarse (o
+  // corregirse) después, en una reserva. Se pide con el token de ese momento y se
+  // aplica sobre la sesión vigente, sin pisarla si mientras tanto cerró sesión.
+  const token = session?.token;
+  const refreshProfile = useCallback(async () => {
+    if (!token) {
+      return;
+    }
+    try {
+      const me = await playerApi.me(token);
+      setSession((current) => {
+        if (!current || current.token !== token) {
+          return current;
+        }
+        const next = {
+          ...current,
+          email: me.email,
+          emailVerified: me.emailVerified,
+          phoneNumber: me.phoneNumber,
+          phoneLocked: me.phoneLocked,
+          displayName: me.displayName ?? current.displayName,
+        };
+        storeSession(next);
+        return next;
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.requiresLogin) {
+        storeSession(null);
+        setSession(null);
+      }
+      // Sin red, se sigue con lo guardado.
+    }
+  }, [token]);
+
   const value = useMemo(
     () => ({
       session,
@@ -201,8 +243,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       updateLocalProfile,
       clearExpiredSession,
+      refreshProfile,
     }),
-    [session, register, confirmSignup, login, loginWithGoogle, logout, updateLocalProfile, clearExpiredSession],
+    [
+      session,
+      register,
+      confirmSignup,
+      login,
+      loginWithGoogle,
+      logout,
+      updateLocalProfile,
+      clearExpiredSession,
+      refreshProfile,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
