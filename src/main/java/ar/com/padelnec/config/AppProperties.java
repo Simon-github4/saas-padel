@@ -76,6 +76,16 @@ public class AppProperties {
          * {@code PHONE_VERIFICATION_CODE} aprobada.
          */
         private boolean verifyPhones = false;
+
+        /**
+         * Los avisos de reservas: confirmaciones, recordatorios, cancelaciones del
+         * club y lista de espera. Apagados por defecto aunque el proveedor mande de
+         * verdad: se puede tener WhatsApp prendido solo para el codigo de
+         * verificacion, que no pasa por aca. Apagados quedan registrados como
+         * salteados, igual que con el proveedor en {@code off}, y la lista de espera
+         * cae al mail.
+         */
+        private boolean notifications = false;
     }
 
     @Getter

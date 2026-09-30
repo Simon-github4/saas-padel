@@ -11,6 +11,8 @@ app:
     encryption-key: cGFkZWwtZGV2LWtleS0zMi1ieXRlcy1leGFjdGx5ISE=
   whatsapp:
     provider: log
+    # Los tests de avisos los necesitan prendidos; en produccion arrancan apagados.
+    notifications: true
   google:
     client-id: test-client-id
   mail:

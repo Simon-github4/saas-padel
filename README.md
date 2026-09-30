@@ -344,6 +344,8 @@ plantillas aprobadas por Meta y que cada club conecte su cuenta de MercadoPago.
 | `WHATSAPP_PROVIDER` | `off` (default, no manda nada — WhatsApp está en stand by), `log` (desarrollo, lo imprime) o `twilio` (lo manda de verdad) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `WHATSAPP_FROM` | Credenciales del proveedor |
 | `app.whatsapp.templates.*` | Content SID de cada plantilla aprobada por Meta |
+| `WHATSAPP_NOTIFICATIONS` | `true` para mandar los avisos de reservas (confirmación, recordatorio, cancelación del club, lista de espera). Default `false`: con Twilio prendido solo para el código de verificación, los avisos quedan registrados como salteados y la lista de espera cae al mail |
+| `WHATSAPP_TEMPLATE_PHONE_VERIFICATION_CODE` | Content SID (`HX…`) de la plantilla del código de verificación |
 | `WHATSAPP_VERIFY_PHONES` | `true` para pedir un código por WhatsApp en la primera reserva de un número que nunca reservó (default `false`). No hace nada con `WHATSAPP_PROVIDER=off`. Necesita la plantilla `PHONE_VERIFICATION_CODE` |
 | `MP_CLIENT_ID`, `MP_CLIENT_SECRET` | Aplicación de MercadoPago (Tus integraciones) con la que se conectan los clubes por OAuth |
 | `MP_WEBHOOK_SECRET` | Clave secreta de webhooks de esa aplicación: una sola para todos los clubes |

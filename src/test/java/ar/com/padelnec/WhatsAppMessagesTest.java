@@ -43,6 +43,8 @@ class WhatsAppMessagesTest {
     @BeforeEach
     void setUp() {
         AppProperties properties = new AppProperties();
+        // Lo que se prueba es el texto de cada aviso: tienen que salir.
+        properties.getWhatsapp().setNotifications(true);
         properties.setBaseUrl(BASE);
         when(sender.send(anyString(), any(), any(), anyString())).thenReturn(WhatsAppSender.SendResult.skipped("test"));
         notifications = new NotificationService(sender, mock(EmailSender.class),

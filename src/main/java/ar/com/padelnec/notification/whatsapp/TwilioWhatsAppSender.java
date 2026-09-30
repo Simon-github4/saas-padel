@@ -62,8 +62,14 @@ public class TwilioWhatsAppSender implements WhatsAppSender {
                 .httpClient(new NetworkHttpClient(timeouts))
                 .build());
 
+        // Con los avisos apagados, la unica plantilla que se usa es la del codigo.
         List<NotificationTemplate> missing = java.util.Arrays.stream(NotificationTemplate.values())
-                .filter(template -> !config.getTemplates().containsKey(template.name()))
+                .filter(template -> config.isNotifications()
+                        || template == NotificationTemplate.PHONE_VERIFICATION_CODE)
+                .filter(template -> {
+                    String sid = config.getTemplates().get(template.name());
+                    return sid == null || sid.isBlank();
+                })
                 .toList();
         if (!missing.isEmpty()) {
             log.warn("Sin Content SID para {}. Esos mensajes van a salir como texto plano y "

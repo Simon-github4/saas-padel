@@ -2,6 +2,7 @@ package ar.com.padelnec;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -49,7 +50,9 @@ import tools.jackson.databind.JsonNode;
  * El envio se reemplaza por un mock para leer el codigo que "llego".
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {"app.whatsapp.provider=log", "app.whatsapp.verify-phones=true"})
+        // Como va a estar en produccion al lanzarla: WhatsApp prendido solo para el codigo.
+        properties = {"app.whatsapp.provider=log", "app.whatsapp.verify-phones=true",
+                "app.whatsapp.notifications=false"})
 @ActiveProfiles("test")
 @Import({TestDatabaseConfig.class, ClubFixture.class})
 class PhoneVerificationApiIntegrationTest {
@@ -105,6 +108,9 @@ class PhoneVerificationApiIntegrationTest {
         assertThat(requestCode(NEW_PHONE)).isFalse();
         book(slot(1), NEW_PHONE, null).expectStatus().isCreated();
         verify(sender, times(1)).send(any(), eq(NotificationTemplate.PHONE_VERIFICATION_CODE), any(), any());
+        // Con los avisos apagados, las dos reservas no mandaron ningun otro WhatsApp.
+        verify(sender, never()).send(any(),
+                argThat(template -> template != NotificationTemplate.PHONE_VERIFICATION_CODE), any(), any());
     }
 
     @Test

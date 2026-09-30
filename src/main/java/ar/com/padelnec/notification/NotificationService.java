@@ -312,7 +312,9 @@ public class NotificationService {
                          NotificationTemplate template, List<String> variables, String plainBody) {
         WhatsAppSender.SendResult result;
         try {
-            result = sender.send(phone, template, variables, plainBody);
+            result = properties.getWhatsapp().isNotifications()
+                    ? sender.send(phone, template, variables, plainBody)
+                    : WhatsAppSender.SendResult.skipped("Avisos por WhatsApp apagados (WHATSAPP_NOTIFICATIONS)");
         } catch (RuntimeException ex) {
             // Un proveedor caido no puede tumbar una reserva que ya esta tomada.
             log.warn("Fallo inesperado enviando {} a {}", template, Masking.phone(phone), ex);
