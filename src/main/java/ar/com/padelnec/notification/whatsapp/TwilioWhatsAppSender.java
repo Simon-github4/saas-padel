@@ -88,7 +88,8 @@ public class TwilioWhatsAppSender implements WhatsAppSender {
         AppProperties.Whatsapp config = properties.getWhatsapp();
         String contentSid = config.getTemplates().get(template.name());
         try {
-            PhoneNumber to = new PhoneNumber(WHATSAPP_PREFIX + phoneNumbers.forWhatsAppChannel(toE164));
+            String recipient = config.isArgentinaWithoutNine() ? phoneNumbers.forWhatsAppChannel(toE164) : toE164;
+            PhoneNumber to = new PhoneNumber(WHATSAPP_PREFIX + recipient);
             PhoneNumber from = new PhoneNumber(WHATSAPP_PREFIX + config.getFromNumber());
 
             MessageCreator creator = Message.creator(to, from, plainBody);

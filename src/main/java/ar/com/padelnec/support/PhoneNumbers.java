@@ -115,11 +115,10 @@ public class PhoneNumbers {
     /**
      * Numero para el canal de WhatsApp, sin el 9 movil que sí lleva el E.164 normal.
      *
-     * <p>WhatsApp identifica a los numeros argentinos sin ese digito, aunque el resto
-     * de la telefonia (SMS, voz, y el E.164 que se guarda en la base) si lo necesita
-     * para no ser ambiguo con una linea fija. En modo sandbox/desarrollo, Twilio
-     * matchea al destinatario contra ese formato exacto: mandarle el E.164 con 9 lo
-     * rechaza como si fuera un numero no verificado, aunque sea el mismo telefono.
+     * <p>Solo se usa con {@code app.whatsapp.argentina-without-nine=true}. El sandbox
+     * viejo de Twilio matcheaba al destinatario sin el 9; el de prueba actual ("join
+     * twilio-trial") y la documentacion de Twilio para Argentina lo quieren con el 9,
+     * que es como ya se guarda. Por defecto se manda el E.164 tal cual.
      */
     public String forWhatsAppChannel(String e164) {
         return e164.startsWith(MOBILE_PREFIX) ? "+54" + e164.substring(MOBILE_PREFIX.length()) : e164;

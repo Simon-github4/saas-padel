@@ -34,6 +34,10 @@ pgdata/
 *.log
 *.local.ps1
 
+# Configuracion local con credenciales (Spring la lee de ./config/): ej. el
+# perfil "twilio" para probar el sandbox de WhatsApp. Nunca al repo.
+/config/
+
 # Scripts sueltos de uso local (seeds de prueba, pruebas manuales, etc.), nunca al repo.
 /scripts/
 

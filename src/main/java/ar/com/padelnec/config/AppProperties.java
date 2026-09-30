@@ -86,6 +86,14 @@ public class AppProperties {
          * cae al mail.
          */
         private boolean notifications = false;
+
+        /**
+         * Mandar los numeros argentinos sin el 9 de celular ({@code +54 2262...} en vez
+         * de {@code +54 9 2262...}). Apagado: Twilio los quiere con el 9, que es como
+         * abre la conversacion cuando el jugador le escribe. Queda como salida por si
+         * algun canal vuelve a pedirlos sin el.
+         */
+        private boolean argentinaWithoutNine = false;
     }
 
     @Getter
