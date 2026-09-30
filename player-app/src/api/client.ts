@@ -207,6 +207,8 @@ export interface PlayerSession {
   emailVerified: boolean;
   /** Dato de contacto, no la identidad de la cuenta. Null hasta que reserva logueado la primera vez. */
   phoneNumber: string | null;
+  /** El mismo teléfono como se le muestra al jugador: "2262 21-2345". */
+  phoneDisplay: string | null;
   /**
    * El teléfono está verificado: con la sesión iniciada se reserva siempre con ese.
    * Mientras no lo esté, el checkout deja corregirlo.

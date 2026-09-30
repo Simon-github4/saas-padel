@@ -112,7 +112,7 @@ export function AccountPage() {
             subtitle={session.email}
           />
           {session.phoneNumber && (
-            <p className="mt-0.5 text-sm tabular-nums text-ink-soft">{session.phoneNumber}</p>
+            <p className="mt-0.5 text-sm tabular-nums text-ink-soft">{session.phoneDisplay ?? session.phoneNumber}</p>
           )}
         </div>
         <Button variant="secondary" className="w-auto px-4" onClick={logout}>

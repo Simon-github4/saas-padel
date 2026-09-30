@@ -87,6 +87,32 @@ public class PhoneNumbers {
     }
 
     /**
+     * Como lo escribe un argentino, para mostrarselo al jugador: {@code 2262 21-2345},
+     * {@code 351 412-3456}, {@code 11 5555-1234}. Codigo de area, espacio, y el
+     * abonado con guion antes de los ultimos cuatro; sin el 15 ni el 9, que en
+     * pantalla no aportan nada.
+     *
+     * <p>El largo del codigo de area (2, 3 o 4 digitos segun la ciudad) sale de
+     * libphonenumber, no de una tabla propia: las caracteristicas cambian (Bariloche
+     * paso de 2944 a 294) y la libreria es la que se mantiene al dia. Un numero del
+     * exterior, o uno cuyo codigo de area no se reconoce, va en formato
+     * internacional: no hay una forma "local" que le sirva a todos.
+     */
+    public String forLocalDisplay(String e164) {
+        if (!e164.startsWith("+54")) {
+            return forDisplay(e164);
+        }
+        return splitAreaCode(e164)
+                .filter(split -> split.areaCode() != null && split.number().length() > 4)
+                .map(split -> {
+                    String number = split.number();
+                    int cut = number.length() - 4;
+                    return split.areaCode() + " " + number.substring(0, cut) + "-" + number.substring(cut);
+                })
+                .orElseGet(() -> forDisplay(e164));
+    }
+
+    /**
      * Numero para el canal de WhatsApp, sin el 9 movil que sí lleva el E.164 normal.
      *
      * <p>WhatsApp identifica a los numeros argentinos sin ese digito, aunque el resto

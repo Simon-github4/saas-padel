@@ -18,6 +18,8 @@ export interface AuthState {
   email: string;
   emailVerified: boolean;
   phoneNumber: string | null;
+  /** Para mostrar: "2262 21-2345". Null en una sesión guardada antes de que existiera. */
+  phoneDisplay: string | null;
   /** Verificado: el checkout lo muestra fijo. Ver {@link PlayerSession.phoneLocked}. */
   phoneLocked: boolean;
   displayName: string | null;
@@ -49,6 +51,7 @@ function toAuthState(session: PlayerSession): AuthState {
     email: session.email,
     emailVerified: session.emailVerified,
     phoneNumber: session.phoneNumber,
+    phoneDisplay: session.phoneDisplay,
     phoneLocked: session.phoneLocked,
     displayName: session.displayName,
   };
@@ -68,6 +71,7 @@ function readStoredSession(): AuthState | null {
           email: parsed.email,
           emailVerified: parsed.emailVerified ?? false,
           phoneNumber: parsed.phoneNumber ?? null,
+          phoneDisplay: parsed.phoneDisplay ?? null,
           // Una sesión guardada antes de que existiera el dato: como era hasta
           // entonces, fijo si tiene teléfono. refreshProfile lo corrige.
           phoneLocked: parsed.phoneLocked ?? parsed.phoneNumber != null,
@@ -218,6 +222,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: me.email,
           emailVerified: me.emailVerified,
           phoneNumber: me.phoneNumber,
+          phoneDisplay: me.phoneDisplay,
           phoneLocked: me.phoneLocked,
           displayName: me.displayName ?? current.displayName,
         };

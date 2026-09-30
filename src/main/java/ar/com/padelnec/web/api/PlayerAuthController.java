@@ -5,6 +5,7 @@ import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.PlayerSession;
 import ar.com.padelnec.service.BookingClaimService;
 import ar.com.padelnec.service.PlayerAuthService;
+import ar.com.padelnec.support.PhoneNumbers;
 import ar.com.padelnec.service.PlayerAuthService.IssuedSession;
 import ar.com.padelnec.service.WaitlistService;
 import ar.com.padelnec.web.ClientIp;
@@ -63,6 +64,7 @@ public class PlayerAuthController {
     private final LoginRateLimiter loginRateLimiter;
     private final BookingRateLimiter bookingRateLimiter;
     private final AppProperties properties;
+    private final PhoneNumbers phoneNumbers;
 
     /** Datos publicos que necesita el frontend antes de mostrar el boton de Google. */
     @GetMapping("/config")
@@ -143,7 +145,8 @@ public class PlayerAuthController {
             @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
         PlayerAccount account = playerAuthService.resolveSession(bearerToken(authorization));
         return new MeResponse(account.getId(), account.getEmail(), account.isEmailVerified(),
-                account.getPhoneNumber(), playerAuthService.isPhoneLocked(account), account.getDisplayName());
+                account.getPhoneNumber(), phoneDisplay(account), playerAuthService.isPhoneLocked(account),
+                account.getDisplayName());
     }
 
     /** Nombre y telefono de contacto del jugador. */
@@ -210,8 +213,12 @@ public class PlayerAuthController {
     private SessionResponse toResponse(IssuedSession issued) {
         PlayerAccount account = issued.session().getPlayer();
         return new SessionResponse(issued.token(), issued.session().getExpiresAt(), account.getId(),
-                account.getEmail(), account.isEmailVerified(), account.getPhoneNumber(),
+                account.getEmail(), account.isEmailVerified(), account.getPhoneNumber(), phoneDisplay(account),
                 playerAuthService.isPhoneLocked(account), account.getDisplayName());
+    }
+
+    private String phoneDisplay(PlayerAccount account) {
+        return account.getPhoneNumber() == null ? null : phoneNumbers.forLocalDisplay(account.getPhoneNumber());
     }
 
     /**

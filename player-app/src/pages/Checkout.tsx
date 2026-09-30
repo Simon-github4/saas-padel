@@ -62,7 +62,9 @@ export function Checkout({
   // WhatsApp nunca le llegaría. El nombre se precarga con el de la cuenta.
   const phoneFixed = Boolean(session?.phoneLocked && session.phoneNumber);
   const [fullName, setFullName] = useState(session?.displayName ?? '');
-  const [phone, setPhone] = useState(session?.phoneNumber ?? '');
+  // Se escribe como lo escribiría él ("2262 21-2345"), no en el formato con +549
+  // que guarda el servidor: el servidor lo entiende igual.
+  const [phone, setPhone] = useState(session?.phoneDisplay ?? session?.phoneNumber ?? '');
 
   // La sesión guardada es de cuando inició sesión: el teléfono pudo verificarse
   // después, en otra reserva o en otro dispositivo.
@@ -71,9 +73,9 @@ export function Checkout({
   }, [refreshProfile]);
   useEffect(() => {
     if (phoneFixed && session?.phoneNumber) {
-      setPhone(session.phoneNumber);
+      setPhone(session.phoneDisplay ?? session.phoneNumber);
     }
-  }, [phoneFixed, session?.phoneNumber]);
+  }, [phoneFixed, session?.phoneNumber, session?.phoneDisplay]);
   const [error, setError] = useState<string | null>(null);
   // Lo que está mal en cada campo, abajo del campo y no en el cartel general: así
   // el jugador ve qué corregir sin buscarlo.
