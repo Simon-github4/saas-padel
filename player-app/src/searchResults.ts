@@ -25,8 +25,8 @@ export interface ClubByDistance extends ClubResults {
  * <p>Arriba queda el club con más horarios distintos libres: es el que más chances
  * le da de encontrar uno que le sirva a quien busca "donde sea". Cuenta horarios y
  * no canchas: tres canchas libres a las 20:00 siguen siendo una sola opción de hora.
- * A igual cantidad, el que permite jugar más temprano. La foto sale del listado de
- * clubes, que viaja una sola vez en vez de repetirse en cada turno.
+ * A igual cantidad, por nombre de la Z a la A. La foto sale del listado de clubes,
+ * que viaja una sola vez en vez de repetirse en cada turno.
  */
 export function groupByClub(matches: SearchMatch[], clubs: ClubOption[]): ClubResults[] {
   const bySlugOption = new Map(clubs.map((club) => [club.slug, club]));
@@ -46,9 +46,9 @@ export function groupByClub(matches: SearchMatch[], clubs: ClubOption[]): ClubRe
     }
     group.matches.push(match);
   }
-  // Los grupos nacen en el orden de su primer turno (los turnos llegan por horario),
-  // y el sort es estable: ese orden queda como desempate sin escribirlo.
-  return [...bySlug.values()].sort((a, b) => distinctTimes(b) - distinctTimes(a));
+  return [...bySlug.values()].sort(
+    (a, b) => distinctTimes(b) - distinctTimes(a) || b.name.localeCompare(a.name, 'es'),
+  );
 }
 
 /** Cuántas horas de inicio distintas tiene libres el club, sin importar cuántas canchas en cada una. */

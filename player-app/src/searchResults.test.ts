@@ -35,15 +35,30 @@ const CERCA = { latitude: -38.5573, longitude: -58.7301 }; // ~900 m de la plaza
 const LEJOS = { latitude: -38.5760, longitude: -58.7010 }; // ~4 km, hacia el puerto
 
 describe('groupByClub', () => {
-  it('a igual cantidad de horarios, ordena por el primer turno y respeta el orden de los horarios adentro', () => {
+  it('a igual cantidad de horarios, ordena por nombre de la Z a la A y respeta el orden de los horarios adentro', () => {
     const groups = groupByClub(
-      [match('muelle', '18:00'), match('costa', '18:30'), match('muelle', '19:30'), match('costa', '20:00')],
+      [match('costa', '18:00'), match('muelle', '18:30'), match('costa', '19:30'), match('muelle', '20:00')],
       [club('costa', null), club('muelle', null)],
     );
 
+    // Costa arranca antes, pero a igual cantidad manda el nombre, al revés.
     expect(groups.map((group) => group.slug)).toEqual(['muelle', 'costa']);
-    expect(groups[0].matches.map((item) => item.startTime)).toEqual(['18:00', '19:30']);
-    expect(groups[1].matches.map((item) => item.startTime)).toEqual(['18:30', '20:00']);
+    expect(groups[0].matches.map((item) => item.startTime)).toEqual(['18:30', '20:00']);
+    expect(groups[1].matches.map((item) => item.startTime)).toEqual(['18:00', '19:30']);
+  });
+
+  it('el nombre se compara en castellano: la ñ va entre la n y la o, y las tildes no desordenan', () => {
+    const names = groupByClub(
+      [
+        match('a', '18:00', { clubName: 'Náutico' }),
+        match('b', '18:00', { clubName: 'Ñandú' }),
+        match('c', '18:00', { clubName: 'Olimpo' }),
+        match('d', '18:00', { clubName: 'Álamo' }),
+      ],
+      [],
+    ).map((group) => group.name);
+
+    expect(names).toEqual(['Olimpo', 'Ñandú', 'Náutico', 'Álamo']);
   });
 
   it('arriba el club con más horarios distintos, aunque otro tenga el primer turno', () => {
@@ -74,7 +89,11 @@ describe('groupByClub', () => {
       [club('costa', '/api/public/costa/hero-image'), club('muelle', null)],
     );
 
-    expect(groups.map((group) => group.heroImageUrl)).toEqual(['/api/public/costa/hero-image', null, null]);
+    expect(Object.fromEntries(groups.map((group) => [group.slug, group.heroImageUrl]))).toEqual({
+      costa: '/api/public/costa/hero-image',
+      muelle: null,
+      nuevo: null,
+    });
   });
 
   it('sin turnos no arma tarjetas', () => {
@@ -87,7 +106,10 @@ describe('groupByClub', () => {
       [club('costa', null, CERCA), club('muelle', null, { latitude: -38.5, longitude: null })],
     );
 
-    expect(groups.map((group) => group.location)).toEqual([CERCA, null]);
+    expect(Object.fromEntries(groups.map((group) => [group.slug, group.location]))).toEqual({
+      costa: CERCA,
+      muelle: null,
+    });
   });
 });
 
@@ -114,7 +136,8 @@ describe('sortByDistance', () => {
 
     const sorted = sortByDistance(groups, PLAZA);
 
-    expect(sorted.map((group) => group.slug)).toEqual(['cerca', 'lejos', 'sin-a', 'sin-b']);
+    // Entre los sin ubicación, el orden por defecto: por nombre de la Z a la A.
+    expect(sorted.map((group) => group.slug)).toEqual(['cerca', 'lejos', 'sin-b', 'sin-a']);
     expect(sorted.slice(2).map((group) => group.distanceKm)).toEqual([null, null]);
   });
 
