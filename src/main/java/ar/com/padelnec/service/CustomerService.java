@@ -5,6 +5,7 @@ import ar.com.padelnec.repository.CustomerRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.support.PhoneNumbers;
 import ar.com.padelnec.web.BusinessRuleException;
+import ar.com.padelnec.web.BusinessRuleException.Reason;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -52,7 +53,7 @@ public class CustomerService {
 
         Customer customer = existing.get();
         if (customer.isBlocked()) {
-            throw new BusinessRuleException(
+            throw new BusinessRuleException(Reason.CUSTOMER_BLOCKED,
                     "No podemos tomar la reserva online. Comunicate con el club.");
         }
         if (!customer.getFullName().equals(name) && ownsPhone(accountId, phone)) {
@@ -76,7 +77,7 @@ public class CustomerService {
     /** El nombre tal como se guarda: sin espacios en los bordes y dentro del largo de la columna. */
     public String cleanName(String fullName) {
         if (fullName == null || fullName.isBlank()) {
-            throw new BusinessRuleException("Necesitamos tu nombre para reservar el turno");
+            throw new BusinessRuleException(Reason.NAME_MISSING, "Necesitamos tu nombre para reservar el turno");
         }
         String trimmed = fullName.trim();
         return trimmed.length() > 120 ? trimmed.substring(0, 120) : trimmed;

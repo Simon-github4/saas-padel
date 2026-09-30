@@ -219,6 +219,7 @@ petición por visita y no se entera de las rutas que el jugador recorre después
 | `BOOKING_FAILED` | El checkout falló | Código del error |
 | `LINK_EXPIRED` | Vino de la búsqueda y el turno ya estaba tomado | Día y hora que se perdió |
 | `WAITLIST_JOINED` | Se anotó en un horario lleno | El horario |
+| `PHONE_CODE_SENT` | Le llegó el código de WhatsApp de su primera reserva | Forma de pago |
 
 No hay evento de "no reservó": es la ausencia de `BOOKING_CREATED` en la sesión.
 Nadie avisa que se va de una página. Lo que sí se separa es el abandono de
@@ -343,6 +344,7 @@ plantillas aprobadas por Meta y que cada club conecte su cuenta de MercadoPago.
 | `WHATSAPP_PROVIDER` | `off` (default, no manda nada — WhatsApp está en stand by), `log` (desarrollo, lo imprime) o `twilio` (lo manda de verdad) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `WHATSAPP_FROM` | Credenciales del proveedor |
 | `app.whatsapp.templates.*` | Content SID de cada plantilla aprobada por Meta |
+| `WHATSAPP_VERIFY_PHONES` | `true` para pedir un código por WhatsApp en la primera reserva de un número que nunca reservó (default `false`). No hace nada con `WHATSAPP_PROVIDER=off`. Necesita la plantilla `PHONE_VERIFICATION_CODE` |
 | `MP_CLIENT_ID`, `MP_CLIENT_SECRET` | Aplicación de MercadoPago (Tus integraciones) con la que se conectan los clubes por OAuth |
 | `MP_WEBHOOK_SECRET` | Clave secreta de webhooks de esa aplicación: una sola para todos los clubes |
 | `GOOGLE_CLIENT_ID` | Login con Google en la app del jugador |
@@ -351,6 +353,12 @@ Sobre las plantillas: WhatsApp solo permite texto libre dentro de las 24 horas
 posteriores a un mensaje del jugador. Todos los avisos de este sistema los inicia el
 negocio, así que **sin plantillas aprobadas no llegan**. Cargarlas es parte del alta
 en producción, no un detalle opcional.
+
+La de `PHONE_VERIFICATION_CODE` es distinta a las demás: en Meta va con categoría
+**Autenticación** (formato fijo, con botón de copiar código) y lleva una sola
+variable, el código. Con `WHATSAPP_VERIFY_PHONES=true`, un número que nunca reservó
+en ningún club recibe ese código antes de su primera reserva y sin él no hay turno.
+Los que ya reservaron alguna vez, y los que ya verificaron, no pasan por esto.
 
 Cada club conecta además su cuenta de MercadoPago desde su panel (OAuth): no
 copia ningún token a mano. En la aplicación de MercadoPago hay que configurar la

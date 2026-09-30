@@ -23,7 +23,19 @@ public final class BookingDtos {
             @Size(max = 120) String fullName,
             @NotBlank(message = "Necesitamos tu teléfono")
             @Size(max = 25) String phoneNumber,
-            @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice) {
+            @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice,
+            // Solo en la primera reserva de un numero: el codigo que le llego por WhatsApp.
+            @Size(max = 10) String verificationCode) {
+    }
+
+    /** Pedido del codigo de WhatsApp para un telefono. */
+    public record PhoneVerificationRequest(
+            @NotBlank(message = "Necesitamos tu teléfono")
+            @Size(max = 25) String phoneNumber) {
+    }
+
+    /** Si hace falta el codigo para reservar con ese telefono; si hace falta, ya salio. */
+    public record PhoneVerificationResponse(boolean verificationRequired) {
     }
 
     /** Si el telefono puede reservar y pagar en el club, aunque el club pida sena. */

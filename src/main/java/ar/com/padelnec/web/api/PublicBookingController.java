@@ -15,6 +15,7 @@ import ar.com.padelnec.service.BookingService.PaymentChoice;
 import ar.com.padelnec.service.CheckoutService;
 import ar.com.padelnec.service.CheckoutService.CheckoutResult;
 import ar.com.padelnec.service.CourtSearchService;
+import ar.com.padelnec.service.PhoneVerificationService;
 import ar.com.padelnec.service.PlayerAuthService;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.service.WaitlistService;
@@ -25,6 +26,8 @@ import ar.com.padelnec.web.dto.BookingDtos.CancellationResponse;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingRequest;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingResponse;
 import ar.com.padelnec.web.dto.BookingDtos.PaymentOptionsResponse;
+import ar.com.padelnec.web.dto.BookingDtos.PhoneVerificationRequest;
+import ar.com.padelnec.web.dto.BookingDtos.PhoneVerificationResponse;
 import ar.com.padelnec.web.ClientIp;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.CourtSearchResponse;
@@ -77,6 +80,7 @@ public class PublicBookingController {
     private final CourtSearchService courtSearchService;
     private final WaitlistService waitlistService;
     private final PlayerAuthService playerAuthService;
+    private final PhoneVerificationService phoneVerificationService;
     private final NotificationService notificationService;
     private final BookingRateLimiter rateLimiter;
     private final Clock clock;
@@ -193,6 +197,21 @@ public class PublicBookingController {
         return new PaymentOptionsResponse(bookingService.canPayAtClub(club, phone));
     }
 
+    /**
+     * Antes de reservar: si el telefono nunca reservo, le manda el codigo por WhatsApp.
+     *
+     * <p>Con su propio cupo por origen: cada envio cuesta, y sin limite esto sirve
+     * para mandarle codigos a un tercero. El tope por numero lo lleva el servicio.
+     */
+    @PostMapping("/{slug}/phone-verification")
+    public PhoneVerificationResponse requestPhoneCode(@PathVariable String slug,
+                                                      @Valid @RequestBody PhoneVerificationRequest request,
+                                                      HttpServletRequest httpRequest) {
+        rateLimiter.check("phone-code:" + ClientIp.of(httpRequest));
+        tenantService.activate(slug);
+        return new PhoneVerificationResponse(phoneVerificationService.requestCode(request.phoneNumber()));
+    }
+
     /** Alta de la reserva. Devuelve el link de pago o el aviso de confirmacion. */
     @PostMapping("/{slug}/bookings")
     @ResponseStatus(HttpStatus.CREATED)
@@ -206,6 +225,8 @@ public class PublicBookingController {
         rateLimiter.check(ClientIp.of(httpRequest));
 
         Tenant club = tenantService.activate(slug);
+        // Antes de tocar la grilla: un numero nuevo sin el codigo no llega a tomar la cancha.
+        phoneVerificationService.requireVerified(request.phoneNumber(), request.verificationCode());
         CheckoutResult result = checkoutService.checkout(club, new NewBooking(
                 request.courtId(),
                 request.startTime(),

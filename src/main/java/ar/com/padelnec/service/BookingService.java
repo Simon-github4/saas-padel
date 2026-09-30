@@ -15,6 +15,7 @@ import ar.com.padelnec.repository.WaitlistEntryRepository;
 import ar.com.padelnec.service.SlotGenerator.ResolvedSlot;
 import ar.com.padelnec.support.Tokens;
 import ar.com.padelnec.web.BusinessRuleException;
+import ar.com.padelnec.web.BusinessRuleException.Reason;
 import ar.com.padelnec.web.ResourceNotFoundException;
 import ar.com.padelnec.web.SlotUnavailableException;
 import java.math.BigDecimal;
@@ -112,7 +113,7 @@ public class BookingService {
                 .resolve(club, pricingService.rulesFor(club, slot.operatingDate().getDayOfWeek()),
                         court, slot.operatingDate().getDayOfWeek(), slot.slot().startTime())
                 .map(PricingService.ResolvedPrice::totalPrice)
-                .orElseThrow(() -> new BusinessRuleException(
+                .orElseThrow(() -> new BusinessRuleException(Reason.NO_PRICE,
                         "Ese horario todavía no tiene tarifa publicada. Consultá con el club."));
 
         Customer customer = customerService.findOrCreate(
@@ -231,10 +232,10 @@ public class BookingService {
         SlotGenerator.ResolvedPlan resolved = slotGenerator.resolveWithPlan(club, startTime)
                 .or(() -> allowAvailabilityException
                         ? slotGenerator.resolveAgainstClubHours(club, startTime) : java.util.Optional.empty())
-                .orElseThrow(() -> new BusinessRuleException(
+                .orElseThrow(() -> new BusinessRuleException(Reason.SLOT_NOT_IN_GRID,
                         "Ese horario no forma parte de la grilla del club"));
         if (!allowAvailabilityException && !resolved.opens(court)) {
-            throw new BusinessRuleException("%s no abre en ese horario".formatted(court.getName()));
+            throw new BusinessRuleException(Reason.COURT_CLOSED, "%s no abre en ese horario".formatted(court.getName()));
         }
         return resolved.resolved();
     }
@@ -553,11 +554,11 @@ public class BookingService {
 
     private void validateWindow(Tenant club, ResolvedSlot slot, Instant now) {
         if (!slot.slot().startsAt().isAfter(now)) {
-            throw new BusinessRuleException("Ese horario ya pasó");
+            throw new BusinessRuleException(Reason.SLOT_PAST, "Ese horario ya pasó");
         }
         LocalDate today = now.atZone(club.zoneId()).toLocalDate();
         if (slot.operatingDate().isAfter(today.plusDays(club.getBookingHorizonDays()))) {
-            throw new BusinessRuleException(
+            throw new BusinessRuleException(Reason.BEYOND_HORIZON,
                     "Todavía no se pueden reservar turnos para esa fecha");
         }
     }
@@ -583,7 +584,7 @@ public class BookingService {
                 monday.plusWeeks(1).atStartOfDay(zone).toInstant(),
                 ACTIVE, BookingSource.RECURRING);
         if (active >= club.getMaxActiveBookings()) {
-            throw new BusinessRuleException(
+            throw new BusinessRuleException(Reason.QUOTA_REACHED,
                     "Llegaste al máximo de turnos por semana (escribinos al WhatsApp %s)"
                             .formatted(club.getWhatsappNumber()));
         }
@@ -621,7 +622,7 @@ public class BookingService {
 
         if (choice == PaymentChoice.PAY_AT_CLUB) {
             if (!canPayAtClub) {
-                throw new BusinessRuleException(
+                throw new BusinessRuleException(Reason.DEPOSIT_REQUIRED,
                         "Este club pide seña para reservar online");
             }
             return true;
@@ -630,7 +631,7 @@ public class BookingService {
             // El club no tiene MercadoPago cargado: si acepta reservas de palabra se
             // sigue por ahi, y si no, no hay forma de reservar online.
             if (!canPayAtClub) {
-                throw new BusinessRuleException(
+                throw new BusinessRuleException(Reason.ONLINE_PAYMENT_UNAVAILABLE,
                         "El club todavía no tiene habilitado el pago online. Escribinos por WhatsApp.");
             }
             return true;

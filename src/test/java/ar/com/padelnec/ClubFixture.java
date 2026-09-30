@@ -16,6 +16,7 @@ import ar.com.padelnec.repository.CustomerRepository;
 import ar.com.padelnec.repository.NotificationLogRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
 import ar.com.padelnec.repository.PageEventRepository;
+import ar.com.padelnec.repository.PhoneVerificationRepository;
 import ar.com.padelnec.repository.PaymentRepository;
 import ar.com.padelnec.repository.PendingPlayerSignupRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
@@ -30,6 +31,7 @@ import java.time.LocalTime;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.test.context.TestComponent;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -56,6 +58,8 @@ public class ClubFixture {
     private final PendingPlayerSignupRepository pendingPlayerSignupRepository;
     private final WaitlistEntryRepository waitlistEntryRepository;
     private final PageEventRepository pageEventRepository;
+    private final PhoneVerificationRepository phoneVerificationRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     /** Deja la base limpia. Se corre como root porque abarca a todos los clubes. */
     @Transactional
@@ -74,6 +78,10 @@ public class ClubFixture {
             // La bitacora de visitas no esta filtrada por club y sus filas de la
             // portada no cuelgan de ninguno: borrar los clubes no se las lleva.
             pageEventRepository.deleteAllInBatch();
+            // Tampoco son por club: un numero verificado en un test no puede
+            // saltearse la verificacion en el siguiente.
+            phoneVerificationRepository.deleteAllInBatch();
+            jdbcTemplate.update("DELETE FROM verified_phone");
             bookingRepository.deleteAllInBatch();
             recurringBookingRepository.deleteAllInBatch();
             blackoutRepository.deleteAllInBatch();

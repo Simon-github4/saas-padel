@@ -37,5 +37,10 @@ public enum PageEventName {
     /** Vino de la busqueda global y el turno ya estaba tomado al llegar. */
     LINK_EXPIRED,
     /** Se anoto en la lista de espera de un horario lleno. */
-    WAITLIST_JOINED
+    WAITLIST_JOINED,
+    /**
+     * Le mandamos el codigo de WhatsApp de su primera reserva. Contra
+     * {@link #BOOKING_CREATED} dice cuantos se quedan en el paso de verificar.
+     */
+    PHONE_CODE_SENT
 }

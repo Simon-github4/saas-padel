@@ -34,7 +34,14 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(BusinessRuleException.class)
     public ResponseEntity<Map<String, Object>> onBusinessRule(BusinessRuleException ex) {
-        return body(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), "RULE_VIOLATION");
+        // El codigo sigue siendo el mismo para todas; el motivo va aparte, para no
+        // romper a quien ya compara contra RULE_VIOLATION.
+        ResponseEntity<Map<String, Object>> response =
+                body(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), "RULE_VIOLATION");
+        if (ex.getReason() != null) {
+            response.getBody().put("reason", ex.getReason().name());
+        }
+        return response;
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -54,11 +61,14 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> onInvalid(MethodArgumentNotValidException ex) {
-        String message = ex.getBindingResult().getFieldErrors().stream()
-                .findFirst()
+        var firstError = ex.getBindingResult().getFieldErrors().stream().findFirst();
+        String message = firstError
                 .map(error -> error.getDefaultMessage())
                 .orElse("Revisá los datos del formulario");
-        return body(HttpStatus.BAD_REQUEST, message, "INVALID_REQUEST");
+        ResponseEntity<Map<String, Object>> response = body(HttpStatus.BAD_REQUEST, message, "INVALID_REQUEST");
+        // El campo que fallo, para saber en la analitica si falto el nombre o el telefono.
+        firstError.ifPresent(error -> response.getBody().put("field", error.getField()));
+        return response;
     }
 
     /**

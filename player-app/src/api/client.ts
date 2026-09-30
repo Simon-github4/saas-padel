@@ -246,8 +246,21 @@ export class ApiError extends Error {
     message: string,
     readonly code: string,
     readonly status: number,
+    /** Cuál regla frenó el pedido (`PHONE_INVALID`, `SLOT_PAST`...), si el servidor lo dice. */
+    readonly reason: string | null = null,
+    /** El campo que no pasó la validación (`fullName`, `phoneNumber`), en un 400. */
+    readonly field: string | null = null,
   ) {
     super(message);
+  }
+
+  /**
+   * El error como se anota en la analítica: `RULE_VIOLATION:PHONE_INVALID`,
+   * `INVALID_REQUEST:fullName`. Nunca el mensaje, que puede llevar datos del jugador.
+   */
+  get analyticsCode() {
+    const precise = this.reason ?? this.field;
+    return precise ? `${this.code}:${precise}` : this.code;
   }
 
   /** Alguien tomo el turno mientras el jugador miraba la grilla. */
@@ -281,6 +294,8 @@ async function request<T>(path: string, init?: RequestInit & { token?: string })
       body?.message ?? 'Tuvimos un problema. Probá de nuevo en un momento.',
       body?.code ?? 'UNKNOWN',
       response.status,
+      body?.reason ?? null,
+      body?.field ?? null,
     );
   }
   // 202/204 (arranca el login, cierra la sesion) no traen cuerpo: leerlo como
@@ -335,6 +350,17 @@ export const api = {
     request<{ canPayAtClub: boolean }>(`/${slug}/payment-options?phone=${encodeURIComponent(phone)}`),
 
   /**
+   * Antes de reservar: si el número nunca reservó, el servidor le manda un código
+   * por WhatsApp y contesta que hace falta. Los que ya reservaron alguna vez pasan
+   * directo.
+   */
+  requestPhoneCode: (slug: string, phoneNumber: string) =>
+    request<{ verificationRequired: boolean }>(`/${slug}/phone-verification`, {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber }),
+    }),
+
+  /**
    * El token va cuando hay sesión iniciada, y es lo que hace que el turno
    * después aparezca en "mis turnos": la reserva queda atada a la cuenta. Sin
    * token se reserva igual, como invitado — nunca fue obligatorio tener cuenta.
@@ -347,6 +373,8 @@ export const api = {
       fullName: string;
       phoneNumber: string;
       paymentChoice: PaymentChoice;
+      /** El que le llegó por WhatsApp, solo en la primera reserva del número. */
+      verificationCode?: string;
     },
     token?: string,
   ) => request<BookingCreated>(`/${slug}/bookings`, {

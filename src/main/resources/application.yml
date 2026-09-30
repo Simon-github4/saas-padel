@@ -100,6 +100,7 @@ app:
     from-number: ${WHATSAPP_FROM:}
     account-sid: ${TWILIO_ACCOUNT_SID:}
     auth-token: ${TWILIO_AUTH_TOKEN:}
+    verify-phones: ${WHATSAPP_VERIFY_PHONES:false}
   jobs:
     enabled: true
     recurring-horizon-weeks: 8

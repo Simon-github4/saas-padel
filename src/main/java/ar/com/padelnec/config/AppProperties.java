@@ -67,6 +67,15 @@ public class AppProperties {
          * no llegan fuera de la ventana de 24 horas.
          */
         private Map<String, String> templates = new HashMap<>();
+
+        /**
+         * Pedir un codigo por WhatsApp antes de la primera reserva de un numero que
+         * nunca reservo. Apagado por defecto, y sin efecto mientras el proveedor sea
+         * {@code off}: prenderlo sin un canal que mande el codigo dejaria sin poder
+         * reservar a todo jugador nuevo. Va junto con la plantilla
+         * {@code PHONE_VERIFICATION_CODE} aprobada.
+         */
+        private boolean verifyPhones = false;
     }
 
     @Getter

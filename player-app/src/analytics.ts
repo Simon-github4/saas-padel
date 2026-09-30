@@ -42,7 +42,8 @@ export type EventName =
   | 'booking_created'
   | 'booking_failed'
   | 'link_expired'
-  | 'waitlist_joined';
+  | 'waitlist_joined'
+  | 'phone_code_sent';
 
 /** Propiedades opcionales. Cada evento usa las suyas; el resto viaja vacío. */
 export interface EventProps {

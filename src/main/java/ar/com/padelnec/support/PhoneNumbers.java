@@ -1,6 +1,7 @@
 package ar.com.padelnec.support;
 
 import ar.com.padelnec.web.BusinessRuleException;
+import ar.com.padelnec.web.BusinessRuleException.Reason;
 import com.google.i18n.phonenumbers.NumberParseException;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
 import com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberFormat;
@@ -24,6 +25,14 @@ public class PhoneNumbers {
     private static final int ARGENTINA = 54;
     private static final String MOBILE_PREFIX = "+549";
 
+    /**
+     * Dice como corregirlo, no solo que esta mal: casi todos los rechazos son
+     * celulares escritos sin codigo de area, como se los dicta uno en su ciudad
+     * ({@code 15 415000}).
+     */
+    private static final String INVALID_PHONE =
+            "Revisá el teléfono: escribilo con el código de área, así: 2262 15-415000 o 11 5555-1234.";
+
     private final PhoneNumberUtil util = PhoneNumberUtil.getInstance();
 
     /**
@@ -33,16 +42,16 @@ public class PhoneNumbers {
      */
     public String normalize(String raw) {
         if (raw == null || raw.isBlank()) {
-            throw new BusinessRuleException("Necesitamos tu teléfono para confirmarte el turno");
+            throw new BusinessRuleException(Reason.PHONE_MISSING, "Necesitamos tu teléfono para confirmarte el turno");
         }
         PhoneNumber parsed;
         try {
             parsed = util.parse(raw.trim(), DEFAULT_REGION);
         } catch (NumberParseException ex) {
-            throw new BusinessRuleException("El teléfono " + raw + " no parece válido");
+            throw new BusinessRuleException(Reason.PHONE_INVALID, INVALID_PHONE);
         }
         if (!util.isValidNumber(parsed)) {
-            throw new BusinessRuleException("El telefono " + raw + " no parece valido");
+            throw new BusinessRuleException(Reason.PHONE_INVALID, INVALID_PHONE);
         }
         return forceArgentineMobile(parsed);
     }

@@ -270,6 +270,28 @@ class PublicApiIntegrationTest {
                 .returnResult().getResponseBody();
 
         assertThat(error.get("message").asText()).isNotBlank();
+        // El campo que fallo viaja aparte, para que la analitica sepa que falto.
+        assertThat(error.get("field").asText()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("Un telefono sin codigo de area devuelve 422 con el motivo y como corregirlo")
+    void phoneWithoutAreaCodeIsRejectedWithItsReason() {
+        JsonNode slot = firstFreeSlot();
+        Map<String, Object> body = new java.util.HashMap<>(bookingBody(slot));
+        body.put("phoneNumber", "15415000");
+
+        JsonNode error = client.post().uri("/api/public/club-necochea/bookings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .exchange()
+                .expectStatus().isEqualTo(422)
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+
+        assertThat(error.get("code").asText()).isEqualTo("RULE_VIOLATION");
+        assertThat(error.get("reason").asText()).isEqualTo("PHONE_INVALID");
+        assertThat(error.get("message").asText()).contains("código de área").doesNotContain("15415000");
     }
 
     @Test

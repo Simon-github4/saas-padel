@@ -18,6 +18,7 @@ import { usePlayerAuth } from '../auth/AuthContext';
 import { ROOF_LABEL, SURFACE_LABEL, WALL_LABEL, courtMatches } from '../courtFeatures';
 import { clockTime, durationMinutes, longDate, money, perPerson, shareBooking, slotLine, whatsappLink } from '../format';
 import { rememberGuestBooking } from '../guestBookings';
+import { phoneProblem } from '../phone';
 import { Alert, Button, Card, Field, SummaryCard, WhatsappLink } from '../components/Ui';
 
 /**
@@ -60,8 +61,36 @@ export function Checkout({
   const [fullName, setFullName] = useState(session?.displayName ?? '');
   const [phone, setPhone] = useState(session?.phoneNumber ?? '');
   const [error, setError] = useState<string | null>(null);
+  // Lo que está mal en cada campo, abajo del campo y no en el cartel general: así
+  // el jugador ve qué corregir sin buscarlo.
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<BookingCreated | null>(null);
+
+  // Primera reserva de un número: el servidor le mandó un código por WhatsApp y
+  // sin él no hay turno. Queda abierto para la forma de pago que eligió, así el
+  // código confirma exactamente lo que pidió.
+  const [verification, setVerification] = useState<{ paymentChoice: PaymentChoice } | null>(null);
+  const [code, setCode] = useState('');
+  const [codeError, setCodeError] = useState<string | null>(null);
+  // Reenviar recién después de un minuto: antes, el primero puede estar llegando.
+  const [canResend, setCanResend] = useState(false);
+  useEffect(() => {
+    if (!verification || canResend) {
+      return;
+    }
+    const timer = setTimeout(() => setCanResend(true), 60_000);
+    return () => clearTimeout(timer);
+  }, [verification, canResend]);
+
+  /** Otro número, otro código: el que se estaba esperando ya no sirve. */
+  function closeVerification() {
+    setVerification(null);
+    setCode('');
+    setCodeError(null);
+    setCanResend(false);
+  }
 
   // Un club que exige seña igual deja reservar sin ella a sus jugadores de
   // confianza, y eso depende del teléfono: se le pregunta al servidor cuando el
@@ -97,11 +126,41 @@ export function Checkout({
   const canPayAtClub = club.allowUnpaidBooking || !club.acceptsOnlinePayments || trusted;
   const deposit = Math.round((court.price * club.depositPercentage) / 100);
 
+  /**
+   * Ataja antes de mandar lo que el servidor rechazaría seguro: sin nombre, o un
+   * teléfono sin código de área. Antes esto viajaba igual y volvía como error, y
+   * era la mitad de las reservas fallidas.
+   */
+  function validate(): boolean {
+    const missingName = fullName.trim() ? null : 'Necesitamos tu nombre para reservar el turno.';
+    // Con sesión el teléfono es el de la cuenta y no se muestra: no hay nada que corregir.
+    const badPhone = session?.phoneNumber ? null : phoneProblem(phone);
+    setNameError(missingName);
+    setPhoneError(badPhone);
+    return !missingName && !badPhone;
+  }
+
   async function submit(paymentChoice: PaymentChoice) {
     setError(null);
+    setCodeError(null);
+    if (!validate()) {
+      return;
+    }
     setSending(true);
-    track('checkout_submit', { slotAt: slot.startsAt, paymentChoice });
     try {
+      if (!verification) {
+        // Confirmar el código no es mandar el formulario otra vez: se anota una sola.
+        track('checkout_submit', { slotAt: slot.startsAt, paymentChoice });
+        // Si el número nunca reservó, acá sale el WhatsApp con el código y se
+        // frena hasta que lo escriba. Los que ya reservaron pasan directo.
+        const { verificationRequired } = await api.requestPhoneCode(slug, phone);
+        if (verificationRequired) {
+          setVerification({ paymentChoice });
+          track('phone_code_sent', { slotAt: slot.startsAt, paymentChoice });
+          return;
+        }
+      }
+
       const booking = await api.book(
         slug,
         {
@@ -110,6 +169,7 @@ export function Checkout({
           fullName,
           phoneNumber: phone,
           paymentChoice,
+          verificationCode: verification ? code.trim() : undefined,
         },
         session?.token,
       );
@@ -161,16 +221,51 @@ export function Checkout({
       track('booking_failed', {
         slotAt: slot.startsAt,
         paymentChoice,
-        detail: err instanceof ApiError ? err.code : 'UNKNOWN',
+        detail: err instanceof ApiError ? err.analyticsCode : 'UNKNOWN',
       });
       if (err instanceof ApiError && err.slotTaken) {
         // No hay nada que corregir: alguien llegó primero. Se refresca la grilla.
         onSlotTaken();
         return;
       }
+      if (err instanceof ApiError && isCodeError(err)) {
+        setCodeError(err.message);
+        // Vencido o agotado, pedir otro es lo único que le queda: sin esperar el minuto.
+        if (err.reason === 'VERIFICATION_CODE_EXPIRED') {
+          setCanResend(true);
+        }
+        return;
+      }
+      if (err instanceof ApiError && err.reason === 'VERIFICATION_REQUIRED') {
+        // El servidor pide el código y el checkout no lo tenía abierto (por
+        // ejemplo, se prendió la verificación mientras llenaba el formulario).
+        setVerification({ paymentChoice });
+        void resendCode();
+        return;
+      }
+      // Con el teléfono de la cuenta el campo no se muestra: ahí el error va al cartel general.
+      if (err instanceof ApiError && isPhoneError(err) && !session?.phoneNumber) {
+        setPhoneError(err.message);
+        return;
+      }
+      if (err instanceof ApiError && isNameError(err)) {
+        setNameError(err.message);
+        return;
+      }
       setError(err instanceof ApiError ? err.message : 'No pudimos tomar la reserva.');
     } finally {
       setSending(false);
+    }
+  }
+
+  async function resendCode() {
+    setCodeError(null);
+    setCanResend(false);
+    try {
+      await api.requestPhoneCode(slug, phone);
+    } catch (err) {
+      setCodeError(err instanceof ApiError ? err.message : 'No pudimos mandarte el código.');
+      setCanResend(true);
     }
   }
 
@@ -247,9 +342,13 @@ export function Checkout({
         <Field
           label="Tu nombre"
           value={fullName}
-          onChange={setFullName}
+          onChange={(value) => {
+            setFullName(value);
+            setNameError(null);
+          }}
           placeholder="Nombre y apellido"
           autoComplete="name"
+          error={nameError}
         />
         {session?.phoneNumber ? (
           <div className="rounded-xl border border-cal/10 bg-vidrio px-4 py-3">
@@ -260,38 +359,91 @@ export function Checkout({
           <Field
             label="Tu teléfono"
             value={phone}
-            onChange={setPhone}
+            onChange={(value) => {
+              setPhone(value);
+              setPhoneError(null);
+              closeVerification();
+            }}
             placeholder="2262 15-415000"
             inputMode="tel"
             autoComplete="tel"
-            hint="Te avisamos por WhatsApp a este número"
+            hint="Con código de área. Te avisamos por WhatsApp a este número."
+            error={phoneError}
           />
         )}
       </div>
 
       {error && <Alert>{error}</Alert>}
 
-      <div className="space-y-2 pt-1">
-        {trusted && !club.allowUnpaidBooking && (
-          <p className="text-center text-xs text-ink-soft">
-            {club.name} te tiene como jugador de confianza: podés reservar sin pagar seña.
+      {verification ? (
+        <div className="space-y-3 rounded-xl border border-cal/10 bg-vidrio p-4">
+          <p className="text-sm text-ink-soft">
+            Te mandamos un código por WhatsApp al{' '}
+            <span className="font-semibold text-cal tabular-nums">{phone}</span>. Lo pedimos una sola vez, la
+            primera vez que reservás con este número.
           </p>
-        )}
-        {club.acceptsOnlinePayments && (
-          <Button variant="accent" onClick={() => submit('DEPOSIT_ONLINE')} disabled={sending}>
-            Pagar seña de {money(deposit)}
-          </Button>
-        )}
-        {canPayAtClub && (
+          <Field
+            label="Código"
+            value={code}
+            onChange={(value) => {
+              setCode(value.replace(/\D/g, '').slice(0, 6));
+              setCodeError(null);
+            }}
+            placeholder="123456"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            error={codeError}
+          />
           <Button
-            variant={club.acceptsOnlinePayments ? 'secondary' : 'primary'}
-            onClick={() => submit('PAY_AT_CLUB')}
-            disabled={sending}
+            variant={verification.paymentChoice === 'DEPOSIT_ONLINE' ? 'accent' : 'primary'}
+            onClick={() => submit(verification.paymentChoice)}
+            disabled={sending || code.length < 6}
           >
-            Reservar y pagar en el club
+            {verification.paymentChoice === 'DEPOSIT_ONLINE' ? 'Confirmar y pagar seña' : 'Confirmar reserva'}
           </Button>
-        )}
-      </div>
+          <div className="flex items-center justify-between text-xs">
+            <button
+              type="button"
+              onClick={() => void resendCode()}
+              disabled={!canResend || sending}
+              className="font-semibold text-ladrillo-claro underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:text-ink-mute disabled:no-underline"
+            >
+              {canResend ? 'Reenviar código' : 'Reenviar en un minuto'}
+            </button>
+            {!session?.phoneNumber && (
+              <button
+                type="button"
+                onClick={closeVerification}
+                className="text-ink-mute underline-offset-4 hover:underline"
+              >
+                Cambiar número
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2 pt-1">
+          {trusted && !club.allowUnpaidBooking && (
+            <p className="text-center text-xs text-ink-soft">
+              {club.name} te tiene como jugador de confianza: podés reservar sin pagar seña.
+            </p>
+          )}
+          {club.acceptsOnlinePayments && (
+            <Button variant="accent" onClick={() => submit('DEPOSIT_ONLINE')} disabled={sending}>
+              Pagar seña de {money(deposit)}
+            </Button>
+          )}
+          {canPayAtClub && (
+            <Button
+              variant={club.acceptsOnlinePayments ? 'secondary' : 'primary'}
+              onClick={() => submit('PAY_AT_CLUB')}
+              disabled={sending}
+            >
+              Reservar y pagar en el club
+            </Button>
+          )}
+        </div>
+      )}
 
       <p className="text-center text-xs text-ink-mute">
         Al reservar aceptás los{' '}
@@ -429,6 +581,26 @@ function Booked({
       )}
     </div>
   );
+}
+
+/** El servidor rechazó el teléfono: el mensaje va abajo del campo, que es lo que hay que corregir. */
+function isPhoneError(err: ApiError): boolean {
+  return (
+    err.reason?.startsWith('PHONE_') === true ||
+    // El WhatsApp no salió o se pidieron demasiados: lo que hay que revisar es el número.
+    err.reason === 'VERIFICATION_CODE_NOT_SENT' ||
+    err.reason === 'VERIFICATION_LIMIT' ||
+    err.field === 'phoneNumber'
+  );
+}
+
+/** Lo que falló es el código de WhatsApp: el mensaje va abajo del campo del código. */
+function isCodeError(err: ApiError): boolean {
+  return err.reason === 'VERIFICATION_CODE_INVALID' || err.reason === 'VERIFICATION_CODE_EXPIRED';
+}
+
+function isNameError(err: ApiError): boolean {
+  return err.reason === 'NAME_MISSING' || err.field === 'fullName';
 }
 
 /** "Techada · Blindex", o "Al aire libre · Pared · Cemento": el piso solo cuando no es el de siempre. */

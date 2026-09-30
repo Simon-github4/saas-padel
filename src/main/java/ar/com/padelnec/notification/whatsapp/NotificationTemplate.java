@@ -40,7 +40,14 @@ public enum NotificationTemplate {
     BOOKING_REMINDER(7),
 
     /** Se libero un horario que alguien esperaba. Variables: nombre, club, fecha, hora, link. */
-    WAITLIST_SLOT_FREED(5);
+    WAITLIST_SLOT_FREED(5),
+
+    /**
+     * Codigo para verificar el telefono antes de la primera reserva. Variable: el
+     * codigo. Es la unica sin link: en Meta va como plantilla de categoria
+     * "autenticacion", que tiene formato fijo y boton de copiar codigo.
+     */
+    PHONE_VERIFICATION_CODE(1);
 
     private final int variableCount;
 

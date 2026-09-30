@@ -180,6 +180,7 @@ export function Field({
   placeholder,
   type = 'text',
   hint,
+  error,
   inputMode,
   autoComplete,
 }: {
@@ -189,6 +190,8 @@ export function Field({
   placeholder?: string;
   type?: string;
   hint?: string;
+  /** Qué está mal en lo que escribió. Reemplaza al hint mientras esté. */
+  error?: string | null;
   inputMode?: 'text' | 'tel' | 'numeric';
   autoComplete?: string;
 }) {
@@ -201,10 +204,19 @@ export function Field({
         inputMode={inputMode}
         autoComplete={autoComplete}
         placeholder={placeholder}
+        aria-invalid={error ? true : undefined}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-cal/10 bg-pista px-4 py-3 text-base text-cal outline-none transition placeholder:text-ink-mute focus:border-ladrillo focus:ring-2 focus:ring-ladrillo/25"
+        className={`w-full rounded-xl border bg-pista px-4 py-3 text-base text-cal outline-none transition placeholder:text-ink-mute focus:border-ladrillo focus:ring-2 focus:ring-ladrillo/25 ${
+          error ? 'border-red-500/60' : 'border-cal/10'
+        }`}
       />
-      {hint && <span className="mt-1.5 block text-xs text-ink-soft">{hint}</span>}
+      {error ? (
+        <span role="alert" className="mt-1.5 block text-xs text-red-300 claro:text-red-700">
+          {error}
+        </span>
+      ) : (
+        hint && <span className="mt-1.5 block text-xs text-ink-soft">{hint}</span>
+      )}
     </label>
   );
 }
