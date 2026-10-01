@@ -169,7 +169,7 @@ export function LoginPage() {
                       type="tel"
                       inputMode="tel"
                       autoComplete="tel"
-                      placeholder="2262 15-######"
+                      placeholder="2262 ######"
                       hint="Para que el club te ubique cuando reservás."
                     />
                   </>

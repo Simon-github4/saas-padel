@@ -31,7 +31,7 @@ public class PhoneNumbers {
      * ({@code 15 415000}).
      */
     private static final String INVALID_PHONE =
-            "Revisá el teléfono: escribilo con el código de área, así: 2262 15-###### o 11 ####-####.";
+            "Revisá el teléfono: escribilo con el código de área, así: 2262 ###### o 11 ########.";
 
     private final PhoneNumberUtil util = PhoneNumberUtil.getInstance();
 

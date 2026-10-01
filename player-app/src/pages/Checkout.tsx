@@ -387,7 +387,7 @@ export function Checkout({
               setPhoneError(null);
               closeVerification();
             }}
-            placeholder="2262 15-######"
+            placeholder="2262 ######"
             inputMode="tel"
             autoComplete="tel"
             hint="Con código de área."
