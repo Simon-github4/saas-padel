@@ -363,7 +363,7 @@ export function Checkout({
 
       <div className="space-y-3">
         <Field
-          label="Tu nombre"
+          label="Tu nombre completo"
           value={fullName}
           onChange={(value) => {
             setFullName(value);

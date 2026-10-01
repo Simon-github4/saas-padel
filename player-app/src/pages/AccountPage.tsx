@@ -415,9 +415,11 @@ function GuestAccountView({
           Estos turnos solo se ven desde este dispositivo. Creá una cuenta para verlos
           desde cualquier lado.
         </Alert>
+        {/* Con el color primario del club, como "Pagar seña": es la acción de la
+            pantalla y no se tiene que confundir con las tarjetas de los turnos. */}
         <Link
           to="/login?mode=register"
-          className="block rounded-full border border-cal/10 bg-vidrio px-5 py-3.5 text-center text-sm font-bold uppercase tracking-[0.12em] text-cal transition hover:border-cal/25"
+          className="block rounded-full bg-ladrillo px-5 py-3.5 text-center text-sm font-bold uppercase tracking-[0.12em] text-cal transition [box-shadow:var(--shadow-glow)] hover:bg-ladrillo/90"
         >
           Crear cuenta
         </Link>
