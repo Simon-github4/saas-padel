@@ -11,7 +11,7 @@
 export const PHONE_MISSING = 'Necesitamos tu teléfono para confirmarte el turno.';
 
 export const PHONE_NEEDS_AREA_CODE =
-  'Falta el código de área. Escribilo así: 2262 15-415000 o 11 5555-1234.';
+  'Falta el código de área. Escribilo así: 2262 15-###### o 11 ####-####.';
 
 /** Qué le falta al teléfono, o nulo si no se ve nada raro. */
 export function phoneProblem(raw: string): string | null {

@@ -387,10 +387,10 @@ export function Checkout({
               setPhoneError(null);
               closeVerification();
             }}
-            placeholder="2262 15-415000"
+            placeholder="2262 15-######"
             inputMode="tel"
             autoComplete="tel"
-            hint="Con código de área. Te avisamos por WhatsApp a este número."
+            hint="Con código de área."
             error={phoneError}
           />
         )}
