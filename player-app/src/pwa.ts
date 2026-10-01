@@ -3,7 +3,7 @@ import { useSyncExternalStore } from 'react';
 
 /**
  * La app del jugador como app instalable (PWA): el service worker y el pedido de
- * instalación que ofrece Chrome en Android.
+ * instalación que ofrecen Chrome en Android y Chrome/Edge en la compu.
  *
  * <p>El pedido de instalación ({@code beforeinstallprompt}) llega una sola vez, al
  * cargar la página y no cuando el jugador entra a /instalar: por eso se escucha
@@ -29,6 +29,27 @@ export interface InstallState {
   inAppBrowser: boolean;
   /** En iPhone, un navegador que no es Safari: el menú para instalar es otro, o no está. */
   iosNotSafari: boolean;
+  /** En la compu, cuál navegador: cada uno instala desde un lugar distinto, y Firefox no instala. */
+  desktopBrowser: DesktopBrowser;
+}
+
+export type DesktopBrowser = 'chrome' | 'edge' | 'safari' | 'firefox' | 'other';
+
+function desktopBrowserOf(ua: string): DesktopBrowser {
+  // El orden importa: Edge y Opera también dicen "Chrome", y Chrome también dice "Safari".
+  if (/Edg\//.test(ua)) {
+    return 'edge';
+  }
+  if (/Firefox\//.test(ua)) {
+    return 'firefox';
+  }
+  if (/Chrome\//.test(ua) && !/OPR\//.test(ua)) {
+    return 'chrome';
+  }
+  if (/Safari\//.test(ua) && /Macintosh/.test(ua)) {
+    return 'safari';
+  }
+  return 'other';
 }
 
 let installEvent: BeforeInstallPromptEvent | null = null;
@@ -64,6 +85,7 @@ function snapshot(): InstallState {
     canPrompt: installEvent !== null,
     inAppBrowser,
     iosNotSafari: ios && /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua),
+    desktopBrowser: desktopBrowserOf(ua),
   };
 }
 

@@ -24,9 +24,10 @@ function guardarCerrado() {
 /**
  * Aviso de "Instalá la app" arriba del buscador.
  *
- * <p>Solo en el celular y solo si todavía no la instaló: en la compu no hay nada
- * que instalar, y abierta desde el ícono ya no hace falta. Si el jugador lo cierra
- * no vuelve a aparecer; queda el botón fijo de abajo (InstallFloatingButton).
+ * <p>Solo en el celular y solo si todavía no la instaló: en la compu alcanza con el
+ * botón fijo de abajo (InstallFloatingButton), que también instala en un clic, y
+ * abierta desde el ícono ya no hace falta. Si el jugador lo cierra no vuelve a
+ * aparecer.
  *
  * <p>En Android con Chrome, "Instalar" abre directo el cartel del navegador. En el
  * resto lleva a /instalar, con los pasos de ese teléfono.

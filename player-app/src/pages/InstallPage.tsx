@@ -4,11 +4,11 @@ import { AccountButton } from '../components/AccountButton';
 import { BrandIcon } from '../components/BrandLogo';
 import { TemaSwitch } from '../components/TemaSwitch';
 import { Alert, Button, Card, Screen, TopBar, WhatsappLink } from '../components/Ui';
-import { promptInstall, useInstallState } from '../pwa';
+import { promptInstall, useInstallState, type DesktopBrowser } from '../pwa';
 import { setPageMeta } from '../seo';
 import { BRAND } from './marketing/config';
 
-type Telefono = 'android' | 'ios';
+type Dispositivo = 'android' | 'ios' | 'compu';
 
 type Paso = {
   titulo: string;
@@ -18,32 +18,52 @@ type Paso = {
 };
 
 /**
- * Guía para poner la app en el inicio del celular.
+ * Guía para instalar la app en el celular o en la compu.
  *
  * <p>Pensada para quien nunca instaló una app desde una página: pasos cortos, letra
  * grande y, en cada uno, el dibujo del botón que hay que tocar, porque "el botón de
  * compartir" no le dice nada a quien no sabe cuál es. Abre en los pasos del teléfono
  * que se está usando, y deja cambiar al otro para ayudar a alguien más.
  *
- * <p>En Android con Chrome, si el navegador ya ofrece instalar, arriba de todo va un
- * botón que lo hace en un toque y los pasos quedan como plan B.
+ * <p>Si el navegador ya ofrece instalar (Chrome en Android, Chrome y Edge en la
+ * compu), arriba de todo va un botón que lo hace en un toque y los pasos quedan
+ * como plan B. En la compu los pasos son los del navegador que se está usando:
+ * cada uno instala desde un lugar distinto, y Firefox directamente no instala.
  */
 export function InstallPage() {
   const install = useInstallState();
-  const [telefono, setTelefono] = useState<Telefono>(install.platform === 'ios' ? 'ios' : 'android');
+  const enCompu = install.platform === 'desktop';
+  const [dispositivo, setDispositivo] = useState<Dispositivo>(
+    install.platform === 'ios' ? 'ios' : enCompu ? 'compu' : 'android',
+  );
   const [rechazado, setRechazado] = useState(false);
 
   useEffect(
     () =>
       setPageMeta(
         `Instalá la app · ${BRAND}`,
-        'Tené TurnosPadel en el inicio del celular y buscá cancha de pádel con un toque. Paso a paso para Android y iPhone.',
+        'Tené TurnosPadel en el inicio del celular o en tu compu y buscá cancha de pádel con un toque. Paso a paso para Android, iPhone y computadora.',
       ),
     [],
   );
 
-  const pasos = telefono === 'ios' ? pasosIphone(install.iosNotSafari) : pasosAndroid();
-  const enCompu = install.platform === 'desktop';
+  const pasos =
+    dispositivo === 'ios'
+      ? pasosIphone(install.iosNotSafari)
+      : dispositivo === 'compu'
+        ? pasosCompu(install.desktopBrowser)
+        : pasosAndroid();
+  // En la compu se ofrece también la pestaña de la compu; en el celular, solo las de celular.
+  const pestanias: [Dispositivo, string][] = enCompu
+    ? [
+        ['compu', 'Compu'],
+        ['android', 'Android'],
+        ['ios', 'iPhone'],
+      ]
+    : [
+        ['android', 'Android'],
+        ['ios', 'iPhone'],
+      ];
   const link = `${window.location.origin}/instalar`;
 
   return (
@@ -56,8 +76,9 @@ export function InstallPage() {
         </div>
         <h1 className="mt-6 text-[clamp(2.75rem,12vw,3.75rem)] tracking-[0.06em]">Instalá la app</h1>
         <p className="mx-auto mt-3 max-w-sm text-lg leading-relaxed text-ink-soft">
-          Tené {BRAND} en el inicio del celular, como cualquier otra app. La abrís con un toque y vas
-          directo a buscar cancha, sin pasar por Google.
+          {enCompu
+            ? `Tené ${BRAND} en tu compu, en su propia ventana, como cualquier otro programa. La abrís con un clic y vas directo a buscar cancha.`
+            : `Tené ${BRAND} en el inicio del celular, como cualquier otra app. La abrís con un toque y vas directo a buscar cancha, sin pasar por Google.`}
         </p>
         <p className="eyebrow mt-5 text-ladrillo-claro">Gratis · No ocupa lugar · Sin tienda de apps</p>
       </div>
@@ -65,7 +86,11 @@ export function InstallPage() {
       {install.platform === 'installed' ? (
         <Card className="mt-10 space-y-4 text-center">
           <p className="text-2xl font-bold">¡Ya la tenés instalada!</p>
-          <p className="text-ink-soft">Buscá el ícono de {BRAND} en el inicio de tu celular.</p>
+          <p className="text-ink-soft">
+            {enCompu
+              ? `Buscala como ${BRAND} en el menú Inicio (Windows) o en el Dock (Mac).`
+              : `Buscá el ícono de ${BRAND} en el inicio de tu celular.`}
+          </p>
           <Link
             to="/buscar"
             className="block w-full rounded-full bg-ladrillo px-5 py-4 text-base font-bold uppercase tracking-[0.12em] text-cal [box-shadow:var(--shadow-glow)]"
@@ -77,13 +102,13 @@ export function InstallPage() {
         <>
           {install.canPrompt && (
             <Card className="mt-10 space-y-3 text-center">
-              <p className="text-lg font-bold">Se instala con un solo toque</p>
+              <p className="text-lg font-bold">{enCompu ? 'Se instala con un clic' : 'Se instala con un solo toque'}</p>
               <Button
                 variant="accent"
                 className="py-4 text-base"
                 onClick={() => void promptInstall().then((aceptada) => setRechazado(!aceptada))}
               >
-                Instalar ahora
+                {enCompu ? 'Instalar en esta compu' : 'Instalar ahora'}
               </Button>
               {rechazado && (
                 <p className="text-sm text-ink-soft">
@@ -96,10 +121,11 @@ export function InstallPage() {
           {enCompu && (
             <div className="mt-10">
               <Alert tone="info">
-                <p className="text-base text-cal">Estás en una computadora.</p>
+                <p className="text-base text-cal">¿También la querés en el celular?</p>
                 <p className="mt-1">
-                  Abrí esta página desde el celular donde querés la app:{' '}
-                  <span className="font-semibold text-cal">{link.replace(/^https?:\/\//, '')}</span>
+                  Abrí esta página desde el teléfono:{' '}
+                  <span className="font-semibold text-cal">{link.replace(/^https?:\/\//, '')}</span>, o elegí
+                  Android o iPhone abajo para ver los pasos.
                 </p>
               </Alert>
             </div>
@@ -111,7 +137,7 @@ export function InstallPage() {
                 <p className="text-base font-semibold text-cal">Primero abrila en el navegador</p>
                 <p className="mt-1 text-base">
                   Abriste este link desde otra app (Instagram, Facebook…) y desde ahí no se puede instalar.
-                  Tocá los tres puntitos de arriba y elegí <strong>Abrir en {telefono === 'ios' ? 'Safari' : 'Chrome'}</strong>{' '}
+                  Tocá los tres puntitos de arriba y elegí <strong>Abrir en {dispositivo === 'ios' ? 'Safari' : 'Chrome'}</strong>{' '}
                   o <strong>Abrir en el navegador</strong>.
                 </p>
               </Alert>
@@ -125,23 +151,20 @@ export function InstallPage() {
 
             <div
               role="tablist"
-              aria-label="Tipo de celular"
-              className="mx-auto mt-5 grid max-w-sm grid-cols-2 gap-1 rounded-full border border-cal/10 bg-vidrio p-1"
+              aria-label="Dónde instalarla"
+              className={`mx-auto mt-5 grid max-w-sm gap-1 rounded-full border border-cal/10 bg-vidrio p-1 ${
+                pestanias.length === 3 ? 'grid-cols-3' : 'grid-cols-2'
+              }`}
             >
-              {(
-                [
-                  ['android', 'Android'],
-                  ['ios', 'iPhone'],
-                ] as const
-              ).map(([valor, etiqueta]) => (
+              {pestanias.map(([valor, etiqueta]) => (
                 <button
                   key={valor}
                   type="button"
                   role="tab"
-                  aria-selected={telefono === valor}
-                  onClick={() => setTelefono(valor)}
+                  aria-selected={dispositivo === valor}
+                  onClick={() => setDispositivo(valor)}
                   className={`rounded-full px-4 py-3 text-base font-bold transition ${
-                    telefono === valor ? 'bg-cal text-pista' : 'text-ink-soft hover:text-cal'
+                    dispositivo === valor ? 'bg-cal text-pista' : 'text-ink-soft hover:text-cal'
                   }`}
                 >
                   {etiqueta}
@@ -149,7 +172,11 @@ export function InstallPage() {
               ))}
             </div>
             <p className="mt-3 text-center text-sm text-ink-soft">
-              {telefono === 'ios' ? 'Desde Safari, el navegador de la brújula.' : 'Desde Chrome, el navegador de Google.'}
+              {dispositivo === 'ios'
+                ? 'Desde Safari, el navegador de la brújula.'
+                : dispositivo === 'compu'
+                  ? navegadorCompu(install.desktopBrowser)
+                  : 'Desde Chrome, el navegador de Google.'}
             </p>
 
             <ol className="mt-8 space-y-4">
@@ -295,6 +322,125 @@ function pasosAndroid(): Paso[] {
   ];
 }
 
+function navegadorCompu(navegador: DesktopBrowser): string {
+  switch (navegador) {
+    case 'edge':
+      return 'Desde Microsoft Edge.';
+    case 'safari':
+      return 'Desde Safari, en la Mac.';
+    case 'firefox':
+      return 'Firefox no instala apps web: usá Chrome o Edge.';
+    default:
+      return 'Desde Chrome, el navegador de Google.';
+  }
+}
+
+function pasosCompu(navegador: DesktopBrowser): Paso[] {
+  if (navegador === 'firefox') {
+    return [
+      {
+        titulo: 'Abrí esta página en Chrome o Edge',
+        texto: (
+          <>
+            Firefox no permite instalar apps web. Copiá la dirección de arriba, pegala en <strong>Chrome</strong> o{' '}
+            <strong>Microsoft Edge</strong> y vas a ver el botón para instalarla con un clic.
+          </>
+        ),
+      },
+    ];
+  }
+  if (navegador === 'safari') {
+    return [
+      {
+        titulo: 'Abrí el menú "Archivo"',
+        texto: 'Está arriba de todo, en la barra de la Mac.',
+        muestra: <Tecla ancha>Archivo</Tecla>,
+      },
+      {
+        titulo: 'Elegí "Agregar al Dock"',
+        texto: 'Necesita macOS Sonoma o más nuevo. Si no aparece, abrí esta página en Chrome.',
+        muestra: <Opcion icono={<AgregarIcono />}>Agregar al Dock</Opcion>,
+      },
+      {
+        titulo: 'Hacé clic en "Agregar"',
+        texto: 'Queda en el Dock, junto a tus otros programas.',
+        muestra: <Tecla ancha>Agregar</Tecla>,
+      },
+      pasoFinalCompu,
+    ];
+  }
+  if (navegador === 'edge') {
+    return [
+      {
+        titulo: 'Abrí el menú de los tres puntitos',
+        texto: 'Está arriba a la derecha de Edge.',
+        muestra: (
+          <Tecla>
+            <PuntosIcono horizontal />
+          </Tecla>
+        ),
+      },
+      {
+        titulo: 'Entrá a "Aplicaciones"',
+        texto: (
+          <>
+            Y elegí <strong>Instalar este sitio como aplicación</strong>. También puede aparecer un ícono de instalar
+            a la derecha de la barra de direcciones.
+          </>
+        ),
+        muestra: <Opcion icono={<InstalarCompuIcono />}>Instalar este sitio como aplicación</Opcion>,
+      },
+      {
+        titulo: 'Hacé clic en "Instalar"',
+        texto: 'Se abre en su propia ventana.',
+        muestra: <Tecla ancha>Instalar</Tecla>,
+      },
+      pasoFinalCompu,
+    ];
+  }
+  return [
+    {
+      titulo: 'Buscá el ícono de instalar',
+      texto: (
+        <>
+          Está a la derecha de la barra de direcciones, arriba: una pantallita con una flecha. Si no lo ves, abrí el
+          menú de los tres puntitos, entrá a <strong>Transmitir, guardar y compartir</strong> y elegí{' '}
+          <strong>Instalar página como app</strong>.
+        </>
+      ),
+      muestra: (
+        <div className="flex items-center gap-3">
+          <Tecla>
+            <InstalarCompuIcono />
+          </Tecla>
+          <span className="text-sm text-ink-soft">o</span>
+          <Tecla>
+            <PuntosIcono />
+          </Tecla>
+        </div>
+      ),
+    },
+    {
+      titulo: 'Hacé clic en "Instalar"',
+      texto: 'Se abre en su propia ventana, sin la barra del navegador.',
+      muestra: <Tecla ancha>Instalar</Tecla>,
+    },
+    pasoFinalCompu,
+  ];
+}
+
+const pasoFinalCompu: Paso = {
+  titulo: '¡Listo! Ya la tenés en la compu',
+  texto:
+    'Queda como un programa más: en Windows, en el menú Inicio (y la podés anclar a la barra de tareas); en la Mac, en el Dock o en Launchpad.',
+  muestra: (
+    <div className="inline-flex flex-col items-center gap-1.5">
+      <img src="/icon-192.png" alt={`Ícono de ${BRAND}`} className="size-16 rounded-2xl ring-1 ring-cal/15" />
+      <span className="text-xs font-semibold text-cal">{BRAND}</span>
+    </div>
+  ),
+};
+
 const pasoFinal: Paso = {
   titulo: '¡Listo! Buscá este ícono',
   texto: 'Queda en la pantalla de inicio, junto a tus otras apps. Tocalo y vas directo a buscar cancha.',
@@ -375,6 +521,17 @@ function AgregarIcono() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden className="size-6">
       <rect x="4" y="4" width="16" height="16" rx="4" />
       <path d="M12 8.5v7M8.5 12h7" />
+    </svg>
+  );
+}
+
+/** El ícono de instalar de Chrome y Edge en la compu: una pantalla con una flecha para abajo. */
+function InstalarCompuIcono() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-label="Instalar" className="size-7">
+      <rect x="3" y="4" width="18" height="12" rx="2" />
+      <path d="M8 20h8M12 16v4" />
+      <path d="M12 7v5M9.5 9.5 12 12l2.5-2.5" />
     </svg>
   );
 }
