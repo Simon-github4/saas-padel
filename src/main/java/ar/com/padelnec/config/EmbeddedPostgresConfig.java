@@ -38,7 +38,14 @@ import org.springframework.util.FileSystemUtils;
 public class EmbeddedPostgresConfig {
 
     private static final Logger log = LoggerFactory.getLogger(EmbeddedPostgresConfig.class);
-    private static final int PORT = 54329;
+    /**
+     * Puerto por defecto. {@code DEV_DB_PORT} lo cambia: Windows reserva rangos de
+     * puertos para Hyper-V/WSL que cambian solos (ver
+     * {@code netsh interface ipv4 show excludedportrange protocol=tcp}), y cuando
+     * el 54329 cae adentro el motor no arranca con "Permission denied". Los datos
+     * son los mismos con cualquier puerto.
+     */
+    private static final int DEFAULT_PORT = 54329;
     private static final Path DATA_DIR = Path.of("target", "devdb");
 
     @Bean(destroyMethod = "close")
@@ -48,12 +55,13 @@ public class EmbeddedPostgresConfig {
                     DATA_DIR.toAbsolutePath());
             FileSystemUtils.deleteRecursively(DATA_DIR);
         }
-        log.info("Iniciando PostgreSQL embebido en el puerto {} (datos en {})", PORT,
+        int port = port();
+        log.info("Iniciando PostgreSQL embebido en el puerto {} (datos en {})", port,
                 DATA_DIR.toAbsolutePath());
         // Por defecto el builder limpia el directorio en cada arranque (initdb de
         // nuevo cada vez); hay que pedirle explicitamente que no lo haga para que
         // los datos sobrevivan de una corrida a la siguiente.
-        return EmbeddedPostgres.builder().setPort(PORT).setDataDirectory(DATA_DIR)
+        return EmbeddedPostgres.builder().setPort(port).setDataDirectory(DATA_DIR)
                 .setCleanDataDirectory(false).start();
     }
 
@@ -61,5 +69,10 @@ public class EmbeddedPostgresConfig {
     @Primary
     public DataSource dataSource(EmbeddedPostgres postgres) {
         return postgres.getPostgresDatabase();
+    }
+
+    private static int port() {
+        String configured = System.getenv("DEV_DB_PORT");
+        return configured == null || configured.isBlank() ? DEFAULT_PORT : Integer.parseInt(configured.trim());
     }
 }

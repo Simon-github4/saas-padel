@@ -7,7 +7,10 @@ todo por WhatsApp. Multi-tenant: una sola instancia atiende a varios clubes.
 
 Hace falta Java 21, Maven y Node (lo usa Vaadin para armar el bundle del panel;
 la primera corrida tarda unos minutos y después queda cacheado). No hace falta Docker ni instalar PostgreSQL: el perfil
-`dev` levanta un PostgreSQL embebido real en el puerto 54329.
+`dev` levanta un PostgreSQL embebido real en el puerto 54329. Si no arranca con
+"Permission denied" es porque Windows reservó ese puerto (lo muestra
+`netsh interface ipv4 show excludedportrange protocol=tcp`): corré con
+`DEV_DB_PORT` apuntando a uno libre, los datos son los mismos.
 
 ```bash
 mvn spring-boot:run -Dspring-boot.run.profiles=dev

@@ -51,6 +51,7 @@
         "-Dspring-boot.run.profiles=dev,twilio",
         "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5174"
       ],
+      "env": { "DEV_DB_PORT": "54400" },
       "port": 8080
     }
   ]
