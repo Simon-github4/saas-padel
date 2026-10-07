@@ -392,8 +392,27 @@ export function SummaryCard({ rows }: { rows: { label: string; value: ReactNode 
   );
 }
 
-/** Estado de un turno, con el mismo mapeo de color en el detalle y en el historial. */
-export function StatusBadge({ status }: { status: string }) {
+/**
+ * Estado de un turno, con el mismo mapeo de color en el detalle y en el historial.
+ *
+ * <p>Con {@code endTime}, un turno confirmado que ya terminó se muestra como
+ * terminado aunque el club no lo haya marcado en el panel: para el jugador ya
+ * es historia, y es el mismo criterio con el que cuentan las estadísticas
+ * ({@code isPlayed} en stats.ts). "Terminado" y no "Jugado" porque, si el club
+ * no lo marcó, lo único que se sabe es que el horario pasó.
+ *
+ * <p>Al revés, un turno que el club ya cerró pero que todavía no terminó no es
+ * "terminado": el club lo cierra solo al cobrar el total en el mostrador, y eso
+ * pasa muchas veces antes del partido. Hasta que termine, dice "Confirmado".
+ */
+export function StatusBadge({ status: rawStatus, endTime }: { status: string; endTime?: string }) {
+  const ended = endTime !== undefined && new Date(endTime) <= new Date();
+  let status = rawStatus;
+  if (rawStatus === 'CONFIRMED' && ended) {
+    status = 'COMPLETED';
+  } else if (rawStatus === 'COMPLETED' && endTime !== undefined && !ended) {
+    status = 'CONFIRMED';
+  }
   const neutral = 'border-cal/10 bg-cal/[0.06] text-ink-soft';
   const map: Record<string, { text: string; className: string }> = {
     CONFIRMED: {
@@ -408,7 +427,7 @@ export function StatusBadge({ status }: { status: string }) {
       text: 'Esperando pago',
       className: 'border-amber-500/25 bg-amber-500/10 text-amber-300 claro:text-amber-700',
     },
-    COMPLETED: { text: 'Jugado', className: neutral },
+    COMPLETED: { text: 'Terminado', className: neutral },
     CANCELLED: { text: 'Cancelado', className: 'border-red-500/25 bg-red-500/10 text-red-300 claro:text-red-700' },
     NO_SHOW: {
       text: 'No te presentaste',

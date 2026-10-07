@@ -247,6 +247,30 @@ export interface BookingHistoryItem {
   managementToken: string;
 }
 
+/**
+ * Un turno fijo del jugador: la regla y su próxima fecha.
+ *
+ * <p>Sale de emparejar el teléfono de la cuenta, que nadie verifica, así que no
+ * trae token: se puede mirar pero no abrir ni cancelar.
+ */
+export interface RecurringItem {
+  recurringId: string;
+  clubName: string;
+  clubSlug: string;
+  /** Zona del club: la hora del turno fijo es la del club. */
+  timeZone: string;
+  courtName: string;
+  /** 1 = lunes ... 7 = domingo. */
+  dayOfWeek: number;
+  /** "20:00", en la hora del club. */
+  startTime: string;
+  durationMinutes: number;
+  /** "2026-12-15", o null si no tiene fecha de corte. */
+  validUntil: string | null;
+  /** La próxima fecha que se juega, o null si no queda ninguna generada. */
+  next: { startTime: string; endTime: string; status: string } | null;
+}
+
 /** Error de la API con el mensaje que el backend escribio para el jugador. */
 export class ApiError extends Error {
   constructor(
@@ -450,6 +474,9 @@ export const playerApi = {
   logout: (token: string) => request<void>('/player/logout', { method: 'POST', token }),
 
   bookingHistory: (token: string) => request<BookingHistoryItem[]>('/player/bookings', { token }),
+
+  /** Turnos fijos, en todos los clubes, por el teléfono de la cuenta. */
+  recurring: (token: string) => request<RecurringItem[]>('/player/recurring', { token }),
 
   /** Horarios en los que está anotado en la lista de espera, en todos los clubes. */
   waitlist: (token: string) => request<WaitlistItem[]>('/player/waitlist', { token }),

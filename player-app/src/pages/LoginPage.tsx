@@ -170,7 +170,7 @@ export function LoginPage() {
                       inputMode="tel"
                       autoComplete="tel"
                       placeholder="2262 ######"
-                      hint="Para que el club te ubique cuando reservás."
+                      hint="Para que el club te ubique cuando reservás, y para ver tus turnos fijos: usá el mismo número que le diste al club."
                     />
                   </>
                 )}

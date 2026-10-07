@@ -3,17 +3,24 @@ package ar.com.padelnec;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import ar.com.padelnec.config.TenantContext;
+import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.PlayerAccount;
+import ar.com.padelnec.domain.RecurringBooking;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.notification.EmailMessage;
 import ar.com.padelnec.notification.EmailSender;
 import ar.com.padelnec.repository.PendingPlayerSignupRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
+import ar.com.padelnec.repository.RecurringBookingRepository;
+import ar.com.padelnec.service.CustomerService;
+import ar.com.padelnec.service.RecurringBookingService;
 import ar.com.padelnec.security.GoogleIdTokenVerifier;
 import ar.com.padelnec.web.api.BookingRateLimiter;
 import tools.jackson.databind.JsonNode;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;
@@ -94,6 +101,9 @@ class PlayerAuthApiIntegrationTest {
     @Autowired private PendingPlayerSignupRepository pendingPlayerSignupRepository;
     @Autowired private FakeGoogleIdTokenVerifier googleVerifier;
     @Autowired private CapturingEmailSender emailSender;
+    @Autowired private CustomerService customerService;
+    @Autowired private RecurringBookingRepository recurringBookingRepository;
+    @Autowired private RecurringBookingService recurringBookingService;
     // Este archivo llama a /register en casi todos los tests, desde el mismo
     // remoteAddr de loopback: sin mockear, el limite compartido de 10 intentos
     // (BookingRateLimiter.java:29) revienta un test mas adelante, no el que de
@@ -153,6 +163,91 @@ class PlayerAuthApiIntegrationTest {
                 .expectStatus().isOk();
 
         assertThat(historyOf(token)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("El turno fijo del telefono de la cuenta aparece con su proxima fecha, sin nada para gestionarlo")
+    void recurringBookingShowsUpByAccountPhone() {
+        String phone = "2262415000";
+        fixedBookingAt("club-a", phone, matchDay.getDayOfWeek(), LocalTime.of(20, 0));
+
+        String token = registerAndConfirm(EMAIL, PASSWORD).get("token").asText();
+        setProfilePhone(token, phone);
+
+        JsonNode recurring = recurringOf(token);
+
+        assertThat(recurring).hasSize(1);
+        JsonNode fixed = recurring.get(0);
+        assertThat(fixed.get("clubName").asText()).isEqualTo("Club club-a");
+        assertThat(fixed.get("dayOfWeek").asInt()).isEqualTo(matchDay.getDayOfWeek().getValue());
+        assertThat(fixed.get("startTime").asText()).isEqualTo("20:00");
+        assertThat(fixed.get("next").get("status").asText()).isEqualTo("CONFIRMED");
+        assertThat(Instant.parse(fixed.get("next").get("startTime").asText()))
+                .isEqualTo(matchDay.atTime(20, 0).atZone(ZONE).toInstant());
+        // Sale de emparejar un telefono que nadie verifico: nada de lo que vuelve
+        // puede servir para cancelar o mover el turno.
+        assertThat(recurring.toString()).doesNotContain("managementToken").doesNotContain("bookingId");
+        // Y las fechas del fijo no se mezclan con el historial, que trae el token de cada turno.
+        assertThat(historyOf(token)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Una cuenta con otro telefono no ve el turno fijo, ni uno que el club dio de baja")
+    void recurringBookingNeedsTheSamePhoneAndAnActiveRule() {
+        RecurringBooking fixed = fixedBookingAt("club-a", "2262415000", matchDay.getDayOfWeek(), LocalTime.of(20, 0));
+
+        String token = registerAndConfirm(EMAIL, PASSWORD).get("token").asText();
+        setProfilePhone(token, "2262418700");
+        assertThat(recurringOf(token)).isEmpty();
+
+        String ownerToken = registerAndConfirm("dueno@example.com", PASSWORD).get("token").asText();
+        setProfilePhone(ownerToken, "2262415000");
+        assertThat(recurringOf(ownerToken)).hasSize(1);
+
+        TenantContext.set(fixed.getClubId());
+        recurringBookingService.deactivate(fixed.getId());
+        TenantContext.clear();
+        assertThat(recurringOf(ownerToken)).isEmpty();
+    }
+
+    /** Un turno fijo cargado por el club, con sus fechas ya generadas como lo hace el job. */
+    private RecurringBooking fixedBookingAt(String slug, String phone, DayOfWeek day, LocalTime start) {
+        Tenant club = fixture.club(slug);
+        TenantContext.set(club.getId());
+        try {
+            Court court = fixture.court("Cancha 1", 1);
+            fixture.allDayPrice(day, "20000");
+            RecurringBooking fixed = new RecurringBooking();
+            fixed.setCourt(court);
+            fixed.setCustomer(customerService.findOrCreate(phone, "Grupo fijo", null));
+            fixed.setDay(day);
+            fixed.setStartTime(start);
+            fixed.setDurationMinutes(90);
+            fixed.setValidFrom(LocalDate.now(ZONE));
+            fixed = recurringBookingRepository.saveAndFlush(fixed);
+            recurringBookingService.materializeNew(club, fixed);
+            return fixed;
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    private void setProfilePhone(String token, String phone) {
+        client.put().uri("/api/public/player/profile")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("name", "Jugador", "phoneNumber", phone))
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    private JsonNode recurringOf(String token) {
+        return client.get().uri("/api/public/player/recurring")
+                .header("Authorization", "Bearer " + token)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
     }
 
     /** El token tal como le llega al jugador: del cuerpo del mail, no de la base. */

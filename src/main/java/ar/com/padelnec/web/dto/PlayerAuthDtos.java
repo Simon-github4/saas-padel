@@ -1,6 +1,7 @@
 package ar.com.padelnec.web.dto;
 
 import ar.com.padelnec.repository.BookingRepository.PlayerBookingHistoryRow;
+import ar.com.padelnec.repository.RecurringBookingRepository;
 import ar.com.padelnec.repository.WaitlistEntryRepository;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
@@ -141,6 +142,40 @@ public final class PlayerAuthDtos {
                     row.getPaidAmount(),
                     row.getManagementToken());
         }
+    }
+
+    /**
+     * Un turno fijo del jugador, para "Mis turnos": la regla y su proxima fecha.
+     *
+     * <p>Sin token ni id de turno: sale de emparejar telefonos, asi que sirve para
+     * mirar y no para actuar (ver {@code PlayerAuthService#recurring}).
+     */
+    public record RecurringItem(
+            UUID recurringId,
+            String clubName,
+            String clubSlug,
+            /** Zona del club: la hora del turno fijo es la del club, no la del celular. */
+            String timeZone,
+            String courtName,
+            /** 1 = lunes ... 7 = domingo. */
+            int dayOfWeek,
+            String startTime,
+            int durationMinutes,
+            String validUntil,
+            NextOccurrence next) {
+
+        public static RecurringItem of(RecurringBookingRepository.PlayerRecurringRow row) {
+            NextOccurrence next = row.getNextStartTime() == null
+                    ? null
+                    : new NextOccurrence(row.getNextStartTime(), row.getNextEndTime(), row.getNextStatus());
+            return new RecurringItem(row.getRecurringId(), row.getClubName(), row.getClubSlug(),
+                    row.getTimeZone(), row.getCourtName(), row.getDayOfWeek(), row.getStartTime(),
+                    row.getDurationMinutes(), row.getValidUntil(), next);
+        }
+    }
+
+    /** La proxima fecha generada de un turno fijo que todavia no termino. */
+    public record NextOccurrence(Instant startTime, Instant endTime, String status) {
     }
 
     /** Una anotacion del jugador en la lista de espera, para "Mis turnos". */

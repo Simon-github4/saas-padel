@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BookingHistoryItem } from './api/client';
-import { isPlayed, periodBuckets, periodStart, summarize } from './stats';
+import { isPlayed, periodBuckets, periodRange, periodStart, summarize } from './stats';
 
 /**
  * Las barras del gráfico de actividad.
@@ -51,6 +51,10 @@ describe('isPlayed', () => {
     expect(isPlayed(turno(new Date(2026, 8, 12, 20, 0), 90, 'CONFIRMED'), AHORA)).toBe(false);
   });
 
+  it('no cuenta el que el club cerró al cobrarlo antes del partido', () => {
+    expect(isPlayed(turno(new Date(2026, 8, 10, 18, 0), 90, 'COMPLETED'), AHORA)).toBe(false);
+  });
+
   it('no cuenta el cancelado ni el que quedó pendiente', () => {
     expect(isPlayed(turno(new Date(2026, 8, 9, 20, 0), 90, 'CANCELLED'), AHORA)).toBe(false);
     expect(isPlayed(turno(new Date(2026, 8, 9, 20, 0), 90, 'AWAITING_CONFIRMATION'), AHORA))
@@ -59,24 +63,21 @@ describe('isPlayed', () => {
 });
 
 describe('periodStart', () => {
-  it('arranca la semana el lunes', () => {
-    // El 10 de septiembre de 2026 es jueves; su lunes es el 7.
-    const lunes = periodStart('week', AHORA)!;
-    expect(lunes.getDay()).toBe(1);
-    expect(lunes.getDate()).toBe(7);
+  it('los últimos 7 días arrancan hace seis días, a la medianoche', () => {
+    // Hoy jueves 10 cuenta como uno de los siete: arranca el viernes 4.
+    expect(periodStart('week', AHORA)).toEqual(new Date(2026, 8, 4));
   });
 
-  it('toma el lunes anterior cuando hoy es domingo', () => {
-    // El domingo cierra la semana, no la abre: su lunes está seis días atrás.
-    const domingo = new Date(2026, 8, 13, 12, 0);
-    const lunes = periodStart('week', domingo)!;
-    expect(lunes.getDate()).toBe(7);
+  it('el último mes son los últimos 30 días, hoy incluido', () => {
+    expect(periodStart('month', AHORA)).toEqual(new Date(2026, 7, 12));
   });
 
-  it('arranca el mes el día uno y el año el primero de enero', () => {
-    expect(periodStart('month', AHORA)!.getDate()).toBe(1);
-    expect(periodStart('year', AHORA)!.getMonth()).toBe(0);
-    expect(periodStart('year', AHORA)!.getDate()).toBe(1);
+  it('cruza el fin de mes y de año sin problema', () => {
+    expect(periodStart('week', new Date(2027, 0, 3, 10, 0))).toEqual(new Date(2026, 11, 28));
+  });
+
+  it('arranca el año el primero de enero', () => {
+    expect(periodStart('year', AHORA)).toEqual(new Date(2026, 0, 1));
   });
 
   it('no tiene inicio para el histórico', () => {
@@ -84,10 +85,40 @@ describe('periodStart', () => {
   });
 });
 
+describe('periodRange', () => {
+  it('termina hoy y arranca donde arranca la ventana', () => {
+    expect(periodRange([], 'week', AHORA)).toEqual({
+      from: new Date(2026, 8, 4),
+      to: new Date(2026, 8, 10),
+    });
+  });
+
+  it('el histórico arranca el día del primer turno jugado', () => {
+    const history = [turno(new Date(2025, 4, 20, 21, 0)), turno(new Date(2024, 2, 5, 20, 0))];
+    expect(periodRange(history, 'all', AHORA)).toEqual({
+      from: new Date(2024, 2, 5),
+      to: new Date(2026, 8, 10),
+    });
+  });
+
+  it('el histórico sin nada jugado no tiene rango', () => {
+    expect(periodRange([], 'all', AHORA)).toBeNull();
+  });
+});
+
 describe('barras', () => {
-  it('la semana tiene siete días, de lunes a domingo', () => {
+  it('los últimos 7 días terminan hoy, con la inicial de cada día', () => {
+    // Del viernes 4 al jueves 10.
     const buckets = periodBuckets([], 'week', AHORA);
-    expect(buckets.map((bucket) => bucket.label)).toEqual(['L', 'M', 'M', 'J', 'V', 'S', 'D']);
+    expect(buckets.map((bucket) => bucket.label)).toEqual(['V', 'S', 'D', 'L', 'M', 'M', 'J']);
+  });
+
+  it('el último mes tiene una barra por día, con rótulo solo los lunes', () => {
+    const buckets = periodBuckets([], 'month', AHORA);
+    expect(buckets).toHaveLength(30);
+    // Del miércoles 12 de agosto al jueves 10 de septiembre: lunes 17, 24, 31, 7.
+    expect(buckets.map((bucket) => bucket.label).filter(Boolean)).toEqual(['17', '24', '31', '7']);
+    expect(buckets[buckets.length - 1].start).toEqual(new Date(2026, 8, 10));
   });
 
   it('el año tiene doce meses', () => {
@@ -123,15 +154,16 @@ describe('barras', () => {
       AHORA,
     );
 
-    expect(buckets.map((bucket) => bucket.turnos)).toEqual([1, 0, 2, 0, 0, 0, 0]);
+    // Barras del viernes 4 al jueves 10.
+    expect(buckets.map((bucket) => bucket.turnos)).toEqual([0, 0, 0, 1, 0, 2, 0]);
   });
 
   it('el turno que arranca justo en el límite cae en el día que empieza', () => {
     // start es inclusivo y end exclusivo, así que dos barras vecinas no se
     // pelean por el turno de la medianoche.
     const buckets = periodBuckets([turno(new Date(2026, 8, 9, 0, 0))], 'week', AHORA);
-    expect(buckets[2].turnos).toBe(1);
-    expect(buckets[1].turnos).toBe(0);
+    expect(buckets[5].turnos).toBe(1); // miércoles 9
+    expect(buckets[4].turnos).toBe(0); // martes 8
   });
 
   it('no cuenta los turnos que no se jugaron', () => {
@@ -175,8 +207,14 @@ describe('totales', () => {
   });
 
   it('deja fuera lo que cae afuera de la ventana', () => {
-    const laSemanaPasada = turno(new Date(2026, 8, 2, 20, 0));
-    expect(summarize([laSemanaPasada], 'week', AHORA).turnos).toBe(0);
-    expect(summarize([laSemanaPasada], 'month', AHORA).turnos).toBe(1);
+    const haceOchoDias = turno(new Date(2026, 8, 2, 20, 0));
+    expect(summarize([haceOchoDias], 'week', AHORA).turnos).toBe(0);
+    expect(summarize([haceOchoDias], 'month', AHORA).turnos).toBe(1);
+  });
+
+  it('el último mes cuenta lo del mes calendario anterior si cae en los 30 días', () => {
+    // Con "este mes" de calendario, el 10 de septiembre esto quedaba afuera.
+    const finDeAgosto = turno(new Date(2026, 7, 28, 20, 0));
+    expect(summarize([finDeAgosto], 'month', AHORA).turnos).toBe(1);
   });
 });

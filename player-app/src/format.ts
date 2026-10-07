@@ -77,6 +77,24 @@ export function formatHours(totalMinutes: number): string {
   return `${hours} h ${minutes} min`;
 }
 
+/**
+ * "Del 7 de septiembre al 6 de octubre". Con el año en las dos puntas solo si
+ * el rango lo cruza: dentro de un mismo año, repetirlo es ruido.
+ */
+export function dateRange(from: Date, to: Date): string {
+  const crossesYear = from.getFullYear() !== to.getFullYear();
+  const format = (date: Date) =>
+    new Intl.DateTimeFormat(LOCALE, {
+      day: 'numeric',
+      month: 'long',
+      year: crossesYear ? 'numeric' : undefined,
+    }).format(date);
+  if (from.toDateString() === to.toDateString()) {
+    return `El ${format(from)}`;
+  }
+  return `Del ${format(from)} al ${format(to)}`;
+}
+
 /** "agosto", el mes solo, para los rotulos del grafico de actividad. */
 export function monthName(date: Date): string {
   return new Intl.DateTimeFormat(LOCALE, { month: 'long' }).format(date);

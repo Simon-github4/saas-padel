@@ -69,12 +69,15 @@ export function ActivityChart({ buckets }: { buckets: Bucket[] }) {
         ))}
       </div>
 
+      {/* Sin truncar: en el mes las columnas son más angostas que un "14", pero
+          solo los lunes llevan rótulo, así que el número desborda centrado sobre
+          los vecinos vacíos en vez de cortarse. */}
       <div className="mt-1.5 flex gap-0.5">
         {buckets.map((bucket, index) => (
           <span
             key={bucket.label + index}
             aria-hidden
-            className={`eyebrow min-w-0 flex-1 truncate text-center ${
+            className={`eyebrow flex min-w-0 flex-1 justify-center whitespace-nowrap ${
               selected === index ? 'text-cal' : 'text-ink-mute'
             }`}
           >

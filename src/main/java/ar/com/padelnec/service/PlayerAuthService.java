@@ -11,6 +11,7 @@ import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.PendingPlayerSignupRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.repository.PlayerSessionRepository;
+import ar.com.padelnec.repository.RecurringBookingRepository;
 import ar.com.padelnec.security.GoogleIdTokenVerifier;
 import ar.com.padelnec.security.GoogleIdTokenVerifier.GoogleIdentity;
 import ar.com.padelnec.support.Masking;
@@ -55,6 +56,7 @@ public class PlayerAuthService {
     private final PendingPlayerSignupRepository pendingPlayerSignupRepository;
     private final PlayerSessionRepository playerSessionRepository;
     private final BookingRepository bookingRepository;
+    private final RecurringBookingRepository recurringBookingRepository;
     private final PhoneNumbers phoneNumbers;
     private final PhoneVerificationService phoneVerificationService;
     private final PasswordEncoder passwordEncoder;
@@ -450,5 +452,33 @@ public class PlayerAuthService {
             throw new BusinessRuleException("Confirmá tu email para ver tus turnos. Revisá tu casilla de entrada.");
         }
         return bookingRepository.findHistoryByAccount(account.getId());
+    }
+
+    /**
+     * Turnos fijos del jugador en todos los clubes, emparejados por el telefono de
+     * la cuenta.
+     *
+     * <p>Es la excepcion consciente a lo que explica {@link #history}: el club carga
+     * el turno fijo a nombre de un cliente, con su telefono, y ninguna reserva lo
+     * ata a una cuenta. Sin emparejar por telefono, el jugador no lo veria nunca.
+     *
+     * <p>Lo que lo hace aceptable es lo que se devuelve: dia, hora, cancha y la
+     * proxima fecha, sin ningun token. Quien se registre con el numero de otro ve
+     * cuando juega, pero no puede cancelarle ni tocarle nada. Y cada numero es de
+     * una sola cuenta.
+     *
+     * <p>Con la verificacion de telefonos prendida, solo cuenta un numero
+     * verificado ({@link #isPhoneLocked}); ahi el emparejamiento ya prueba algo.
+     */
+    @Transactional(readOnly = true)
+    public List<RecurringBookingRepository.PlayerRecurringRow> recurring(String token) {
+        PlayerAccount account = resolveSession(token);
+        if (!account.isEmailVerified()) {
+            throw new BusinessRuleException("Confirmá tu email para ver tus turnos. Revisá tu casilla de entrada.");
+        }
+        if (!isPhoneLocked(account)) {
+            return List.of();
+        }
+        return recurringBookingRepository.findActiveForPhone(account.getPhoneNumber(), clock.instant());
     }
 }

@@ -117,7 +117,7 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
           </Row>
           <Row label="Cancha">{booking.courtName}</Row>
           <Row label="Estado">
-            <StatusBadge status={booking.status} />
+            <StatusBadge status={booking.status} endTime={booking.endTime} />
           </Row>
           <Row label="Total">{money(booking.totalPrice)}</Row>
           {booking.paidAmount > 0 && <Row label="Pagado">{money(booking.paidAmount)}</Row>}

@@ -68,7 +68,7 @@ export function SharePage() {
           <Row label="Cancha">{booking.courtName}</Row>
           <Row label="Club">{booking.clubName}</Row>
           <Row label="Estado">
-            <StatusBadge status={booking.status} />
+            <StatusBadge status={booking.status} endTime={booking.endTime} />
           </Row>
         </dl>
       </Card>

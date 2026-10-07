@@ -11,6 +11,7 @@ import ar.com.padelnec.service.WaitlistService;
 import ar.com.padelnec.web.ClientIp;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.BookingHistoryItem;
+import ar.com.padelnec.web.dto.PlayerAuthDtos.RecurringItem;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.ConfigResponse;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.ClaimBookingsRequest;
 import ar.com.padelnec.web.dto.PlayerAuthDtos.ClaimBookingsResponse;
@@ -187,6 +188,15 @@ public class PlayerAuthController {
             @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
         return playerAuthService.history(bearerToken(authorization)).stream()
                 .map(BookingHistoryItem::of)
+                .toList();
+    }
+
+    /** Turnos fijos del jugador en todos los clubes, por el telefono de su cuenta. */
+    @GetMapping("/recurring")
+    public List<RecurringItem> recurring(
+            @RequestHeader(name = HttpHeaders.AUTHORIZATION, required = false) String authorization) {
+        return playerAuthService.recurring(bearerToken(authorization)).stream()
+                .map(RecurringItem::of)
                 .toList();
     }
 
