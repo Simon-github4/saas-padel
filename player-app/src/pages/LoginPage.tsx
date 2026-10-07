@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { usePlayerAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/client';
 import { useClubTheme } from '../clubTheme';
+import { readGuestContact } from '../guestContact';
 import { Alert, Button, Card, Field, Screen, SectionTitle } from '../components/Ui';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 
@@ -42,8 +43,12 @@ export function LoginPage() {
   const [step, setStep] = useState<'form' | 'code'>('form');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState(searchParams.get('name') ?? '');
-  const [phoneNumber, setPhoneNumber] = useState(searchParams.get('phone') ?? '');
+  // Lo que trae el link (la pantalla de reserva hecha) o, si no, lo de la última
+  // reserva sin cuenta en este navegador. Acá sí se precarga: quien se está
+  // haciendo una cuenta lo ve escrito y lo corrige antes de mandarlo.
+  const [rememberedContact] = useState(readGuestContact);
+  const [displayName, setDisplayName] = useState(searchParams.get('name') ?? rememberedContact?.fullName ?? '');
+  const [phoneNumber, setPhoneNumber] = useState(searchParams.get('phone') ?? rememberedContact?.phone ?? '');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [working, setWorking] = useState(false);

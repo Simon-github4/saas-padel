@@ -118,7 +118,11 @@ export function PrivacyPage() {
       <LegalSection heading="Cookies y almacenamiento local">
         <p>
           Guardamos un token de sesión en tu navegador (localStorage) para mantenerte identificado
-          entre visitas. No usamos cookies de rastreo ni de publicidad de terceros.
+          entre visitas. Si reservás sin cuenta, también guardamos ahí los links de tus turnos
+          (hasta una hora después de jugarlos) y el nombre y teléfono de tu última reserva, para
+          ofrecértelos la próxima vez: se borran solos a los seis meses sin reservar, o antes si
+          tocás "No soy yo". Todo eso queda solo en tu navegador. No usamos cookies de rastreo ni
+          de publicidad de terceros.
         </p>
         <p>
           Para saber qué partes del sitio se usan, anotamos las páginas que se visitan y los pasos

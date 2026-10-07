@@ -18,6 +18,7 @@ import { usePlayerAuth } from '../auth/AuthContext';
 import { ROOF_LABEL, SURFACE_LABEL, WALL_LABEL, courtMatches } from '../courtFeatures';
 import { clockTime, durationMinutes, longDate, money, perPerson, shareBooking, slotLine, whatsappLink } from '../format';
 import { rememberGuestBooking } from '../guestBookings';
+import { forgetGuestContact, readGuestContact, rememberGuestContact, type GuestContact } from '../guestContact';
 import { phoneProblem } from '../phone';
 import { Alert, Button, Card, Field, SummaryCard, WhatsappLink } from '../components/Ui';
 
@@ -65,6 +66,10 @@ export function Checkout({
   // Se escribe como lo escribiría él ("2262 21-2345"), no en el formato con +549
   // que guarda el servidor: el servidor lo entiende igual.
   const [phone, setPhone] = useState(session?.phoneDisplay ?? session?.phoneNumber ?? '');
+  // Sin cuenta, los datos de la última reserva en este navegador. Se ofrecen y
+  // no se precargan: el dispositivo puede ser de otro (ver guestContact).
+  const [suggested, setSuggested] = useState<GuestContact | null>(() => (session ? null : readGuestContact()));
+  const showSuggestion = Boolean(suggested && !session && !fullName && !phone);
 
   // La sesión guardada es de cuando inició sesión: el teléfono pudo verificarse
   // después, en otra reserva o en otro dispositivo.
@@ -225,6 +230,8 @@ export function Checkout({
           // terminar, el link ya no sirve para nada y se borra solo.
           endTime: slot.endsAt,
         });
+        // Para ofrecérselos la próxima vez, hasta que se haga una cuenta.
+        rememberGuestContact({ fullName, phone });
       }
 
       // Con seña, el jugador sigue en MercadoPago; el turno queda reservado
@@ -362,6 +369,41 @@ export function Checkout({
       )}
 
       <div className="space-y-3">
+        {showSuggestion && suggested && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-cal/10 bg-vidrio px-4 py-3">
+            <div className="min-w-0">
+              <span className="eyebrow block text-ink-soft">¿Reservás como?</span>
+              <p className="truncate text-sm font-semibold">
+                {suggested.fullName} · <span className="tabular-nums">{suggested.phone}</span>
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  forgetGuestContact();
+                  setSuggested(null);
+                }}
+                className="text-xs text-ink-mute underline-offset-4 hover:underline"
+              >
+                No soy yo
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFullName(suggested.fullName);
+                  setPhone(suggested.phone);
+                  setNameError(null);
+                  setPhoneError(null);
+                  setSuggested(null);
+                }}
+                className="rounded-full bg-cal px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-pista transition hover:bg-arena"
+              >
+                Usar
+              </button>
+            </div>
+          </div>
+        )}
         <Field
           label="Tu nombre completo"
           value={fullName}
