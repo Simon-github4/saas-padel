@@ -366,6 +366,7 @@ public class BookingService {
         }
 
         booking.markCancelled(CancellationReason.CUSTOMER, clock.instant());
+        releaseRecurringWeek(club, booking, "Cancelado por el jugador");
         bookingRepository.save(booking);
 
         // La devolucion de la sena es manual: el sistema no mueve plata para atras,
@@ -388,6 +389,7 @@ public class BookingService {
         }
         booking.markCancelled(CancellationReason.CLUB, clock.instant());
         booking.setAdminNotes(reason);
+        releaseRecurringWeek(club, booking, reason);
         bookingRepository.save(booking);
 
         if (booking.hasMoneyIn()) {
@@ -397,6 +399,18 @@ public class BookingService {
         events.publishEvent(BookingEvent.of(club.getId(), booking.getId(),
                 BookingEvent.Kind.CANCELLED_BY_CLUB));
         return booking;
+    }
+
+    /**
+     * Si el turno cancelado es una semana de un turno fijo, la semana queda salteada.
+     * Si no, la corrida de la noche no encuentra la ocurrencia (las canceladas no
+     * cuentan) y la vuelve a generar: el turno dado de baja "reaparece".
+     */
+    private void releaseRecurringWeek(Tenant club, Booking booking, String reason) {
+        if (booking.getRecurringBooking() != null) {
+            booking.getRecurringBooking().skipIfMissing(
+                    booking.getStartTime().atZone(club.zoneId()).toLocalDate(), reason);
+        }
     }
 
     // ------------------------------------------------------- panel del club

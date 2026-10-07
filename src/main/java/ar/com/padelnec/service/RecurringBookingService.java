@@ -83,19 +83,33 @@ public class RecurringBookingService {
      * de alertas repetidas del mismo choque. Los choques vigentes estan siempre a la
      * vista en Turnos fijos ({@link #conflicts}).
      *
+     * <p>Una fecha que cae en una suspension no se genera: el club la cargo despues
+     * del alta del turno fijo y nunca acepto ese turno como excepcion. Lo que ya
+     * estaba generado cuando se suspendio queda como esta, porque eso si se lo
+     * mostro el panel al suspender. No se anota como semana salteada: si borran
+     * la suspension, la noche siguiente el turno se genera.
+     *
      * @return cuantas reservas se crearon
      */
     public int materializeUpcoming(Tenant club) {
+        ZoneId zone = club.zoneId();
         LocalDate today = today(club);
         LocalDate horizon = horizon(today);
+        List<Blackout> suspensions = blackoutRepository.findOverlapping(
+                today.atStartOfDay(zone).toInstant(), horizon.plusDays(2).atStartOfDay(zone).toInstant());
 
         int created = 0;
         for (RecurringBooking fixed : recurringBookingRepository.findAllActiveWithDetail()) {
             List<LocalDate> conflicts = new ArrayList<>();
-            created += materialize(club, fixed, today, horizon, conflicts);
+            Map<LocalDate, Blackout> suspended = new HashMap<>();
+            created += materialize(club, fixed, today, horizon, conflicts, suspensions, suspended);
             conflicts.stream()
                     .filter(horizon::equals)
                     .forEach(date -> reportConflict(fixed, date));
+            Blackout atHorizon = suspended.get(horizon);
+            if (atHorizon != null) {
+                reportSuspended(fixed, horizon, atHorizon);
+            }
         }
         return created;
     }
@@ -104,11 +118,12 @@ public class RecurringBookingService {
      * Genera las semanas de un turno fijo recien dado de alta, y solo las suyas.
      *
      * <p>Sin alertas: los choques el club ya los vio antes de confirmar, y quedan a la
-     * vista en Turnos fijos.
+     * vista en Turnos fijos. Tampoco mira suspensiones: el club las vio en
+     * {@link #restrictions} y las acepto como excepcion al confirmar.
      */
     public int materializeNew(Tenant club, RecurringBooking fixed) {
         LocalDate today = today(club);
-        return materialize(club, fixed, today, horizon(today), new ArrayList<>());
+        return materialize(club, fixed, today, horizon(today), new ArrayList<>(), List.of(), new HashMap<>());
     }
 
     /**
@@ -116,12 +131,18 @@ public class RecurringBookingService {
      * choque se atrapa afuera de la transaccion que fallo.
      */
     private int materialize(Tenant club, RecurringBooking fixed, LocalDate from, LocalDate until,
-                            List<LocalDate> conflicts) {
+                            List<LocalDate> conflicts, List<Blackout> suspensions,
+                            Map<LocalDate, Blackout> suspended) {
         Set<LocalDate> alreadyThere = existingDates(club, fixed, from);
 
         int created = 0;
         for (LocalDate date = from; !date.isAfter(until); date = date.plusDays(1)) {
             if (!fixed.appliesOn(date) || alreadyThere.contains(date)) {
+                continue;
+            }
+            Blackout suspension = suspensionOn(club, fixed, date, suspensions);
+            if (suspension != null) {
+                suspended.put(date, suspension);
                 continue;
             }
             try {
@@ -143,6 +164,27 @@ public class RecurringBookingService {
                         + "estaba ocupada. Lo ves en Turnos fijos.").formatted(
                         fixed.getCustomer().getFullName(), fixed.getCourt().getName(),
                         fixed.getStartTime(), date.format(DAY_MONTH)));
+    }
+
+    /** Avisa una sola vez, cuando la fecha entra al horizonte, como los choques. */
+    private void reportSuspended(RecurringBooking fixed, LocalDate date, Blackout suspension) {
+        String why = suspension.getReason() == null || suspension.getReason().isBlank()
+                ? "la cancha está suspendida"
+                : "la cancha está suspendida por «%s»".formatted(suspension.getReason());
+        alertService.recurringConflict(
+                ("El turno fijo de %s (%s, %s) no se generó para el %s porque %s. Si igual juegan, "
+                        + "cargalo a mano; si se levanta la suspensión, se genera sola esa noche.").formatted(
+                        fixed.getCustomer().getFullName(), fixed.getCourt().getName(),
+                        fixed.getStartTime(), date.format(DAY_MONTH), why));
+    }
+
+    private Blackout suspensionOn(Tenant club, RecurringBooking fixed, LocalDate date, List<Blackout> suspensions) {
+        Instant start = date.atTime(fixed.getStartTime()).atZone(club.zoneId()).toInstant();
+        Instant end = start.plus(Duration.ofMinutes(fixed.getDurationMinutes()));
+        return suspensions.stream()
+                .filter(blackout -> blackout.appliesTo(fixed.getCourt()) && blackout.overlaps(start, end))
+                .findFirst()
+                .orElse(null);
     }
 
     /**
@@ -264,7 +306,8 @@ public class RecurringBookingService {
     @Transactional
     public void skipDate(Tenant club, UUID recurringId, LocalDate date, String reason) {
         RecurringBooking fixed = require(recurringId);
-        fixed.skip(date, reason);
+        // La fecha puede estar salteada ya si antes se dio de baja el turno suelto.
+        fixed.skipIfMissing(date, reason);
         recurringBookingRepository.save(fixed);
 
         occurrencesFrom(recurringId).stream()
@@ -317,10 +360,11 @@ public class RecurringBookingService {
         return bookingRepository.findMaterialized(recurringId, clock.instant());
     }
 
+    /** Incluye las canceladas: si no, una baja que no anoto la semana como salteada se regenera. */
     private Set<LocalDate> existingDates(Tenant club, RecurringBooking fixed, LocalDate from) {
         Instant fromInstant = from.atStartOfDay(club.zoneId()).toInstant();
         Set<LocalDate> dates = new HashSet<>();
-        for (Booking booking : bookingRepository.findMaterialized(fixed.getId(), fromInstant)) {
+        for (Booking booking : bookingRepository.findGenerated(fixed.getId(), fromInstant)) {
             dates.add(localDateOf(club, booking));
         }
         return dates;

@@ -97,4 +97,15 @@ public class RecurringBooking extends TenantScopedEntity {
         skip.setReason(reason);
         skips.add(skip);
     }
+
+    /**
+     * Anota la semana como salteada si todavia no lo estaba. Es lo que hace falta
+     * cuando se cancela una ocurrencia suelta: sin la excepcion, la corrida de la
+     * noche ve la fecha vacia y vuelve a generar el turno.
+     */
+    public void skipIfMissing(LocalDate date, String reason) {
+        if (skips.stream().noneMatch(skip -> skip.getSkipDate().equals(date))) {
+            skip(date, reason == null || reason.length() <= 160 ? reason : reason.substring(0, 160));
+        }
+    }
 }

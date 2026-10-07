@@ -184,6 +184,19 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     List<Booking> findMaterialized(@Param("recurringId") UUID recurringId,
                                    @Param("from") Instant from);
 
+    /**
+     * Toda ocurrencia ya generada de un turno fijo, cancelada o no. Una fecha que
+     * ya tuvo su turno no se vuelve a generar: si alguien lo dio de baja, por el
+     * camino que sea, fue a proposito.
+     */
+    @Query("""
+            SELECT b FROM Booking b
+            WHERE b.recurringBooking.id = :recurringId
+              AND b.startTime >= :from
+            """)
+    List<Booking> findGenerated(@Param("recurringId") UUID recurringId,
+                                @Param("from") Instant from);
+
     /** Turnos futuros de una cancha para advertir antes de achicar su horario. */
     @Query("""
             SELECT b FROM Booking b

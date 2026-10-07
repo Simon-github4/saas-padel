@@ -12,6 +12,7 @@ import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
 import ar.com.padelnec.domain.enums.BookingSource;
 import ar.com.padelnec.domain.enums.BookingStatus;
+import ar.com.padelnec.domain.enums.CancellationReason;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
@@ -300,6 +301,46 @@ class RecurringBookingServiceTest {
     }
 
     @Test
+    @DisplayName("La corrida de la noche no genera fechas suspendidas, avisa una vez y las genera si se levanta")
+    void suspendedDatesAreNotGeneratedByTheNightlyRun() {
+        fixedBooking(LocalTime.of(20, 0), null);
+        LocalDate horizon = TODAY.plusWeeks(4);
+        Blackout torneo = suspend(horizon, "Torneo");
+
+        int created = recurringBookingService.materializeUpcoming(club);
+
+        assertThat(created).isEqualTo(4);
+        assertThat(activeOccurrencesOn(horizon)).isEmpty();
+        assertThat(alertRepository.findPending())
+                .singleElement()
+                .satisfies(alert -> assertThat(alert.getMessage()).contains("29/09", "Torneo"));
+
+        blackoutRepository.delete(torneo);
+        ((MutableClock) clock).set(Instant.parse(NOW).plus(java.time.Duration.ofDays(1)));
+        recurringBookingService.materializeUpcoming(club);
+
+        assertThat(activeOccurrencesOn(horizon)).hasSize(1);
+        assertThat(alertRepository.findPending()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Una suspension no toca la excepcion aceptada al crear el fijo ni lo ya generado")
+    void acceptedExceptionsSurviveTheNightlyRun() {
+        LocalDate acceptedAtCreation = TODAY.plusWeeks(1);
+        suspend(acceptedAtCreation, "Torneo");
+        RecurringBooking fixed = fixedBooking(LocalTime.of(20, 0), null);
+        recurringBookingService.materializeNew(club, fixed);
+        LocalDate suspendedLater = TODAY.plusWeeks(2);
+        suspend(suspendedLater, "Feriado");
+
+        int created = recurringBookingService.materializeUpcoming(club);
+
+        assertThat(created).isZero();
+        assertThat(activeOccurrencesOn(acceptedAtCreation)).hasSize(1);
+        assertThat(activeOccurrencesOn(suspendedLater)).hasSize(1);
+    }
+
+    @Test
     @DisplayName("Dar de baja el turno fijo cancela las semanas que faltan")
     void deactivatingCancelsUpcomingOccurrences() {
         RecurringBooking fixed = fixedBooking(LocalTime.of(20, 0), null);
@@ -310,6 +351,62 @@ class RecurringBookingServiceTest {
         assertThat(cancelled).isEqualTo(5);
         assertThat(occurrences()).allSatisfy(booking ->
                 assertThat(booking.getStatus()).isEqualTo(BookingStatus.CANCELLED));
+    }
+
+    @Test
+    @DisplayName("Una semana cancelada desde el panel no reaparece en la proxima corrida")
+    void occurrenceCancelledByClubIsNotRegenerated() {
+        fixedBooking(LocalTime.of(20, 0), null);
+        recurringBookingService.materializeUpcoming(club);
+        LocalDate date = TODAY.plusWeeks(2);
+
+        bookingService.cancelByClub(club, activeOccurrencesOn(date).getFirst().getId(), "Llueve");
+        recurringBookingService.materializeUpcoming(club);
+
+        assertThat(activeOccurrencesOn(date)).isEmpty();
+        assertThat(activeOccurrencesOn(TODAY.plusWeeks(1))).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Una semana cancelada por cualquier camino no se regenera, aunque no quede salteada")
+    void cancelledOccurrenceWithoutSkipIsNotRegenerated() {
+        fixedBooking(LocalTime.of(20, 0), null);
+        recurringBookingService.materializeUpcoming(club);
+        LocalDate date = TODAY.plusWeeks(2);
+        Booking occurrence = activeOccurrencesOn(date).getFirst();
+        occurrence.markCancelled(CancellationReason.CLUB, clock.instant());
+        bookingRepository.saveAndFlush(occurrence);
+
+        int created = recurringBookingService.materializeUpcoming(club);
+
+        assertThat(created).isZero();
+        assertThat(activeOccurrencesOn(date)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Liberar una fecha que ya se dio de baja desde el panel no falla")
+    void skippingAnAlreadyCancelledWeekWorks() {
+        RecurringBooking fixed = fixedBooking(LocalTime.of(20, 0), null);
+        recurringBookingService.materializeUpcoming(club);
+        LocalDate date = TODAY.plusWeeks(2);
+        bookingService.cancelByClub(club, activeOccurrencesOn(date).getFirst().getId(), "Llueve");
+
+        recurringBookingService.skipDate(club, fixed.getId(), date, "Llueve");
+
+        assertThat(activeOccurrencesOn(date)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Una semana que cancela el jugador no reaparece en la proxima corrida")
+    void occurrenceCancelledByPlayerIsNotRegenerated() {
+        fixedBooking(LocalTime.of(20, 0), null);
+        recurringBookingService.materializeUpcoming(club);
+        LocalDate date = TODAY.plusWeeks(2);
+
+        bookingService.cancelByManagementToken(activeOccurrencesOn(date).getFirst().getManagementToken());
+        recurringBookingService.materializeUpcoming(club);
+
+        assertThat(activeOccurrencesOn(date)).isEmpty();
     }
 
     @Test
@@ -337,6 +434,16 @@ class RecurringBookingServiceTest {
         fixed.setValidFrom(TODAY);
         fixed.setPriceOverride(priceOverride);
         return recurringBookingRepository.saveAndFlush(fixed);
+    }
+
+    private Blackout suspend(LocalDate date, String reason) {
+        Instant start = date.atTime(20, 0).atZone(ZONE).toInstant();
+        Blackout blackout = new Blackout();
+        blackout.setCourt(court);
+        blackout.setStartTime(start);
+        blackout.setEndTime(start.plus(java.time.Duration.ofMinutes(90)));
+        blackout.setReason(reason);
+        return blackoutRepository.saveAndFlush(blackout);
     }
 
     private List<Booking> occurrences() {
