@@ -100,12 +100,9 @@ app:
     from-number: ${WHATSAPP_FROM:}
     account-sid: ${TWILIO_ACCOUNT_SID:}
     auth-token: ${TWILIO_AUTH_TOKEN:}
+    webhook-url: ${WHATSAPP_WEBHOOK_URL:}
     verify-phones: ${WHATSAPP_VERIFY_PHONES:false}
     notifications: ${WHATSAPP_NOTIFICATIONS:false}
-    # El Content SID de cada plantilla aprobada. Entre corchetes para que la clave
-    # quede igual al nombre de NotificationTemplate, en mayusculas.
-    templates:
-      "[PHONE_VERIFICATION_CODE]": ${WHATSAPP_TEMPLATE_PHONE_VERIFICATION_CODE:}
   jobs:
     enabled: true
     recurring-horizon-weeks: 8

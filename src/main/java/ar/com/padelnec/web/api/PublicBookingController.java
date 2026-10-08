@@ -19,15 +19,18 @@ import ar.com.padelnec.service.PhoneVerificationService;
 import ar.com.padelnec.service.PlayerAuthService;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.service.WaitlistService;
+import ar.com.padelnec.support.QrCodes;
 import ar.com.padelnec.web.dto.AvailabilityResponse;
 import ar.com.padelnec.web.dto.BookingDtos.BookingDetailResponse;
 import ar.com.padelnec.web.dto.BookingDtos.BookingShareResponse;
 import ar.com.padelnec.web.dto.BookingDtos.CancellationResponse;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingRequest;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingResponse;
+import ar.com.padelnec.web.dto.BookingDtos.PaymentChoiceDto;
 import ar.com.padelnec.web.dto.BookingDtos.PaymentOptionsResponse;
 import ar.com.padelnec.web.dto.BookingDtos.PhoneVerificationRequest;
 import ar.com.padelnec.web.dto.BookingDtos.PhoneVerificationResponse;
+import ar.com.padelnec.web.dto.BookingDtos.PhoneVerificationStatusResponse;
 import ar.com.padelnec.web.ClientIp;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.CourtSearchResponse;
@@ -198,18 +201,36 @@ public class PublicBookingController {
     }
 
     /**
-     * Antes de reservar: si el telefono nunca reservo, le manda el codigo por WhatsApp.
+     * Antes de reservar sin sena: si el telefono nunca se verifico, el mensaje de
+     * WhatsApp que el jugador nos tiene que mandar para confirmarlo.
      *
-     * <p>Con su propio cupo por origen: cada envio cuesta, y sin limite esto sirve
-     * para mandarle codigos a un tercero. El tope por numero lo lleva el servicio.
+     * <p>El club no cambia la verificacion, que vale para toda la plataforma: solo
+     * pone su nombre en el mensaje, para que al jugador no le parezca raro.
+     *
+     * <p>Con su propio cupo por origen: sin limite, esto llena la tabla de pedidos.
+     * El tope por numero lo lleva el servicio.
      */
     @PostMapping("/{slug}/phone-verification")
-    public PhoneVerificationResponse requestPhoneCode(@PathVariable String slug,
-                                                      @Valid @RequestBody PhoneVerificationRequest request,
-                                                      HttpServletRequest httpRequest) {
+    public PhoneVerificationResponse requestPhoneVerification(@PathVariable String slug,
+                                                              @Valid @RequestBody PhoneVerificationRequest request,
+                                                              HttpServletRequest httpRequest) {
         rateLimiter.check("phone-code:" + ClientIp.of(httpRequest));
-        tenantService.activate(slug);
-        return new PhoneVerificationResponse(phoneVerificationService.requestCode(request.phoneNumber()));
+        Tenant club = tenantService.activate(slug);
+        return phoneVerificationService.requestVerification(request.phoneNumber(), club)
+                .map(challenge -> new PhoneVerificationResponse(true, challenge.id(), challenge.whatsappLink(),
+                        QrCodes.svgDataUri(challenge.whatsappLink())))
+                .orElseGet(PhoneVerificationResponse::notRequired);
+    }
+
+    /**
+     * Si ya llego el mensaje. La pagina pregunta cada par de segundos mientras
+     * espera, asi que no pasa por el cupo por origen: el id no se adivina y la
+     * respuesta no dice nada del numero.
+     */
+    @GetMapping("/{slug}/phone-verification/{verificationId}")
+    public PhoneVerificationStatusResponse phoneVerificationStatus(@PathVariable String slug,
+                                                                   @PathVariable UUID verificationId) {
+        return new PhoneVerificationStatusResponse(phoneVerificationService.status(verificationId).name());
     }
 
     /** Alta de la reserva. Devuelve el link de pago o el aviso de confirmacion. */
@@ -230,12 +251,16 @@ public class PublicBookingController {
         if (accountId != null) {
             playerAuthService.requireAccountPhone(accountId, request.phoneNumber());
         }
-        // Antes de tocar la grilla: un numero nuevo sin el codigo no llega a tomar la cancha.
-        phoneVerificationService.requireVerified(request.phoneNumber(), request.verificationCode());
-        // Ya probado, pasa a ser el de la cuenta si esta no tenia uno verificado. Antes
-        // de reservar: si despues le ganan el turno, el numero ya quedo corregido.
-        if (accountId != null) {
-            playerAuthService.adoptVerifiedPhone(accountId, request.phoneNumber());
+        // Sin sena, antes de tocar la grilla: un numero que no se verifico no llega a
+        // tomar la cancha. Con sena no se pide, y por eso tampoco se adopta el numero:
+        // nadie probo que sea de quien reserva.
+        if (request.paymentChoice() == PaymentChoiceDto.PAY_AT_CLUB) {
+            phoneVerificationService.requireVerified(request.phoneNumber());
+            // Ya probado, pasa a ser el de la cuenta si esta no tenia uno verificado.
+            // Antes de reservar: si despues le ganan el turno, el numero ya quedo corregido.
+            if (accountId != null) {
+                playerAuthService.adoptVerifiedPhone(accountId, request.phoneNumber());
+            }
         }
         CheckoutResult result = checkoutService.checkout(club, new NewBooking(
                 request.courtId(),

@@ -27,12 +27,9 @@ public class BusinessRuleException extends RuntimeException {
         QUOTA_REACHED,
         DEPOSIT_REQUIRED,
         ONLINE_PAYMENT_UNAVAILABLE,
-        /** Numero que nunca reservo, sin codigo de verificacion. */
+        /** Reserva sin sena con un numero que todavia no confirmo por WhatsApp. */
         VERIFICATION_REQUIRED,
-        VERIFICATION_CODE_INVALID,
-        /** El codigo vencio o se agotaron los intentos: hay que pedir otro. */
-        VERIFICATION_CODE_EXPIRED,
-        VERIFICATION_CODE_NOT_SENT,
+        /** Pidio confirmar el mismo numero demasiadas veces en el dia. */
         VERIFICATION_LIMIT,
         /** Reserva con sesion y un telefono distinto al verificado de la cuenta. */
         ACCOUNT_PHONE_LOCKED

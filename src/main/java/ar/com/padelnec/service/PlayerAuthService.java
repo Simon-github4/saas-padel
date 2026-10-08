@@ -362,8 +362,9 @@ public class PlayerAuthService {
      * sesion iniciada se reserva siempre con ese numero.
      *
      * <p>Mientras no este verificado el jugador lo puede corregir en el checkout, que
-     * es justamente lo que necesita quien se registro con un numero mal escrito: el
-     * codigo le llegaria al numero equivocado y no podria reservar nunca. Con la
+     * es justamente lo que necesita quien se registro con un numero mal escrito: para
+     * verificarlo tendria que mandar el WhatsApp desde un numero que no es el suyo, y
+     * no podria reservar sin sena nunca. Con la
      * verificacion apagada no hay nada que esperar, y queda fijo apenas tiene uno,
      * como siempre.
      */

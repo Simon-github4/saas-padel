@@ -222,7 +222,8 @@ petición por visita y no se entera de las rutas que el jugador recorre después
 | `BOOKING_FAILED` | El checkout falló | Código del error |
 | `LINK_EXPIRED` | Vino de la búsqueda y el turno ya estaba tomado | Día y hora que se perdió |
 | `WAITLIST_JOINED` | Se anotó en un horario lleno | El horario |
-| `PHONE_CODE_SENT` | Le llegó el código de WhatsApp de su primera reserva | Forma de pago |
+| `PHONE_CODE_SENT` | Le pedimos confirmar el número mandándonos un WhatsApp, en su primera reserva sin seña (el nombre es de cuando le mandábamos un código) | Forma de pago |
+| `PHONE_VERIFIED` | Llegó su WhatsApp y el número quedó confirmado | Forma de pago |
 
 No hay evento de "no reservó": es la ausencia de `BOOKING_CREATED` en la sesión.
 Nadie avisa que se va de una página. Lo que sí se separa es el abandono de
@@ -347,9 +348,9 @@ plantillas aprobadas por Meta y que cada club conecte su cuenta de MercadoPago.
 | `WHATSAPP_PROVIDER` | `off` (default, no manda nada — WhatsApp está en stand by), `log` (desarrollo, lo imprime) o `twilio` (lo manda de verdad) |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `WHATSAPP_FROM` | Credenciales del proveedor |
 | `app.whatsapp.templates.*` | Content SID de cada plantilla aprobada por Meta |
-| `WHATSAPP_NOTIFICATIONS` | `true` para mandar los avisos de reservas (confirmación, recordatorio, cancelación del club, lista de espera). Default `false`: con Twilio prendido solo para el código de verificación, los avisos quedan registrados como salteados y la lista de espera cae al mail |
-| `WHATSAPP_TEMPLATE_PHONE_VERIFICATION_CODE` | Content SID (`HX…`) de la plantilla del código de verificación |
-| `WHATSAPP_VERIFY_PHONES` | `true` para pedir un código por WhatsApp en la primera reserva de un número que nunca reservó (default `false`). No hace nada con `WHATSAPP_PROVIDER=off`. Necesita la plantilla `PHONE_VERIFICATION_CODE` |
+| `WHATSAPP_NOTIFICATIONS` | `true` para mandar los avisos de reservas (confirmación, recordatorio, cancelación del club, lista de espera). Default `false`: con Twilio prendido solo para verificar teléfonos, los avisos quedan registrados como salteados y la lista de espera cae al mail |
+| `WHATSAPP_VERIFY_PHONES` | `true` para que, en su primera reserva sin seña, un número que nunca se verificó nos mande un WhatsApp para confirmarlo (default `false`). No hace nada con `WHATSAPP_PROVIDER=off` ni sin `WHATSAPP_FROM`. Necesita el webhook de mensajes entrantes configurado en Twilio |
+| `WHATSAPP_WEBHOOK_URL` | URL pública del webhook de mensajes entrantes, tal cual está cargada en Twilio (Twilio firma con ella). Vacía, es `{APP_BASE_URL}/api/webhooks/twilio/whatsapp`; hace falta en desarrollo, detrás de un túnel |
 | `MP_CLIENT_ID`, `MP_CLIENT_SECRET` | Aplicación de MercadoPago (Tus integraciones) con la que se conectan los clubes por OAuth |
 | `MP_WEBHOOK_SECRET` | Clave secreta de webhooks de esa aplicación: una sola para todos los clubes |
 | `GOOGLE_CLIENT_ID` | Login con Google en la app del jugador |
@@ -359,11 +360,18 @@ posteriores a un mensaje del jugador. Todos los avisos de este sistema los inici
 negocio, así que **sin plantillas aprobadas no llegan**. Cargarlas es parte del alta
 en producción, no un detalle opcional.
 
-La de `PHONE_VERIFICATION_CODE` es distinta a las demás: en Meta va con categoría
-**Autenticación** (formato fijo, con botón de copiar código) y lleva una sola
-variable, el código. Con `WHATSAPP_VERIFY_PHONES=true`, un número que nunca reservó
-en ningún club recibe ese código antes de su primera reserva y sin él no hay turno.
-Los que ya reservaron alguna vez, y los que ya verificaron, no pasan por esto.
+Verificar teléfonos no usa plantillas: es al revés. Con `WHATSAPP_VERIFY_PHONES=true`,
+en su primera reserva sin seña, un número que nunca se verificó ve un botón (o un QR,
+en la compu) que abre WhatsApp con un mensaje ya escrito que lleva un código. Cuando
+el jugador lo manda, Twilio nos lo reenvía al webhook y, si llega **desde el número
+de la reserva**, queda verificado y la página reserva sola. Lo que prueba que el
+número es suyo es desde dónde llega el mensaje, no el código. Con seña no se pide, y
+tampoco a los números verificados antes o con un turno cargado por un club.
+
+Para eso, en Twilio, el número de WhatsApp tiene que tener cargado como "Webhook
+URL for incoming messages" `{APP_BASE_URL}/api/webhooks/twilio/whatsapp` (POST).
+El webhook valida la firma de Twilio con `TWILIO_AUTH_TOKEN` y contesta al jugador
+en la misma respuesta. Es texto libre, sin plantilla: lo inicia el jugador.
 
 Cada club conecta además su cuenta de MercadoPago desde su panel (OAuth): no
 copia ningún token a mano. En la aplicación de MercadoPago hay que configurar la

@@ -2,6 +2,7 @@ package ar.com.padelnec.repository;
 
 import ar.com.padelnec.domain.PhoneVerification;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,24 +17,31 @@ public interface PhoneVerificationRepository extends JpaRepository<PhoneVerifica
     // sale del Clock de la aplicacion y created_at del reloj del sistema, y los
     // plazos tienen que poder probarse moviendo el Clock.
 
-    /** El codigo vigente es el ultimo que se mando. */
+    /** El pedido vigente es el ultimo que se hizo. */
     Optional<PhoneVerification> findFirstByPhoneNumberOrderByExpiresAtDesc(String phoneNumber);
 
-    /** Codigos mandados a un numero, para el tope diario: los que vencen despues de {@code after}. */
+    /** Pedidos para un numero, para el tope diario: los que vencen despues de {@code after}. */
     long countByPhoneNumberAndExpiresAtAfter(String phoneNumber, Instant after);
 
-    @Transactional
-    void deleteByPhoneNumber(String phoneNumber);
+    /** Los pedidos vigentes con este codigo. Casi siempre uno; dos numeros pueden compartirlo. */
+    List<PhoneVerification> findByCodeAndExpiresAtAfter(String code, Instant now);
 
-    /** Limpieza oportunista: pasado el dia, un codigo ya no cuenta para nada. */
+    /** Para no repartir un codigo que ya tiene otro pedido en curso. */
+    boolean existsByCodeAndExpiresAtAfterAndConfirmedAtIsNull(String code, Instant now);
+
+    /** Limpieza oportunista: pasado el dia, un pedido ya no cuenta para nada. */
     @Transactional
     void deleteAllByExpiresAtBefore(Instant instant);
 
     /**
-     * Si el numero no necesita verificarse: ya lo verifico con el codigo (o estaba
-     * en la lista de algun club al lanzar la verificacion), o ya reservo alguna vez
-     * en cualquier club, tambien un turno cargado por el club. Las reservas de un
-     * jugador bloqueado no cuentan: el club lo bloqueo por algo.
+     * Si el numero no necesita verificarse: ya lo verifico (o estaba en la lista de
+     * algun club al lanzar la verificacion), o tiene un turno que cargo un club, a
+     * mano o como turno fijo. Las reservas de un jugador bloqueado no cuentan: el
+     * club lo bloqueo por algo.
+     *
+     * <p>Las reservas web no cuentan: con sena se reserva sin verificar, y si una de
+     * esas sirviera de prueba, reservar con sena con el numero de otro alcanzaria
+     * para despues reservar sin sena en su nombre.
      *
      * <p>Nativa a proposito, como {@code BookingRepository.findHistoryByAccount}: el
      * filtro por club de Hibernate no deja cruzar clubes de otra forma.
@@ -41,7 +49,8 @@ public interface PhoneVerificationRepository extends JpaRepository<PhoneVerifica
     @Query(value = """
             SELECT EXISTS (SELECT 1 FROM verified_phone WHERE phone_number = :phone)
                 OR EXISTS (SELECT 1 FROM customer c JOIN booking b ON b.customer_id = c.id
-                           WHERE c.phone_number = :phone AND NOT c.is_blocked)
+                           WHERE c.phone_number = :phone AND NOT c.is_blocked
+                             AND b.source <> 'WEB')
             """, nativeQuery = true)
     boolean isRegistered(@Param("phone") String phone);
 

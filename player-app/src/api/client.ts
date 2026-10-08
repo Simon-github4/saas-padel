@@ -9,6 +9,20 @@
 
 export type PaymentChoice = 'DEPOSIT_ONLINE' | 'PAY_AT_CLUB';
 
+/**
+ * Lo que hace falta para confirmar el número: el link abre WhatsApp con el mensaje
+ * ya escrito, y el id sirve para preguntar si llegó. Sin verificación, los dos nulos.
+ */
+export interface PhoneVerificationStart {
+  verificationRequired: boolean;
+  verificationId: string | null;
+  whatsappLink: string | null;
+  /** El mismo link como QR (data URI de un SVG), para escanearlo desde la compu. */
+  whatsappQr: string | null;
+}
+
+export type PhoneVerificationStatus = 'PENDING' | 'VERIFIED' | 'EXPIRED';
+
 /** Paredes de la cancha: GLASS es blindex. */
 export type CourtWall = 'GLASS' | 'WALL';
 /** Piso de la cancha: con alfombra de césped sintético o sin ella. */
@@ -381,15 +395,19 @@ export const api = {
     request<{ canPayAtClub: boolean }>(`/${slug}/payment-options?phone=${encodeURIComponent(phone)}`),
 
   /**
-   * Antes de reservar: si el número nunca reservó, el servidor le manda un código
-   * por WhatsApp y contesta que hace falta. Los que ya reservaron alguna vez pasan
-   * directo.
+   * Antes de reservar sin seña: si el número nunca se verificó, el WhatsApp que el
+   * jugador nos tiene que mandar desde ese número para confirmarlo. Los verificados
+   * pasan directo.
    */
-  requestPhoneCode: (slug: string, phoneNumber: string) =>
-    request<{ verificationRequired: boolean }>(`/${slug}/phone-verification`, {
+  startPhoneVerification: (slug: string, phoneNumber: string) =>
+    request<PhoneVerificationStart>(`/${slug}/phone-verification`, {
       method: 'POST',
       body: JSON.stringify({ phoneNumber }),
     }),
+
+  /** Si ya llegó el WhatsApp. La página pregunta cada par de segundos mientras espera. */
+  phoneVerificationStatus: (slug: string, verificationId: string) =>
+    request<{ status: PhoneVerificationStatus }>(`/${slug}/phone-verification/${verificationId}`),
 
   /**
    * El token va cuando hay sesión iniciada, y es lo que hace que el turno
@@ -404,8 +422,6 @@ export const api = {
       fullName: string;
       phoneNumber: string;
       paymentChoice: PaymentChoice;
-      /** El que le llegó por WhatsApp, solo en la primera reserva del número. */
-      verificationCode?: string;
     },
     token?: string,
   ) => request<BookingCreated>(`/${slug}/bookings`, {

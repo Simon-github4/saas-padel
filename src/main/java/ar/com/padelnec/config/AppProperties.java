@@ -59,7 +59,18 @@ public class AppProperties {
         private String fromNumber;
 
         private String accountSid;
+
+        /** Tambien firma los mensajes que Twilio nos reenvia: sin el, el webhook los rechaza. */
         private String authToken;
+
+        /**
+         * URL publica del webhook de mensajes entrantes, tal cual esta cargada en
+         * Twilio: Twilio firma con esa URL y la firma se valida contra ella. Vacia,
+         * es {@code base-url} + {@code /api/webhooks/twilio/whatsapp}; hace falta
+         * cargarla cuando el backend se ve desde afuera por otra direccion, como un
+         * tunel en desarrollo.
+         */
+        private String webhookUrl;
 
         /**
          * Content SID de cada plantilla aprobada, indexado por el nombre del valor de
@@ -69,21 +80,20 @@ public class AppProperties {
         private Map<String, String> templates = new HashMap<>();
 
         /**
-         * Pedir un codigo por WhatsApp antes de la primera reserva de un numero que
-         * nunca reservo. Apagado por defecto, y sin efecto mientras el proveedor sea
-         * {@code off}: prenderlo sin un canal que mande el codigo dejaria sin poder
-         * reservar a todo jugador nuevo. Va junto con la plantilla
-         * {@code PHONE_VERIFICATION_CODE} aprobada.
+         * Pedirle al jugador que nos mande un WhatsApp antes de su primera reserva sin
+         * sena con un numero que nunca se verifico. Apagado por defecto, y sin efecto
+         * con el proveedor en {@code off} o sin {@link #fromNumber}: prenderlo sin un
+         * numero al que escribir dejaria sin poder reservar a todo jugador nuevo. Va
+         * junto con el webhook de mensajes entrantes configurado en Twilio.
          */
         private boolean verifyPhones = false;
 
         /**
          * Los avisos de reservas: confirmaciones, recordatorios, cancelaciones del
          * club y lista de espera. Apagados por defecto aunque el proveedor mande de
-         * verdad: se puede tener WhatsApp prendido solo para el codigo de
-         * verificacion, que no pasa por aca. Apagados quedan registrados como
-         * salteados, igual que con el proveedor en {@code off}, y la lista de espera
-         * cae al mail.
+         * verdad: se puede tener WhatsApp prendido solo para verificar telefonos, que
+         * no pasa por aca. Apagados quedan registrados como salteados, igual que con
+         * el proveedor en {@code off}, y la lista de espera cae al mail.
          */
         private boolean notifications = false;
 

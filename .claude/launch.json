@@ -39,7 +39,7 @@
       "runtimeArgs": [
         "spring-boot:run",
         "-Dspring-boot.run.profiles=dev",
-        "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5174 --app.whatsapp.provider=log --app.whatsapp.verify-phones=true"
+        "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5174 --app.whatsapp.provider=log --app.whatsapp.verify-phones=true --app.whatsapp.from-number=+17017145042 --app.whatsapp.auth-token=token-local-de-prueba"
       ],
       "port": 8080
     },

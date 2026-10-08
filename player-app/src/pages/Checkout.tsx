@@ -59,8 +59,8 @@ export function Checkout({
   );
   // Con sesión iniciada y el teléfono de la cuenta verificado, se reserva con ese:
   // no se vuelve a pedir ni se puede cambiar. Sin verificar se muestra escrito y
-  // editable, porque si se registró con un número mal escrito el código de
-  // WhatsApp nunca le llegaría. El nombre se precarga con el de la cuenta.
+  // editable, porque si se registró con un número mal escrito nunca podría
+  // confirmarlo por WhatsApp. El nombre se precarga con el de la cuenta.
   const phoneFixed = Boolean(session?.phoneLocked && session.phoneNumber);
   const [fullName, setFullName] = useState(session?.displayName ?? '');
   // Se escribe como lo escribiría él ("2262 21-2345"), no en el formato con +549
@@ -89,28 +89,83 @@ export function Checkout({
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<BookingCreated | null>(null);
 
-  // Primera reserva de un número: el servidor le mandó un código por WhatsApp y
-  // sin él no hay turno. Queda abierto para la forma de pago que eligió, así el
-  // código confirma exactamente lo que pidió.
-  const [verification, setVerification] = useState<{ paymentChoice: PaymentChoice } | null>(null);
-  const [code, setCode] = useState('');
-  const [codeError, setCodeError] = useState<string | null>(null);
-  // Reenviar recién después de un minuto: antes, el primero puede estar llegando.
-  const [canResend, setCanResend] = useState(false);
+  // Primera reserva sin seña de un número que nunca se verificó: el jugador nos
+  // tiene que mandar un WhatsApp desde ese número, con el mensaje que le armó el
+  // servidor. Mientras tanto se pregunta si llegó, y cuando llega la reserva sale
+  // sola: volver de WhatsApp y encontrar el turno tomado es todo lo que tiene que hacer.
+  const [verification, setVerification] = useState<Verification | null>(null);
+  // En la compu el link no sirve de mucho: WhatsApp está en el celular. Ahí va el QR.
+  const [onDesktop] = useState(isDesktop);
+  // La reserva que sale sola tiene que ver lo último que escribió (el nombre se
+  // puede corregir mientras espera), no lo que había cuando empezó a esperar.
+  const submitRef = useRef<((paymentChoice: PaymentChoice, afterVerification?: boolean) => Promise<void>) | null>(
+    null,
+  );
   useEffect(() => {
-    if (!verification || canResend) {
+    if (!verification || verification.status !== 'PENDING') {
       return;
     }
-    const timer = setTimeout(() => setCanResend(true), 60_000);
-    return () => clearTimeout(timer);
-  }, [verification, canResend]);
+    let cancelled = false;
+    let done = false;
+    async function check(id: string) {
+      try {
+        const { status } = await api.phoneVerificationStatus(slug, id);
+        if (cancelled || done) {
+          return;
+        }
+        if (status === 'VERIFIED') {
+          done = true;
+          track('phone_verified', { slotAt: slot.startsAt, paymentChoice: 'PAY_AT_CLUB' });
+          setVerification((current) => current && { ...current, status: 'VERIFIED' });
+          void submitRef.current?.('PAY_AT_CLUB', true);
+        } else if (status === 'EXPIRED') {
+          setVerification((current) => current && { ...current, status: 'EXPIRED' });
+        }
+      } catch {
+        // Sin conexión un momento: la próxima vuelta pregunta de nuevo.
+      }
+    }
+    const id = verification.id;
+    const timer = setInterval(() => void check(id), 2000);
+    // Vuelve de WhatsApp: se pregunta ya, sin esperar la próxima vuelta.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void check(id);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [verification?.id, verification?.status, slug, slot.startsAt]);
 
-  /** Otro número, otro código: el que se estaba esperando ya no sirve. */
+  /** Otro número: el mensaje que se estaba esperando era para el anterior. */
   function closeVerification() {
     setVerification(null);
-    setCode('');
-    setCodeError(null);
-    setCanResend(false);
+  }
+
+  /**
+   * Le pide al servidor el mensaje para confirmar el número y lo deja a la vista.
+   *
+   * @return si hace falta confirmarlo; si no, se reserva directo
+   */
+  async function startVerification(): Promise<boolean> {
+    const started = await api.startPhoneVerification(slug, phone);
+    if (!started.verificationRequired || !started.verificationId || !started.whatsappLink) {
+      return false;
+    }
+    setVerification({
+      id: started.verificationId,
+      link: started.whatsappLink,
+      qr: started.whatsappQr,
+      status: 'PENDING',
+    });
+    track('phone_code_sent', { slotAt: slot.startsAt, paymentChoice: 'PAY_AT_CLUB' });
+    return true;
   }
 
   // Un club que exige seña igual deja reservar sin ella a sus jugadores de
@@ -161,23 +216,29 @@ export function Checkout({
     return !missingName && !badPhone;
   }
 
-  async function submit(paymentChoice: PaymentChoice) {
+  /**
+   * @param afterVerification la reserva que sale sola cuando llega el WhatsApp: el
+   *     formulario ya se mandó una vez y el número ya está confirmado
+   */
+  async function submit(paymentChoice: PaymentChoice, afterVerification = false) {
     setError(null);
-    setCodeError(null);
     if (!validate()) {
+      // Borró el nombre mientras esperaba: el número ya quedó confirmado, así que
+      // alcanza con que lo corrija y vuelva a tocar reservar.
+      if (afterVerification) {
+        setVerification(null);
+      }
       return;
     }
     setSending(true);
     try {
-      if (!verification) {
-        // Confirmar el código no es mandar el formulario otra vez: se anota una sola.
+      if (!afterVerification) {
+        // La que sale sola después del WhatsApp no es mandar el formulario otra vez:
+        // se anota una sola.
         track('checkout_submit', { slotAt: slot.startsAt, paymentChoice });
-        // Si el número nunca reservó, acá sale el WhatsApp con el código y se
-        // frena hasta que lo escriba. Los que ya reservaron pasan directo.
-        const { verificationRequired } = await api.requestPhoneCode(slug, phone);
-        if (verificationRequired) {
-          setVerification({ paymentChoice });
-          track('phone_code_sent', { slotAt: slot.startsAt, paymentChoice });
+        // Sin seña, un número que nunca se verificó frena acá hasta que nos mande
+        // el WhatsApp. Con seña, o ya verificado, pasa directo.
+        if (paymentChoice === 'PAY_AT_CLUB' && (await startVerification())) {
           return;
         }
       }
@@ -190,7 +251,6 @@ export function Checkout({
           fullName,
           phoneNumber: phone,
           paymentChoice,
-          verificationCode: verification ? code.trim() : undefined,
         },
         session?.token,
       );
@@ -254,20 +314,16 @@ export function Checkout({
         onSlotTaken();
         return;
       }
-      if (err instanceof ApiError && isCodeError(err)) {
-        setCodeError(err.message);
-        // Vencido o agotado, pedir otro es lo único que le queda: sin esperar el minuto.
-        if (err.reason === 'VERIFICATION_CODE_EXPIRED') {
-          setCanResend(true);
-        }
-        return;
-      }
       if (err instanceof ApiError && err.reason === 'VERIFICATION_REQUIRED') {
-        // El servidor pide el código y el checkout no lo tenía abierto (por
+        // El servidor pide confirmar el número y el checkout no lo sabía (por
         // ejemplo, se prendió la verificación mientras llenaba el formulario).
-        setVerification({ paymentChoice });
-        void resendCode();
-        return;
+        try {
+          if (await startVerification()) {
+            return;
+          }
+        } catch {
+          // Cae al cartel general con el mensaje del servidor.
+        }
       }
       if (err instanceof ApiError && err.reason === 'ACCOUNT_PHONE_LOCKED') {
         // La cuenta ya tenía el número verificado y esta sesión no lo sabía.
@@ -285,17 +341,32 @@ export function Checkout({
       setError(err instanceof ApiError ? err.message : 'No pudimos tomar la reserva.');
     } finally {
       setSending(false);
+      // La que sale sola ya no espera nada: si salió, se muestra el turno; si no,
+      // el error queda arriba y vuelven los botones para intentar de nuevo.
+      if (afterVerification) {
+        setVerification(null);
+      }
     }
   }
 
-  async function resendCode() {
-    setCodeError(null);
-    setCanResend(false);
+  submitRef.current = submit;
+
+  /** Pasó el plazo sin que llegara el mensaje: uno nuevo, con otro código. */
+  async function restartVerification() {
+    setError(null);
+    setSending(true);
     try {
-      await api.requestPhoneCode(slug, phone);
+      if (!(await startVerification())) {
+        // Mientras tanto quedó verificado por otro lado: se reserva directo.
+        setVerification(null);
+        setSending(false);
+        await submit('PAY_AT_CLUB', true);
+        return;
+      }
     } catch (err) {
-      setCodeError(err instanceof ApiError ? err.message : 'No pudimos mandarte el código.');
-      setCanResend(true);
+      setError(err instanceof ApiError ? err.message : 'No pudimos preparar el mensaje. Probá de nuevo.');
+    } finally {
+      setSending(false);
     }
   }
 
@@ -441,41 +512,70 @@ export function Checkout({
       {error && <Alert>{error}</Alert>}
 
       {verification ? (
-        <div className="space-y-3 rounded-xl border border-cal/10 bg-vidrio p-4">
-          <p className="text-sm text-ink-soft">
-            Te mandamos un código por WhatsApp al{' '}
-            <span className="font-semibold text-cal tabular-nums">{phone}</span>. Lo pedimos una sola vez, la
-            primera vez que reservás con este número.
-          </p>
-          <Field
-            label="Código"
-            value={code}
-            onChange={(value) => {
-              setCode(value.replace(/\D/g, '').slice(0, 6));
-              setCodeError(null);
-            }}
-            placeholder="123456"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            error={codeError}
-          />
-          <Button
-            variant={verification.paymentChoice === 'DEPOSIT_ONLINE' ? 'accent' : 'primary'}
-            onClick={() => submit(verification.paymentChoice)}
-            disabled={sending || code.length < 6}
-          >
-            {verification.paymentChoice === 'DEPOSIT_ONLINE' ? 'Confirmar y pagar seña' : 'Confirmar reserva'}
-          </Button>
-          <div className="flex items-center justify-between text-xs">
-            <button
-              type="button"
-              onClick={() => void resendCode()}
-              disabled={!canResend || sending}
-              className="font-semibold text-ladrillo-claro underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:text-ink-mute disabled:no-underline"
+        <div className="space-y-4 rounded-xl border border-cal/10 bg-vidrio p-4">
+          {verification.status === 'VERIFIED' ? (
+            <p className="text-sm font-semibold text-cal">¡Listo, número confirmado! Estamos reservando tu turno…</p>
+          ) : (
+            <p className="text-sm text-ink-soft">
+              Es tu primera reserva sin seña con el{' '}
+              <span className="font-semibold text-cal tabular-nums">{phone}</span>: confirmalo mandándonos un
+              WhatsApp desde ese número. El mensaje ya está escrito, solo tenés que enviarlo. Se pide una sola vez.
+            </p>
+          )}
+
+          {verification.status === 'EXPIRED' && (
+            <>
+              <Alert>Pasaron más de 10 minutos y no nos llegó el mensaje.</Alert>
+              <Button onClick={() => void restartVerification()} disabled={sending}>
+                Preparar otro mensaje
+              </Button>
+            </>
+          )}
+
+          {verification.status === 'PENDING' &&
+            (onDesktop && verification.qr ? (
+              <div className="flex flex-col items-center gap-3">
+                <img
+                  src={verification.qr}
+                  alt="QR para mandarnos el WhatsApp desde el celular"
+                  className="size-52 rounded-xl bg-white p-2"
+                />
+                <p className="text-center text-xs text-ink-soft">
+                  Escanealo con la cámara del celular que tiene WhatsApp con ese número.
+                </p>
+                <a
+                  href={verification.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-semibold text-ladrillo-claro underline-offset-4 hover:underline"
+                >
+                  O abrí WhatsApp en esta compu
+                </a>
+              </div>
+            ) : (
+              <WhatsappLink href={verification.link}>Confirmar por WhatsApp</WhatsappLink>
+            ))}
+
+          {verification.status === 'PENDING' && (
+            <p className="flex items-center justify-center gap-2 text-xs text-ink-soft">
+              <span className="size-2 animate-pulse rounded-full bg-wapp" aria-hidden="true" />
+              Esperando tu mensaje. Cuando llegue, la reserva se confirma sola.
+            </p>
+          )}
+
+          <div className="flex items-center justify-between gap-3 text-xs">
+            <a
+              href={whatsappLink(
+                club.whatsappNumber,
+                `Hola, quiero reservar el ${longDate(slot.startsAt, club.timeZone)} a las ${clockTime(slot.startsAt, club.timeZone)} hs.`,
+              )}
+              target="_blank"
+              rel="noreferrer"
+              className="text-ink-mute underline-offset-4 hover:underline"
             >
-              {canResend ? 'Reenviar código' : 'Reenviar en un minuto'}
-            </button>
-            {!phoneFixed && (
+              ¿No tenés WhatsApp? Escribile al club
+            </a>
+            {!phoneFixed && verification.status !== 'VERIFIED' && (
               <button
                 type="button"
                 onClick={closeVerification}
@@ -652,16 +752,33 @@ function Booked({
 function isPhoneError(err: ApiError): boolean {
   return (
     err.reason?.startsWith('PHONE_') === true ||
-    // El WhatsApp no salió o se pidieron demasiados: lo que hay que revisar es el número.
-    err.reason === 'VERIFICATION_CODE_NOT_SENT' ||
+    // Pidió confirmar este número demasiadas veces: lo que hay que revisar es el número.
     err.reason === 'VERIFICATION_LIMIT' ||
     err.field === 'phoneNumber'
   );
 }
 
-/** Lo que falló es el código de WhatsApp: el mensaje va abajo del campo del código. */
-function isCodeError(err: ApiError): boolean {
-  return err.reason === 'VERIFICATION_CODE_INVALID' || err.reason === 'VERIFICATION_CODE_EXPIRED';
+/** El WhatsApp que esperamos para confirmar el número. */
+interface Verification {
+  id: string;
+  /** Abre WhatsApp con el mensaje ya escrito. */
+  link: string;
+  /** El mismo link como QR, para la compu. */
+  qr: string | null;
+  /** VERIFIED dura lo que tarda en salir la reserva. */
+  status: 'PENDING' | 'EXPIRED' | 'VERIFIED';
+}
+
+/**
+ * Sin pantalla táctil es una compu: el WhatsApp del jugador está en el celular y
+ * conviene el QR. Un celular o una tablet abren el link directo.
+ */
+function isDesktop(): boolean {
+  try {
+    return !window.matchMedia('(pointer: coarse)').matches;
+  } catch {
+    return false;
+  }
 }
 
 function isNameError(err: ApiError): boolean {

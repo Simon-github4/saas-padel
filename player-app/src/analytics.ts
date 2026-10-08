@@ -43,7 +43,9 @@ export type EventName =
   | 'booking_failed'
   | 'link_expired'
   | 'waitlist_joined'
-  | 'phone_code_sent';
+  /** Le pedimos confirmar el número por WhatsApp. El nombre es de cuando le mandábamos un código. */
+  | 'phone_code_sent'
+  | 'phone_verified';
 
 /** Propiedades opcionales. Cada evento usa las suyas; el resto viaja vacío. */
 export interface EventProps {

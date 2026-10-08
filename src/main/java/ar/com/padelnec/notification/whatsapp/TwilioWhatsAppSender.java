@@ -62,10 +62,10 @@ public class TwilioWhatsAppSender implements WhatsAppSender {
                 .httpClient(new NetworkHttpClient(timeouts))
                 .build());
 
-        // Con los avisos apagados, la unica plantilla que se usa es la del codigo.
+        // Con los avisos apagados no se usa ninguna plantilla: verificar telefonos no
+        // manda nada, contesta mensajes que escribe el jugador.
         List<NotificationTemplate> missing = java.util.Arrays.stream(NotificationTemplate.values())
-                .filter(template -> config.isNotifications()
-                        || template == NotificationTemplate.PHONE_VERIFICATION_CODE)
+                .filter(template -> config.isNotifications())
                 .filter(template -> {
                     String sid = config.getTemplates().get(template.name());
                     return sid == null || sid.isBlank();

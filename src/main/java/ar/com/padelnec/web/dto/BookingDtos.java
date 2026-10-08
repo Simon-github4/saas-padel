@@ -23,19 +23,30 @@ public final class BookingDtos {
             @Size(max = 120) String fullName,
             @NotBlank(message = "Necesitamos tu teléfono")
             @Size(max = 25) String phoneNumber,
-            @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice,
-            // Solo en la primera reserva de un numero: el codigo que le llego por WhatsApp.
-            @Size(max = 10) String verificationCode) {
+            @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice) {
     }
 
-    /** Pedido del codigo de WhatsApp para un telefono. */
+    /** Antes de reservar sin sena: si este telefono tiene que confirmarse por WhatsApp. */
     public record PhoneVerificationRequest(
             @NotBlank(message = "Necesitamos tu teléfono")
             @Size(max = 25) String phoneNumber) {
     }
 
-    /** Si hace falta el codigo para reservar con ese telefono; si hace falta, ya salio. */
-    public record PhoneVerificationResponse(boolean verificationRequired) {
+    /**
+     * Si hace falta confirmar el telefono y, si hace falta, con que: el link abre
+     * WhatsApp con el mensaje ya escrito, el QR es ese mismo link para escanearlo
+     * desde la compu, y el id sirve para preguntar si llego.
+     */
+    public record PhoneVerificationResponse(boolean verificationRequired, UUID verificationId,
+                                            String whatsappLink, String whatsappQr) {
+
+        public static PhoneVerificationResponse notRequired() {
+            return new PhoneVerificationResponse(false, null, null, null);
+        }
+    }
+
+    /** PENDING, VERIFIED o EXPIRED: ver {@code PhoneVerificationService.Status}. */
+    public record PhoneVerificationStatusResponse(String status) {
     }
 
     /** Si el telefono puede reservar y pagar en el club, aunque el club pida sena. */

@@ -8,8 +8,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Un codigo mandado por WhatsApp para verificar un telefono antes de su primera
- * reserva.
+ * Un pedido de verificacion de telefono: el codigo que el jugador nos tiene que
+ * mandar por WhatsApp desde ese numero antes de su primera reserva sin sena.
  *
  * <p>No es de ningun club: que un numero exista y sea de quien reserva vale para
  * toda la plataforma.
@@ -20,18 +20,26 @@ import lombok.Setter;
 @Setter
 public class PhoneVerification extends BaseEntity {
 
-    /** En E.164, igual que {@link Customer}. */
+    /** En E.164, igual que {@link Customer}. Tiene que ser el que manda el mensaje. */
     @Column(name = "phone_number", nullable = false, length = 25)
     private String phoneNumber;
 
-    /** Hash BCrypt del codigo de 6 digitos, mismo {@code PasswordEncoder} que las contrasenas. */
-    @Column(name = "code_hash", nullable = false, length = 100)
-    private String codeHash;
+    /**
+     * Los 6 digitos que van en el mensaje, en claro: no son una credencial. Lo que
+     * prueba que el numero es del jugador es que el mensaje llegue desde ese numero
+     * (ver V14).
+     */
+    @Column(name = "code", nullable = false, length = 6)
+    private String code;
 
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
-    /** Intentos fallidos. Al llegar al tope, el codigo deja de servir y hay que pedir otro. */
-    @Column(name = "attempts", nullable = false)
-    private int attempts;
+    /** Cuando llego el mensaje que lo confirma. Nulo mientras esta pendiente. */
+    @Column(name = "confirmed_at")
+    private Instant confirmedAt;
+
+    public boolean isConfirmed() {
+        return confirmedAt != null;
+    }
 }

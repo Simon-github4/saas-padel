@@ -39,8 +39,12 @@ public enum PageEventName {
     /** Se anoto en la lista de espera de un horario lleno. */
     WAITLIST_JOINED,
     /**
-     * Le mandamos el codigo de WhatsApp de su primera reserva. Contra
-     * {@link #BOOKING_CREATED} dice cuantos se quedan en el paso de verificar.
+     * Le pedimos que confirme su numero mandandonos un WhatsApp, en su primera
+     * reserva sin sena. El nombre es de cuando le mandabamos un codigo; se queda
+     * para no partir la serie. Contra {@link #PHONE_VERIFIED} dice cuantos no
+     * mandan el mensaje.
      */
-    PHONE_CODE_SENT
+    PHONE_CODE_SENT,
+    /** Llego su WhatsApp y el numero quedo confirmado. */
+    PHONE_VERIFIED
 }
