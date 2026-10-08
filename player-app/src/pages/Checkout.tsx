@@ -441,37 +441,38 @@ export function Checkout({
 
       <div className="space-y-3">
         {showSuggestion && suggested && (
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-cal/10 bg-vidrio px-4 py-3">
-            <div className="min-w-0">
-              <span className="eyebrow block text-ink-soft">¿Reservás como?</span>
-              <p className="truncate text-sm font-semibold">
-                {suggested.fullName} · <span className="tabular-nums">{suggested.phone}</span>
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  forgetGuestContact();
-                  setSuggested(null);
-                }}
-                className="text-xs text-ink-mute underline-offset-4 hover:underline"
-              >
-                No soy yo
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setFullName(suggested.fullName);
-                  setPhone(suggested.phone);
-                  setNameError(null);
-                  setPhoneError(null);
-                  setSuggested(null);
-                }}
-                className="rounded-full bg-cal px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-pista transition hover:bg-arena"
-              >
-                Usar
-              </button>
+          // El nombre ocupa todo el ancho, sin recortar: es lo que tiene que leer
+          // para saber si es él. El teléfono comparte renglón con los botones.
+          <div className="rounded-xl border border-cal/10 bg-vidrio px-4 py-3">
+            <span className="eyebrow block text-ink-soft">¿Reservás como?</span>
+            <p className="break-words text-sm font-semibold">{suggested.fullName}</p>
+            <div className="mt-1 flex items-center justify-between gap-3">
+              <p className="min-w-0 text-sm tabular-nums text-ink-soft">{suggested.phone}</p>
+              <div className="flex shrink-0 items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    forgetGuestContact();
+                    setSuggested(null);
+                  }}
+                  className="text-xs font-medium text-ink-soft underline underline-offset-4 hover:text-cal"
+                >
+                  No soy yo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFullName(suggested.fullName);
+                    setPhone(suggested.phone);
+                    setNameError(null);
+                    setPhoneError(null);
+                    setSuggested(null);
+                  }}
+                  className="rounded-full bg-cal px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-pista transition hover:bg-arena"
+                >
+                  Sí
+                </button>
+              </div>
             </div>
           </div>
         )}
