@@ -4,7 +4,7 @@ import { AccountButton } from '../components/AccountButton';
 import { BrandIcon } from '../components/BrandLogo';
 import { TemaSwitch } from '../components/TemaSwitch';
 import { Alert, Button, Card, Screen, TopBar, WhatsappLink } from '../components/Ui';
-import { promptInstall, useInstallState, type DesktopBrowser } from '../pwa';
+import { chromeIntentUrl, promptInstall, useInstallState, type DesktopBrowser } from '../pwa';
 import { setPageMeta } from '../seo';
 import { BRAND } from './marketing/config';
 
@@ -142,6 +142,25 @@ export function InstallPage() {
                 </p>
               </Alert>
             </div>
+          )}
+
+          {install.samsungInternet && !install.inAppBrowser && (
+            <Card className="mt-10 space-y-3 text-center">
+              <p className="text-lg font-bold">Instalala desde Chrome</p>
+              <p className="text-base leading-relaxed text-ink-soft">
+                Desde Samsung Internet el celular la frena con un aviso de app no segura. Desde Chrome se instala
+                sin vueltas.
+              </p>
+              <a
+                href={chromeIntentUrl()}
+                className="block w-full rounded-full bg-ladrillo px-5 py-4 text-base font-bold uppercase tracking-[0.12em] text-cal [box-shadow:var(--shadow-glow)]"
+              >
+                Abrir en Chrome
+              </a>
+              <p className="text-sm text-ink-soft">
+                ¿Ya te salió el aviso? La app es segura: tocá <strong>Instalar de todas formas</strong>.
+              </p>
+            </Card>
           )}
 
           <section className="mt-12" aria-labelledby="pasos-titulo">

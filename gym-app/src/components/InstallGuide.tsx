@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useGymAuth } from '../auth/GymAuthContext';
-import { promptInstall, useInstallState } from '../pwa';
+import { chromeIntentUrl, promptInstall, useInstallState } from '../pwa';
 import { Alert, Button, Card } from './ui';
 
 type Telefono = 'android' | 'ios';
@@ -146,6 +146,25 @@ export function InstallButton({ autoOpen }: { autoOpen: boolean }) {
                       <strong>Abrir en el navegador</strong>.
                     </p>
                   </Alert>
+                </div>
+              )}
+
+              {install.samsungInternet && !install.inAppBrowser && (
+                <div className="mt-5 space-y-2">
+                  <Alert tone="info">
+                    <p className="text-base font-semibold text-cal">Instalala desde Chrome</p>
+                    <p className="mt-1 text-base">
+                      Desde Samsung Internet el celular la frena con un aviso de app no segura. Desde Chrome se
+                      instala sin vueltas. ¿Ya te salió el aviso? La app es segura: tocá{' '}
+                      <strong>Instalar de todas formas</strong>.
+                    </p>
+                  </Alert>
+                  <a
+                    href={chromeIntentUrl()}
+                    className="block w-full rounded-full bg-ladrillo px-5 py-3.5 text-center text-sm font-bold uppercase tracking-[0.12em] text-cal [box-shadow:var(--shadow-glow)]"
+                  >
+                    Abrir en Chrome
+                  </a>
                 </div>
               )}
 

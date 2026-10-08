@@ -29,6 +29,12 @@ export interface InstallState {
   inAppBrowser: boolean;
   /** En iPhone, un navegador que no es Safari: el menú para instalar es otro, o no está. */
   iosNotSafari: boolean;
+  /**
+   * Samsung Internet en Android. Instala armando un APK propio hecho para un Android
+   * viejo, y Play Protect lo frena con "Se bloqueó la app no segura": desde ahí no se
+   * ofrece instalar y se manda a Chrome, que instala sin ese aviso.
+   */
+  samsungInternet: boolean;
 }
 
 let installEvent: BeforeInstallPromptEvent | null = null;
@@ -64,6 +70,7 @@ function snapshot(): InstallState {
     canPrompt: installEvent !== null,
     inAppBrowser,
     iosNotSafari: ios && /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua),
+    samsungInternet: android && /SamsungBrowser\//.test(ua),
   };
 }
 
@@ -71,6 +78,10 @@ function snapshot(): InstallState {
 export function setupGymPwa() {
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
+    // En Samsung Internet el pedido existe, pero termina en el bloqueo de Play Protect.
+    if (state.samsungInternet) {
+      return;
+    }
     installEvent = event as BeforeInstallPromptEvent;
     emit();
   });
@@ -102,6 +113,15 @@ export async function promptInstall(): Promise<boolean> {
   installEvent = null;
   emit();
   return choice.outcome === 'accepted';
+}
+
+/**
+ * Link que abre esta misma página en Chrome desde otro navegador de Android. Si el
+ * celular no tiene Chrome, Android lleva a la página de Chrome en Play Store.
+ */
+export function chromeIntentUrl(): string {
+  const { host, pathname, search } = window.location;
+  return `intent://${host}${pathname}${search}#Intent;scheme=https;package=com.android.chrome;end`;
 }
 
 export function useInstallState(): InstallState {
