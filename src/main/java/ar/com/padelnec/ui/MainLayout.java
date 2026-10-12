@@ -454,20 +454,28 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         }
         lastBookingSeen = fresh.getLast().at();
 
+        if (getContent() instanceof RefreshesOnNewBookings view) {
+            view.newBookingsArrived();
+        }
+
         String text = fresh.size() == 1 ? fresh.getFirst().text() : fresh.size() + " reservas nuevas";
         Notification notification = new Notification();
         notification.setPosition(Notification.Position.TOP_END);
         notification.setDuration(10_000);
 
-        Button open = new Button("Ver agenda", event -> {
-            notification.close();
-            UI.getCurrent().navigate(AgendaView.class);
-        });
-        open.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SMALL);
-
         Span message = new Span(text);
         message.getStyle().set("flex", "1 1 16rem");
-        HorizontalLayout content = new HorizontalLayout(message, open);
+        HorizontalLayout content = new HorizontalLayout(message);
+        // Parado en la agenda el boton no hacia nada: navegar a la misma ruta no
+        // la recarga, y el tablero ya se redibujo solo.
+        if (!(getContent() instanceof AgendaView)) {
+            Button open = new Button("Ver agenda", event -> {
+                notification.close();
+                UI.getCurrent().navigate(AgendaView.class);
+            });
+            open.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SMALL);
+            content.add(open);
+        }
         content.setAlignItems(HorizontalLayout.Alignment.CENTER);
         content.addClassNames(LumoUtility.Gap.SMALL);
         notification.add(content);
