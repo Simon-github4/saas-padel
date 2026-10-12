@@ -10,11 +10,20 @@ import {
   type WaitlistItem,
 } from '../api/client';
 import { clockTime, dateRange, formatHours, longDate, money } from '../format';
-import { readGuestBookings, type GuestBooking } from '../guestBookings';
+import { type GuestBooking } from '../guestBookings';
 import { Alert, Button, Card, Chip, Loading, Screen, SectionTitle, StatusBadge, TopBar } from '../components/Ui';
 import { ActivityChart } from '../components/ActivityChart';
 import { summarize, type Period } from '../stats';
-import { fixedThisWeek, isFixed, splitBookings, whenLabel, type AccountBooking } from '../upcoming';
+import {
+  fixedThisWeek,
+  isFixed,
+  manageLabel,
+  offersCancel,
+  splitBookings,
+  whenLabel,
+  type AccountBooking,
+} from '../upcoming';
+import { useGuestBookings } from '../useGuestBookings';
 
 /** El historial no trae la zona del club: las horas salen en la del dispositivo. */
 const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -56,8 +65,10 @@ export function AccountPage() {
   // aparece en el historial de la cuenta -- nada prueba que sea de quien
   // pregunta, solo que alguien escribió su teléfono -- pero este dispositivo sí
   // sabe que lo reservó, y esconderlo al iniciar sesión era perder el único
-  // camino que le quedaba al jugador para volver a abrirlo.
-  const guestBookings = useMemo(() => readGuestBookings(), [session]);
+  // camino que le quedaba al jugador para volver a abrirlo. Al cargar se
+  // pregunta cómo está cada uno: si lo canceló el club o se cayó por no pagar
+  // la seña, acá dice "Cancelado" en vez de seguir como si nada.
+  const { bookings: guestBookings } = useGuestBookings();
 
   // A dónde vuelve "atrás", en dos escalones.
   //
@@ -198,7 +209,7 @@ export function AccountPage() {
           {upcoming.length > 0 && (
             <section className="mb-8">
               <SectionTitle title="Próximos" />
-              <BookingList items={upcoming} />
+              <BookingList items={upcoming} now={now} />
             </section>
           )}
           {recurring.length > 0 ? (
@@ -212,7 +223,7 @@ export function AccountPage() {
           {past.length > 0 && (
             <section>
               <SectionTitle title="Anteriores" />
-              <BookingList items={past} />
+              <BookingList items={past} now={now} />
             </section>
           )}
         </>
@@ -349,21 +360,60 @@ function WaitlistSection({ token, onSessionExpired }: { token: string; onSession
 
 /**
  * Un turno de invitado. Mismo formato en las dos pantallas que los muestran: sin
- * estado ni precio, que son datos que esta lista no tiene -- solo lo necesario
- * para reconocerlo y abrirlo.
+ * precio, que esta lista no tiene -- solo lo necesario para reconocerlo y
+ * abrirlo. El estado es el que dio su link al cargar la pantalla; si nunca se
+ * pudo consultar, no se muestra.
  */
 function GuestBookingCard({ booking }: { booking: GuestBooking }) {
+  // Sin estado consultado se lo da por vigente, como en la tarjeta del buscador.
+  const timed = {
+    startTime: booking.startTime,
+    endTime: booking.endTime ?? booking.startTime,
+    status: booking.status ?? 'CONFIRMED',
+  };
   return (
-    <Link to={`/manage/${booking.managementToken}`}>
+    <Link to={`/manage/${booking.managementToken}`} className="group block">
       <Card className="transition hover:border-cal/25">
-        <p className="font-semibold">{booking.clubName}</p>
-        <p className="text-sm text-ink-soft">{booking.courtName}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold">{booking.clubName}</p>
+            <p className="text-sm text-ink-soft">{booking.courtName}</p>
+          </div>
+          {booking.status && <StatusBadge status={booking.status} endTime={booking.endTime} />}
+        </div>
         <p className="mt-3 text-sm text-ink-soft first-letter:uppercase">
-          {longDate(booking.startTime)} ·{' '}
-          {clockTime(booking.startTime, Intl.DateTimeFormat().resolvedOptions().timeZone)} hs
+          {longDate(booking.startTime)} · {clockTime(booking.startTime, localTimeZone)} hs
         </p>
+        <div className="mt-3 flex justify-end">
+          <ManageCue item={timed} now={new Date()} />
+        </div>
       </Card>
     </Link>
+  );
+}
+
+/**
+ * El botón de la esquina de cada tarjeta: "Ver o cancelar", o "Ver turno" si ya
+ * no hay nada que cancelar.
+ *
+ * <p>La tarjeta entera ya llevaba a la gestión del turno, pero nada lo decía, y
+ * había jugadores que no se daban cuenta de que se podía tocar. Es un span y no
+ * un link: la tarjeta ya es el link, y un link adentro de otro no vale en HTML.
+ * Su texto queda en el nombre del link, así que el lector de pantalla también
+ * dice qué hace.
+ */
+function ManageCue({ item, now }: { item: { startTime: string; endTime: string; status: string }; now: Date }) {
+  const cancel = offersCancel(item, now);
+  return (
+    <span
+      className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold uppercase tracking-[0.1em] transition ${
+        cancel
+          ? 'bg-ladrillo text-cal group-hover:bg-ladrillo/90'
+          : 'border border-cal/15 text-cal group-hover:border-cal/30'
+      }`}
+    >
+      {manageLabel(item, now)}
+    </span>
   );
 }
 
@@ -380,11 +430,15 @@ function ManageLink({ item, children }: { item: AccountBooking; children: ReactN
   if (isFixed(item)) {
     return <>{children}</>;
   }
-  return <Link to={`/manage/${item.managementToken}`}>{children}</Link>;
+  return (
+    <Link to={`/manage/${item.managementToken}`} className="group block">
+      {children}
+    </Link>
+  );
 }
 
 /** Turnos que no son de hoy: cada uno abre su gestión, salvo las fechas de los fijos. */
-function BookingList({ items }: { items: AccountBooking[] }) {
+function BookingList({ items, now }: { items: AccountBooking[]; now: Date }) {
   return (
     <ul className="mt-4 space-y-3">
       {items.map((item) => (
@@ -404,7 +458,12 @@ function BookingList({ items }: { items: AccountBooking[] }) {
               {isFixed(item) ? (
                 <p className="eyebrow mt-2 text-ink-soft">Turno fijo</p>
               ) : (
-                <p className="mt-1 text-sm font-semibold tabular-nums">{money(item.totalPrice)}</p>
+                // El botón en la fila del precio y no en la de la fecha: al lado
+                // de la fecha la partía en dos renglones en el celular.
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold tabular-nums">{money(item.totalPrice)}</p>
+                  <ManageCue item={item} now={now} />
+                </div>
               )}
             </Card>
           </ManageLink>
@@ -440,11 +499,16 @@ function TodayBookingCard({ item, now, next }: { item: AccountBooking; now: Date
           </div>
           <StatusBadge status={item.status} endTime={item.endTime} />
         </div>
-        <p className="mt-3 font-semibold">{item.clubName}</p>
-        <p className="text-sm text-ink-soft">
-          {item.courtName}
-          {fixed && ' · Turno fijo'}
-        </p>
+        <div className="mt-3 flex items-end justify-between gap-3">
+          <div>
+            <p className="font-semibold">{item.clubName}</p>
+            <p className="text-sm text-ink-soft">
+              {item.courtName}
+              {fixed && ' · Turno fijo'}
+            </p>
+          </div>
+          {!fixed && <ManageCue item={item} now={now} />}
+        </div>
       </div>
     </ManageLink>
   );
@@ -594,7 +658,7 @@ function GuestAccountView({
   bookings,
   backTo,
 }: {
-  bookings: ReturnType<typeof readGuestBookings>;
+  bookings: GuestBooking[];
   backTo: string;
 }) {
   return (
