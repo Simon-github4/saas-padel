@@ -6,6 +6,7 @@ import type { ClubOption, CourtRoof, CourtSurface, CourtWall, SearchMatch, Searc
 import { AccountButton } from '../components/AccountButton';
 import { InstallBanner } from '../components/InstallBanner';
 import { MonthCalendar } from '../components/MonthCalendar';
+import { NextBookingCard } from '../components/NextBookingCard';
 import { TemaSwitch } from '../components/TemaSwitch';
 import { Alert, Badge, Button, Card, InstagramGlyph, Screen, TopBar } from '../components/Ui';
 import {
@@ -315,6 +316,10 @@ export function SearchPage() {
           Buscá en todos los clubes a la vez y quedate con el horario que te sirva.
         </p>
       </div>
+
+      {/* Antes que los filtros: quien abre la app para cancelar o para ver a qué
+          hora juega no vino a buscar, y la pastilla de la barra se le pasaba. */}
+      <NextBookingCard />
 
       <InstallBanner />
 

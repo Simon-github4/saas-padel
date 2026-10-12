@@ -38,6 +38,7 @@ export function Checkout({
   preferredRoof = null,
   onBack,
   onSlotTaken,
+  onBooked,
 }: {
   slug: string;
   club: Club;
@@ -48,6 +49,8 @@ export function Checkout({
   preferredRoof?: CourtRoof | null;
   onBack: () => void;
   onSlotTaken: () => void;
+  /** Salió la reserva y el jugador se queda en la página (sin seña que pagar afuera). */
+  onBooked?: () => void;
 }) {
   const { session, updateLocalProfile, refreshProfile } = usePlayerAuth();
   // Arranca en una cancha como la que se buscó: si pidió techada o pared, que no
@@ -301,6 +304,7 @@ export function Checkout({
         return;
       }
       setResult(booking);
+      onBooked?.();
     } catch (err) {
       // Con el código del error: un checkout que falla no es un abandono, y
       // mezclarlos da una conversión pesimista y sin diagnóstico.

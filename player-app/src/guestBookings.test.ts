@@ -3,7 +3,9 @@ import {
   forgetGuestBooking,
   readGuestBookings,
   rememberGuestBooking,
+  updateGuestBookings,
   type GuestBooking,
+  type GuestBookingUpdate,
 } from './guestBookings';
 
 /**
@@ -210,5 +212,51 @@ describe('sin almacenamiento', () => {
     expect(() =>
       rememberGuestBooking(turno('x', minutosDesdeAhora(60), minutosDesdeAhora(150))),
     ).not.toThrow();
+  });
+});
+
+describe('puesta al día con el servidor', () => {
+  it('guarda el estado que dio el servidor, también el de un turno cancelado', () => {
+    guardar(turno('cancelado', minutosDesdeAhora(60), minutosDesdeAhora(150)));
+    const actual = readGuestBookings()[0];
+
+    updateGuestBookings(new Map([['cancelado', { ...actual, status: 'CANCELLED' }]]));
+
+    expect(readGuestBookings()[0]).toMatchObject({ bookingId: 'cancelado', status: 'CANCELLED' });
+  });
+
+  it('toma la cancha y el horario nuevos si el club lo movió', () => {
+    guardar(turno('movido', minutosDesdeAhora(60), minutosDesdeAhora(150)));
+    const nuevo: GuestBookingUpdate = {
+      status: 'CONFIRMED',
+      clubName: 'Pádel Necochea',
+      courtName: 'Cancha 3',
+      startTime: minutosDesdeAhora(120).toISOString(),
+      endTime: minutosDesdeAhora(210).toISOString(),
+    };
+
+    updateGuestBookings(new Map([['movido', nuevo]]));
+
+    expect(readGuestBookings()[0]).toMatchObject({ ...nuevo, managementToken: 'token-de-movido' });
+  });
+
+  it('borra el turno cuyo link ya no existe', () => {
+    guardar(
+      turno('borrado', minutosDesdeAhora(60), minutosDesdeAhora(150)),
+      turno('queda', minutosDesdeAhora(70), minutosDesdeAhora(160)),
+    );
+
+    updateGuestBookings(new Map([['borrado', null]]));
+
+    expect(idsGuardados()).toEqual(['queda']);
+  });
+
+  it('deja como estaba el que no se pudo consultar', () => {
+    const sinRespuesta = { ...turno('sin-respuesta', minutosDesdeAhora(60), minutosDesdeAhora(150)), status: 'CONFIRMED' };
+    guardar(sinRespuesta);
+
+    updateGuestBookings(new Map());
+
+    expect(readGuestBookings()).toEqual([sinRespuesta]);
   });
 });

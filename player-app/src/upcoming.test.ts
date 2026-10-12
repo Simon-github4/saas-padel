@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { BookingHistoryItem, RecurringItem } from './api/client';
-import { fixedThisWeek, isFixed, splitBookings, whenLabel } from './upcoming';
+import { longDate } from './format';
+import { dayLabel, fixedThisWeek, isFixed, manageLabel, nextBooking, splitBookings, whenLabel } from './upcoming';
 
 /** Un jueves a la tarde. */
 const AHORA = new Date(2026, 8, 10, 15, 0); // 10 de septiembre de 2026, 15:00 local
@@ -135,5 +136,79 @@ describe('fixedThisWeek', () => {
     expect(today).toHaveLength(1);
     expect(isFixed(today[0])).toBe(true);
     expect(upcoming.map((item) => isFixed(item))).toEqual([false, true]);
+  });
+});
+
+describe('nextBooking', () => {
+  it('trae el más cercano que todavía no terminó y cuenta los que vienen después', () => {
+    const sabado = turno(new Date(2026, 8, 12, 19, 0));
+    const hoyALaNoche = turno(new Date(2026, 8, 10, 21, 0));
+    const finDeMes = turno(new Date(2026, 8, 30, 20, 0));
+    const ayer = turno(new Date(2026, 8, 9, 20, 0), 'COMPLETED');
+
+    expect(nextBooking([finDeMes, sabado, hoyALaNoche, ayer], AHORA)).toEqual({ next: hoyALaNoche, more: 2 });
+  });
+
+  it('salta los cancelados: no es un turno que se vaya a jugar', () => {
+    const cancelado = turno(new Date(2026, 8, 10, 18, 0), 'CANCELLED');
+    const manana = turno(new Date(2026, 8, 11, 20, 0));
+    expect(nextBooking([cancelado, manana], AHORA)).toEqual({ next: manana, more: 0 });
+  });
+
+  it('el que se está jugando sigue siendo el próximo', () => {
+    const enJuego = turno(new Date(2026, 8, 10, 14, 30));
+    expect(nextBooking([enJuego], AHORA).next).toBe(enJuego);
+  });
+
+  it('sin nada por delante no trae ninguno', () => {
+    expect(nextBooking([turno(new Date(2026, 8, 9, 20, 0))], AHORA)).toEqual({ next: null, more: 0 });
+    expect(nextBooking([], AHORA)).toEqual({ next: null, more: 0 });
+  });
+});
+
+describe('dayLabel', () => {
+  it('hoy dice cuánto falta, o "Ahora" si ya empezó', () => {
+    expect(dayLabel(turno(new Date(2026, 8, 10, 14, 30)), AHORA)).toBe('Ahora');
+    expect(dayLabel(turno(new Date(2026, 8, 10, 15, 40)), AHORA)).toBe('Hoy, en 40 min');
+  });
+
+  it('mañana es "Mañana"', () => {
+    expect(dayLabel(turno(new Date(2026, 8, 11, 20, 0)), AHORA)).toBe('Mañana');
+    expect(dayLabel(turno(new Date(2026, 8, 11, 23, 0)), AHORA)).toBe('Mañana');
+  });
+
+  it('el de la madrugada dice además cuánto falta, para que no se lea como mañana a la noche', () => {
+    const nochePasadaLasDoce = turno(new Date(2026, 8, 11, 0, 30));
+    expect(dayLabel(nochePasadaLasDoce, AHORA)).toBe('Mañana, en 9 h 30 min');
+    expect(dayLabel(nochePasadaLasDoce, new Date(2026, 8, 10, 22, 0))).toBe('Mañana, en 2 h 30 min');
+  });
+
+  it('más adelante, la fecha', () => {
+    // Contra longDate y no contra el texto: la coma después del día cambia según
+    // la versión de ICU del navegador.
+    const sabado = turno(new Date(2026, 8, 12, 19, 0));
+    expect(dayLabel(sabado, AHORA)).toBe(longDate(sabado.startTime));
+    expect(dayLabel(sabado, AHORA)).toMatch(/^sábado,? 12 de septiembre$/);
+  });
+});
+
+describe('manageLabel', () => {
+  it('ofrece cancelar el que todavía no empezó, también si espera confirmación', () => {
+    expect(manageLabel(turno(new Date(2026, 8, 10, 20, 0)), AHORA)).toBe('Ver o cancelar');
+    expect(manageLabel(turno(new Date(2026, 8, 12, 20, 0), 'AWAITING_CONFIRMATION'), AHORA)).toBe('Ver o cancelar');
+  });
+
+  it('no promete cancelar lo que la página del turno no deja cancelar', () => {
+    // Esperando pago, o cobrado entero en el mostrador antes del partido: la
+    // página del turno no ofrece cancelarlos, ni online ni por WhatsApp.
+    expect(manageLabel(turno(new Date(2026, 8, 12, 20, 0), 'DRAFT'), AHORA)).toBe('Ver turno');
+    expect(manageLabel(turno(new Date(2026, 8, 12, 20, 0), 'COMPLETED'), AHORA)).toBe('Ver turno');
+  });
+
+  it('el cancelado, el que ya pasó y el que se está jugando solo se miran', () => {
+    expect(manageLabel(turno(new Date(2026, 8, 12, 20, 0), 'CANCELLED'), AHORA)).toBe('Ver turno');
+    expect(manageLabel(turno(new Date(2026, 8, 9, 20, 0)), AHORA)).toBe('Ver turno');
+    expect(manageLabel(turno(new Date(2026, 8, 10, 14, 30)), AHORA)).toBe('Ver turno');
+    expect(manageLabel(turno(new Date(2026, 8, 9, 20, 0), 'NO_SHOW'), AHORA)).toBe('Ver turno');
   });
 });

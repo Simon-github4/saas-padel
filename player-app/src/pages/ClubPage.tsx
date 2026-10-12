@@ -22,6 +22,8 @@ import {
 } from '../components/Ui';
 import { MonthCalendar } from '../components/MonthCalendar';
 import { AccountButton } from '../components/AccountButton';
+import { AlreadyBookedLink } from '../components/AlreadyBookedLink';
+import { NextBookingCard } from '../components/NextBookingCard';
 import { WaitlistForm } from '../components/WaitlistForm';
 import { Checkout } from './Checkout';
 import { HeroSection } from './sections/HeroSection';
@@ -56,6 +58,8 @@ export function ClubPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Slot | null>(null);
   const [step, setStep] = useState<1 | 2 | 3>(linkedTime || linkedWaitlist ? 2 : 1);
+  // Cuántas reservas salieron en esta visita: rearma la tarjeta del próximo turno.
+  const [bookings, setBookings] = useState(0);
   // Se consume una sola vez: la ficha lo avisa al abrirse, y así volver a este
   // día más tarde no reabre el formulario solo.
   const [waitlistToOpen, setWaitlistToOpen] = useState(linkedWaitlist);
@@ -308,6 +312,15 @@ export function ClubPage() {
         }}
       />
 
+      {/* Entre la portada y la reserva: quien vuelve a la página del club para
+          cancelar o para ver a qué hora juega lo encuentra apenas pasa la
+          portada, sin meterse en ella, que es la vidriera del club. Solo turnos
+          de este club; si no tiene ninguno, no aparece. */}
+      {/* Con key: al reservar en esta misma página se vuelve a armar y trae el
+          turno nuevo. Sin esto, quien sube después de reservar ve como "tu
+          próximo turno" uno de antes, o ninguno, y duda de si la reserva salió. */}
+      <NextBookingCard key={bookings} clubSlug={club.slug} />
+
       {/*
         La zona de acción: el precio y la reserva sobre un piso propio, a
         sangre como la portada. Es lo único de la página que cambia de piso, y
@@ -336,6 +349,7 @@ export function ClubPage() {
           {/* ----------------------------------------------- reserva */}
           <section id="reserva" ref={reserva} className="mt-10 scroll-mt-24">
             <SectionTitle title="Reservá tu cancha" subtitle="En tres pasos, sin registrarte." />
+            <AlreadyBookedLink clubWhatsapp={club.whatsappNumber} />
 
             <div className="mb-6 mt-5">
               <StepIndicator current={step} onGo={(target) => setStep(target as 1 | 2 | 3)} />
@@ -402,6 +416,7 @@ export function ClubPage() {
                   preferredSurface={linkedSurface}
                   preferredRoof={linkedRoof}
                   onBack={() => setStep(2)}
+                  onBooked={() => setBookings((count) => count + 1)}
                   onSlotTaken={() => {
                     // Rojo y no gris como el del link vencido: acá el jugador
                     // tocó "Reservar" y la reserva no salió.

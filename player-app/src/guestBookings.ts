@@ -43,7 +43,22 @@ export interface GuestBooking {
   startTime: string;
   /** Ausente en las entradas guardadas antes de que existiera la poda. */
   endTime?: string;
+  /**
+   * Cómo está el turno según el servidor, la última vez que se preguntó (ver
+   * {@code useGuestBookings}). Ausente hasta esa primera consulta, y en las
+   * entradas guardadas antes de que existiera.
+   */
+  status?: string;
 }
+
+/**
+ * Lo que dice hoy el servidor de un turno guardado: sus datos al día, o null si
+ * su link ya no corresponde a ningún turno.
+ */
+export type GuestBookingUpdate = Pick<
+  GuestBooking,
+  'status' | 'clubName' | 'courtName' | 'startTime' | 'endTime'
+> | null;
 
 /**
  * Los turnos que este navegador recuerda, ya sin los que vencieron.
@@ -84,6 +99,30 @@ export function rememberGuestBooking(booking: GuestBooking): void {
   } catch {
     // Sin localStorage (privado, cuota llena) el turno sigue reservado igual;
     // el jugador solo se queda sin el atajo para volver.
+  }
+}
+
+/**
+ * Pone al día los turnos guardados con lo que respondió el servidor.
+ *
+ * <p>Sin esto la lista solo se enteraba de una baja si el jugador cancelaba desde
+ * este mismo navegador. Si lo cancelaba el club, se caía por no pagar la seña o
+ * por no confirmarlo, o lo cancelaba desde otro teléfono, acá seguía como si
+ * nada. Un turno cuyo link ya no existe se borra; los que no vienen en
+ * {@code updates} (la consulta falló, no hay conexión) quedan como estaban.
+ */
+export function updateGuestBookings(updates: Map<string, GuestBookingUpdate>): void {
+  try {
+    const list = readGuestBookings().flatMap((booking) => {
+      if (!updates.has(booking.bookingId)) {
+        return [booking];
+      }
+      const update = updates.get(booking.bookingId);
+      return update ? [{ ...booking, ...update }] : [];
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  } catch {
+    // Sin localStorage no hay lista que poner al día.
   }
 }
 
