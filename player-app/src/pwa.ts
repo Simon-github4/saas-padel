@@ -23,8 +23,9 @@ export interface InstallState {
   /** Chrome ya ofrece instalar: alcanza con un botón, sin pasos a mano. */
   canPrompt: boolean;
   /**
-   * El link se abrió adentro de otra app (Instagram, Facebook o la vista web de
-   * Android). Desde ahí no se puede instalar: primero hay que pasar al navegador.
+   * El link se abrió adentro de otra app (Instagram, Facebook, TikTok o la vista
+   * web de Android). Desde ahí no se puede instalar: primero hay que pasar al
+   * navegador. Ver {@link isInAppBrowser}.
    */
   inAppBrowser: boolean;
   /** En iPhone, un navegador que no es Safari: el menú para instalar es otro, o no está. */
@@ -40,6 +41,19 @@ export interface InstallState {
 }
 
 export type DesktopBrowser = 'chrome' | 'edge' | 'safari' | 'firefox' | 'other';
+
+/**
+ * Si la página se abrió en el navegador que trae adentro otra app, en vez de en
+ * Chrome o Safari. Cada app se delata con su marca en el user agent: Instagram,
+ * Facebook y Messenger (FBAN, FBAV, FB_IAB), Line, TikTok (musical_ly,
+ * BytedanceWebview), Threads (Barcelona), Snapchat y LinkedIn. En Android, además,
+ * cualquier vista web de una app lleva "; wv)".
+ */
+export function isInAppBrowser(ua: string): boolean {
+  return /Instagram|FBAN|FBAV|FB_IAB|Line\/|; wv\)|musical_ly|BytedanceWebview|TikTok|Barcelona|Snapchat|LinkedInApp/.test(
+    ua,
+  );
+}
 
 function desktopBrowserOf(ua: string): DesktopBrowser {
   // El orden importa: Edge y Opera también dicen "Chrome", y Chrome también dice "Safari".
@@ -81,7 +95,7 @@ function snapshot(): InstallState {
   // El iPad con iPadOS se presenta como una Mac; lo delata la pantalla táctil.
   const ios = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
   const android = /Android/.test(ua);
-  const inAppBrowser = /Instagram|FBAN|FBAV|FB_IAB|Line\/|; wv\)/.test(ua);
+  const inAppBrowser = isInAppBrowser(ua);
   let platform: InstallPlatform = ios ? 'ios' : android ? 'android' : 'desktop';
   if (installed || (typeof window !== 'undefined' && isStandalone())) {
     platform = 'installed';
@@ -144,10 +158,25 @@ export async function promptInstall(): Promise<boolean> {
 /**
  * Link que abre esta misma página en Chrome desde otro navegador de Android. Si el
  * celular no tiene Chrome, Android lleva a la página de Chrome en Play Store.
+ *
+ * <p>Con el mismo protocolo de la página: en producción es https, pero probando
+ * desde el celular en la red de casa (http://192.168.x.x:5174) un https fijo
+ * mandaba a Chrome a una dirección que no responde.
  */
 export function chromeIntentUrl(): string {
-  const { host, pathname, search } = window.location;
-  return `intent://${host}${pathname}${search}#Intent;scheme=https;package=com.android.chrome;end`;
+  const { protocol, host, pathname, search } = window.location;
+  const scheme = protocol.replace(':', '');
+  return `intent://${host}${pathname}${search}#Intent;scheme=${scheme};package=com.android.chrome;end`;
+}
+
+/**
+ * Link que abre esta misma página en Safari desde el navegador de otra app en el
+ * iPhone (iOS 17 o más nuevo). Depende de que la app lo deje pasar: si no, no hace
+ * nada, y por eso /instalar explica también cómo abrirla a mano.
+ */
+export function safariUrl(): string {
+  const { protocol, host, pathname, search } = window.location;
+  return `x-safari-${protocol.replace(':', '')}://${host}${pathname}${search}`;
 }
 
 export function useInstallState(): InstallState {

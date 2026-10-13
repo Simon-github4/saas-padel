@@ -4,7 +4,14 @@ import { AccountButton } from '../components/AccountButton';
 import { BrandIcon } from '../components/BrandLogo';
 import { TemaSwitch } from '../components/TemaSwitch';
 import { Alert, Button, Card, Screen, TopBar, WhatsappLink } from '../components/Ui';
-import { chromeIntentUrl, promptInstall, useInstallState, type DesktopBrowser } from '../pwa';
+import {
+  chromeIntentUrl,
+  promptInstall,
+  safariUrl,
+  useInstallState,
+  type DesktopBrowser,
+  type InstallPlatform,
+} from '../pwa';
 import { setPageMeta } from '../seo';
 import { BRAND } from './marketing/config';
 
@@ -29,6 +36,9 @@ type Paso = {
  * compu), arriba de todo va un botón que lo hace en un toque y los pasos quedan
  * como plan B. En la compu los pasos son los del navegador que se está usando:
  * cada uno instala desde un lugar distinto, y Firefox directamente no instala.
+ *
+ * <p>Abierta adentro de otra app (Instagram, Facebook…) no muestra pasos: solo el
+ * botón para pasar a Chrome o Safari. Ver {@link AbrirEnNavegador}.
  */
 export function InstallPage() {
   const install = useInstallState();
@@ -98,6 +108,8 @@ export function InstallPage() {
             Buscar cancha
           </Link>
         </Card>
+      ) : install.inAppBrowser ? (
+        <AbrirEnNavegador plataforma={install.platform} />
       ) : (
         <>
           {install.canPrompt && (
@@ -131,20 +143,7 @@ export function InstallPage() {
             </div>
           )}
 
-          {install.inAppBrowser && (
-            <div className="mt-10">
-              <Alert tone="info">
-                <p className="text-base font-semibold text-cal">Primero abrila en el navegador</p>
-                <p className="mt-1 text-base">
-                  Abriste este link desde otra app (Instagram, Facebook…) y desde ahí no se puede instalar.
-                  Tocá los tres puntitos de arriba y elegí <strong>Abrir en {dispositivo === 'ios' ? 'Safari' : 'Chrome'}</strong>{' '}
-                  o <strong>Abrir en el navegador</strong>.
-                </p>
-              </Alert>
-            </div>
-          )}
-
-          {install.samsungInternet && !install.inAppBrowser && (
+          {install.samsungInternet && (
             <Card className="mt-10 space-y-3 text-center">
               <p className="text-lg font-bold">Instalala desde Chrome</p>
               <p className="text-base leading-relaxed text-ink-soft">
@@ -246,6 +245,74 @@ export function InstallPage() {
         </Link>
       </footer>
     </Screen>
+  );
+}
+
+/**
+ * Lo único que ve quien abrió el link adentro de otra app (Instagram, Facebook,
+ * TikTok…): el botón para pasar al navegador.
+ *
+ * <p>Desde ahí no se puede instalar. Antes la guía paso a paso aparecía igual, con
+ * un aviso arriba que muchos no leían: seguían pasos que en esa app no existen y
+ * abandonaban. Ahora no hay pasos hasta estar en el navegador, como con Samsung
+ * Internet; ahí aparecen el botón de instalar y la guía.
+ *
+ * <p>En Android el botón abre Chrome con un intent, que las apps dejan pasar. En el
+ * iPhone abre Safari con {@code x-safari-https://}, que depende de la app y de
+ * tener iOS 17: por eso abajo va cómo abrirla a mano, y el link para copiar.
+ */
+function AbrirEnNavegador({ plataforma }: { plataforma: InstallPlatform }) {
+  const ios = plataforma === 'ios';
+  const navegador = ios ? 'Safari' : 'Chrome';
+  const link = window.location.href;
+  const [copia, setCopia] = useState<'nada' | 'copiado' | 'fallo'>('nada');
+
+  const copiar = () => {
+    void (navigator.clipboard?.writeText(link) ?? Promise.reject(new Error('sin portapapeles'))).then(
+      () => setCopia('copiado'),
+      () => setCopia('fallo'),
+    );
+  };
+
+  return (
+    <Card className="mt-10 space-y-4 text-center">
+      <p className="text-lg font-bold">Abrila en {navegador} para instalarla</p>
+      <p className="text-base leading-relaxed text-ink-soft">
+        Estás viendo esta página adentro de otra app, como Instagram o Facebook, y desde acá no se puede instalar.
+        {/* Safari no tiene botón de instalar: lo que aparece ahí es la guía. */}
+        {ios ? ' En Safari vas a ver cómo instalarla, paso a paso.' : ' En Chrome vas a ver el botón para instalarla.'}
+      </p>
+      {/* En la compu no hay a qué navegador mandarlo: queda abrirla a mano. */}
+      {plataforma !== 'desktop' && (
+        <a
+          href={ios ? safariUrl() : chromeIntentUrl()}
+          className="block w-full rounded-full bg-ladrillo px-5 py-4 text-base font-bold uppercase tracking-[0.12em] text-cal [box-shadow:var(--shadow-glow)]"
+        >
+          Abrir en {navegador}
+        </a>
+      )}
+      <div className="space-y-3 border-t border-cal/10 pt-4 text-sm leading-relaxed text-ink-soft">
+        <p>
+          {plataforma !== 'desktop' && '¿No se abrió? '}Tocá los tres puntitos de arriba y elegí{' '}
+          <strong>{ios ? 'Abrir en el navegador externo' : 'Abrir en Chrome'}</strong> o{' '}
+          <strong>Abrir en el navegador</strong>.
+        </p>
+        {copia === 'fallo' ? (
+          <p>
+            Copiá este link y pegalo en {navegador}:{' '}
+            <span className="select-all break-all font-semibold text-cal">{link}</span>
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={copiar}
+            className="font-semibold text-ladrillo-claro underline-offset-4 hover:underline claro:text-ladrillo"
+          >
+            {copia === 'copiado' ? `Link copiado: pegalo en ${navegador}` : 'O copiá el link'}
+          </button>
+        )}
+      </div>
+    </Card>
   );
 }
 
