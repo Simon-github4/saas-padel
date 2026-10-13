@@ -38,6 +38,44 @@ export interface InstallState {
   samsungInternet: boolean;
   /** En la compu, cuál navegador: cada uno instala desde un lugar distinto, y Firefox no instala. */
   desktopBrowser: DesktopBrowser;
+  /**
+   * Ya está instalada en este dispositivo, aunque ahora se la esté mirando en una
+   * pestaña del navegador y no en la app. Ver {@link INSTALADA_KEY}.
+   */
+  installedElsewhere: boolean;
+}
+
+/**
+ * Marca de que la app está instalada en este dispositivo, para decírselo a quien
+ * entra a /instalar desde una pestaña del navegador.
+ *
+ * <p>Desde una pestaña, el navegador no dice si la app está instalada. La marca se
+ * pone cada vez que la app se abre desde su ícono y al instalarla, y se saca
+ * cuando el navegador ofrece instalarla ({@code beforeinstallprompt}), cosa que
+ * solo hace si no lo está: si el jugador la borró, se corrige sola. La app y el
+ * navegador comparten este almacenamiento en Android y en la compu; en el iPhone
+ * no, así que ahí no se puede saber.
+ */
+const INSTALADA_KEY = 'pwa-instalada';
+
+function marcadaInstalada(): boolean {
+  try {
+    return localStorage.getItem(INSTALADA_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function marcarInstalada(instalada: boolean) {
+  try {
+    if (instalada) {
+      localStorage.setItem(INSTALADA_KEY, '1');
+    } else {
+      localStorage.removeItem(INSTALADA_KEY);
+    }
+  } catch {
+    // Sin almacenamiento, /instalar muestra los pasos como siempre.
+  }
 }
 
 export type DesktopBrowser = 'chrome' | 'edge' | 'safari' | 'firefox' | 'other';
@@ -107,6 +145,7 @@ function snapshot(): InstallState {
     iosNotSafari: ios && /CriOS|FxiOS|EdgiOS|OPiOS/.test(ua),
     samsungInternet: android && /SamsungBrowser\//.test(ua),
     desktopBrowser: desktopBrowserOf(ua),
+    installedElsewhere: platform !== 'installed' && marcadaInstalada(),
   };
 }
 
@@ -117,18 +156,25 @@ function snapshot(): InstallState {
  * entre recargas y confunde más de lo que ayuda.
  */
 export function setupPwa() {
+  // Abierta desde su ícono: queda anotado que está instalada en este dispositivo.
+  if (isStandalone()) {
+    marcarInstalada(true);
+  }
   window.addEventListener('beforeinstallprompt', (event) => {
     event.preventDefault();
+    // El navegador solo ofrece instalarla si no está instalada: si había quedado
+    // la marca de una instalación que el jugador borró, ya no vale.
+    marcarInstalada(false);
     // En Samsung Internet el pedido existe, pero termina en el bloqueo de Play Protect.
-    if (state.samsungInternet) {
-      return;
+    if (!state.samsungInternet) {
+      installEvent = event as BeforeInstallPromptEvent;
     }
-    installEvent = event as BeforeInstallPromptEvent;
     emit();
   });
   window.addEventListener('appinstalled', () => {
     installed = true;
     installEvent = null;
+    marcarInstalada(true);
     emit();
   });
 

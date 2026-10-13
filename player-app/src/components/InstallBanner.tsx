@@ -36,7 +36,8 @@ export function InstallBanner() {
   const install = useInstallState();
   const [cerrado, setCerrado] = useState(leerCerrado);
 
-  if (cerrado || (install.platform !== 'android' && install.platform !== 'ios')) {
+  // Ya instalada en este celular: no se ofrece de nuevo.
+  if (cerrado || install.installedElsewhere || (install.platform !== 'android' && install.platform !== 'ios')) {
     return null;
   }
 
@@ -92,7 +93,7 @@ export function InstallFloatingButton() {
   const install = useInstallState();
   const { pathname } = useLocation();
 
-  if (install.platform === 'installed' || pathname === '/' || pathname === '/instalar') {
+  if (install.platform === 'installed' || install.installedElsewhere || pathname === '/' || pathname === '/instalar') {
     return null;
   }
 

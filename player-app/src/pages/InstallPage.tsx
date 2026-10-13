@@ -47,6 +47,8 @@ export function InstallPage() {
     install.platform === 'ios' ? 'ios' : enCompu ? 'compu' : 'android',
   );
   const [rechazado, setRechazado] = useState(false);
+  // Ya instalada, pero quiere los pasos igual: la borró, o la marca quedó vieja.
+  const [reinstalar, setReinstalar] = useState(false);
 
   useEffect(
     () =>
@@ -94,20 +96,9 @@ export function InstallPage() {
       </div>
 
       {install.platform === 'installed' ? (
-        <Card className="mt-10 space-y-4 text-center">
-          <p className="text-2xl font-bold">¡Ya la tenés instalada!</p>
-          <p className="text-ink-soft">
-            {enCompu
-              ? `Buscala como ${BRAND} en el menú Inicio (Windows) o en el Dock (Mac).`
-              : `Buscá el ícono de ${BRAND} en el inicio de tu celular.`}
-          </p>
-          <Link
-            to="/buscar"
-            className="block w-full rounded-full bg-ladrillo px-5 py-4 text-base font-bold uppercase tracking-[0.12em] text-cal [box-shadow:var(--shadow-glow)]"
-          >
-            Buscar cancha
-          </Link>
-        </Card>
+        <YaInstalada enCompu={enCompu} />
+      ) : install.installedElsewhere && !install.inAppBrowser && !reinstalar ? (
+        <YaInstalada enCompu={enCompu} desdeElNavegador onReinstalar={() => setReinstalar(true)} />
       ) : install.inAppBrowser ? (
         <AbrirEnNavegador plataforma={install.platform} />
       ) : (
@@ -245,6 +236,52 @@ export function InstallPage() {
         </Link>
       </footer>
     </Screen>
+  );
+}
+
+/**
+ * "¡Ya la tenés instalada!", adentro de la app o desde una pestaña del navegador.
+ *
+ * <p>Desde el navegador antes se veían los pasos para instalarla, sin el botón (el
+ * navegador no lo ofrece si ya está), y el jugador no entendía por qué no podía.
+ * Ahí se le dice dónde buscarla, y se dejan los pasos a un toque por si la borró:
+ * la marca de instalada puede quedar vieja en un navegador que no avisa al
+ * borrarla (ver {@code INSTALADA_KEY} en pwa.ts).
+ */
+function YaInstalada({
+  enCompu,
+  desdeElNavegador = false,
+  onReinstalar,
+}: {
+  enCompu: boolean;
+  desdeElNavegador?: boolean;
+  onReinstalar?: () => void;
+}) {
+  return (
+    <Card className="mt-10 space-y-4 text-center">
+      <p className="text-2xl font-bold">¡Ya la tenés instalada!</p>
+      <p className="text-ink-soft">
+        {enCompu
+          ? `Buscala como ${BRAND} en el menú Inicio (Windows) o en el Dock (Mac).`
+          : `Buscá el ícono de ${BRAND} en el inicio de tu celular.`}
+        {desdeElNavegador && ' Abrila desde ahí: esto que estás viendo es el navegador.'}
+      </p>
+      <Link
+        to="/buscar"
+        className="block w-full rounded-full bg-ladrillo px-5 py-4 text-base font-bold uppercase tracking-[0.12em] text-cal [box-shadow:var(--shadow-glow)]"
+      >
+        Buscar cancha
+      </Link>
+      {onReinstalar && (
+        <button
+          type="button"
+          onClick={onReinstalar}
+          className="text-sm font-semibold text-ladrillo-claro underline-offset-4 hover:underline claro:text-ladrillo"
+        >
+          ¿La borraste? Ver cómo instalarla de nuevo
+        </button>
+      )}
+    </Card>
   );
 }
 
