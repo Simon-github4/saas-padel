@@ -15,8 +15,10 @@ const INCLUDED = [
   'Una sola agenda para web, teléfono, mostrador y turnos fijos',
   'Grilla online para tus canchas, con tu link y tu marca',
   'Seña a tu propia cuenta de Mercado Pago, sin comisión nuestra',
+  'Mis turnos para tus jugadores: ven, comparten y cancelan solos',
   'Turnos fijos, lista de espera, alertas y jugadores',
   'Caja del día, buffet y estadísticas del club',
+  'Un usuario aparte para el mostrador, sin costo extra',
 ];
 
 /** El dueño piensa el precio por jugador; el turno es de a cuatro. */

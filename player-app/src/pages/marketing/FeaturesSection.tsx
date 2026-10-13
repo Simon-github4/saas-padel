@@ -5,6 +5,7 @@ import {
   FixedVisual,
   OverbookVisual,
   PricesVisual,
+  VerifyVisual,
   WaitlistVisual,
 } from './FeatureVisuals';
 import { CONTAINER, Reveal, SectionHeading } from './motion';
@@ -13,6 +14,10 @@ import { CONTAINER, Reveal, SectionHeading } from './motion';
  * Qué resuelve el sistema, en tarjetas cortas y sin jerga, cada una con la
  * función andando en chico. Las anchas son las que necesitan lugar para
  * mostrarse; el orden alterna anchas y angostas para que la grilla respire.
+ *
+ * <p>Con siete tarjetas y tres columnas, solo dos pueden ser anchas para que
+ * no quede un hueco: la del medio es una fila de tres angostas (la seña que se
+ * cae, el número verificado y los precios).
  */
 export function FeaturesSection() {
   const [overbookReplay, setOverbookReplay] = useState(0);
@@ -23,7 +28,7 @@ export function FeaturesSection() {
         <SectionHeading
           eyebrow="Qué hace por vos"
           title="Lo que hoy resolvés a mano, resuelto solo"
-          lead="Seis cosas que dejan de depender de que alguien esté mirando el teléfono."
+          lead="Siete cosas que dejan de depender de que alguien esté mirando el teléfono."
         />
 
         <div className="mt-16 grid gap-4 md:mt-20 md:grid-cols-2 lg:grid-cols-3 lg:gap-5">
@@ -49,10 +54,16 @@ export function FeaturesSection() {
             <ExpireVisual />
           </Feature>
           <Feature
-            wide
             delay={100}
-            title="Precios a medida"
-            text="Tarifas distintas por franja horaria y por cancha, con promociones cuando quieras llenar un hueco."
+            title="Sin seña, pero con un número real"
+            text="Si dejás reservar de palabra, la primera vez el jugador confirma su teléfono mandándonos un WhatsApp ya escrito. Nadie te toma una cancha con un número inventado, y se pide una sola vez."
+          >
+            <VerifyVisual />
+          </Feature>
+          <Feature
+            delay={200}
+            title="Precios y horarios a medida"
+            text="Tarifas distintas por franja horaria y por cancha, con promociones cuando quieras llenar un hueco. Y si una cancha abre más tarde algún día, tiene su propio horario."
           >
             <PricesVisual />
           </Feature>
@@ -95,11 +106,15 @@ export function FeaturesSection() {
 
 /** Pantallas del panel que un club usa todos los días, pero no venden solas. */
 const EXTRAS = [
+  'Agenda que se actualiza sola',
+  'Usuario aparte para el mostrador',
   'Caja del día',
-  'Buffet y consumos',
+  'Buffet, con cobro dividido',
   'Estadísticas del club',
   'Jugadores con marca de confianza',
+  'Tope de turnos por jugador',
   'Suspensiones por lluvia o torneo',
+  'Turnos fuera de horario, como excepción',
   'Alertas de lo que necesita tu atención',
 ];
 

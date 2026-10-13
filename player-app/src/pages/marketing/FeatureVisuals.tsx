@@ -185,6 +185,61 @@ export function ExpireVisual() {
   );
 }
 
+/**
+ * El WhatsApp que manda el jugador nuevo para reservar sin seña, con el mismo
+ * texto que le arma PhoneVerificationService, y el número que queda confirmado.
+ * Se juega una vez al entrar en pantalla; con movimiento reducido, ya confirmado.
+ */
+export function VerifyVisual() {
+  const reduced = usePrefersReducedMotion();
+  const [ref, shown] = useInView<HTMLDivElement>();
+  const [confirmed, setConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (!shown || reduced) {
+      return;
+    }
+    const id = window.setTimeout(() => setConfirmed(true), 1500);
+    return () => window.clearTimeout(id);
+  }, [shown, reduced]);
+
+  const done = confirmed || reduced;
+
+  return (
+    <div ref={ref} aria-hidden className="flex h-full flex-col justify-center gap-3">
+      <p className="eyebrow text-ink-mute">Primera reserva sin seña</p>
+      {shown && (
+        <>
+          <div
+            className="mk-fade-up ml-auto max-w-[17rem] rounded-2xl rounded-br-md border border-wapp/30 bg-wapp/[0.12] px-3.5 py-2.5"
+            style={delay(0)}
+          >
+            <p className="text-[0.8rem] leading-snug">
+              ¡Hola! Quiero confirmar mi número para reservar en Tu club. Mi código es{' '}
+              <span className="font-bold tabular-nums">482913</span>
+            </p>
+            <p className="mt-1 flex items-center justify-end gap-1 text-[0.65rem] tabular-nums text-ink-mute">
+              21:04
+              <span className={`transition-colors duration-500 ${done ? 'text-[#53bdeb]' : ''}`}>✓✓</span>
+            </p>
+          </div>
+          <div className="min-h-[2.75rem]">
+            {done && (
+              <p
+                className="mk-fade-up flex items-center gap-2.5 rounded-xl border border-ladrillo/40 bg-ladrillo/10 px-3.5 py-2.5 text-xs font-semibold"
+                style={delay(0)}
+              >
+                <CheckGlyph className="size-4 shrink-0 text-ladrillo-claro" />
+                Número confirmado: el turno queda reservado
+              </p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
 /** Un mes con todos los martes tomados por el mismo turno fijo, que se van cargando solos. */

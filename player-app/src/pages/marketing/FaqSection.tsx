@@ -15,6 +15,14 @@ const FAQS = [
     a: 'Los cargás vos desde el panel, en la misma agenda: quedan igual de visibles que los que reservó el jugador solo, y esa cancha deja de aparecer libre en tu link.',
   },
   {
+    q: '¿Puede usarlo la persona del mostrador?',
+    a: 'Sí, con su propio usuario: maneja la agenda, carga turnos, cobra y usa el buffet y la caja, pero no ve las estadísticas ni toca la conexión con Mercado Pago. Vos seguís entrando con el tuyo.',
+  },
+  {
+    q: '¿El jugador puede cancelar solo?',
+    a: 'Sí, desde Mis turnos o desde el link de su reserva, hasta 12 horas antes (el plazo lo cambiás vos). La cancha vuelve a aparecer libre en tu link y, si había anotados en la lista de espera, les llega el aviso. Más cerca del turno ya no puede: te tiene que escribir. Si había pagado seña, te queda una alerta en el panel para devolvérsela.',
+  },
+  {
     q: '¿La plata pasa por ustedes?',
     a: 'No. La seña se cobra con tu propia cuenta de Mercado Pago: el dinero va directo a vos y no te cobramos comisión por reserva. Mercado Pago sí descuenta la suya por cobrar online, como en cualquier venta.',
   },
@@ -27,12 +35,20 @@ const FAQS = [
     a: 'Podés dejar que se reserve de palabra: queda confirmado al instante y no hay cobro online de por medio.',
   },
   {
+    q: 'Sin seña, ¿no me van a reservar con un número falso?',
+    a: 'No. La primera vez que un número reserva sin seña, el jugador tiene que mandarnos un WhatsApp ya escrito, con un código, desde ese mismo número: sin ese mensaje no hay turno. Se pide una sola vez, y no a los números que ya conocemos, como los de los turnos que cargás vos.',
+  },
+  {
     q: '¿Qué pasa si dos personas reservan lo mismo?',
     a: 'No puede pasar: la base de datos rechaza el segundo intento apenas el primero se confirma.',
   },
   {
+    q: '¿Y si alguien reserva de más o no se presenta?',
+    a: 'Cada teléfono tiene un tope de turnos por semana, que elegís vos (los fijos no cuentan). Al que falta lo marcás ausente y le queda en su historial; si hace falta, lo bloqueás y ya no puede reservar online en tu club.',
+  },
+  {
     q: '¿El jugador tiene que registrarse?',
-    a: 'No. Reserva con su nombre y teléfono, en dos campos, sin crear cuenta.',
+    a: 'No. Reserva con su nombre y teléfono, en dos campos, sin crear cuenta. Si es su primera reserva sin seña, además confirma el número con un WhatsApp.',
   },
   {
     q: '¿Cómo es la prueba gratis?',

@@ -26,6 +26,7 @@ const SHOTS = [
     title: 'Todo el día en una pantalla',
     points: [
       'Las reservas de la web, las del teléfono y los turnos fijos, en la misma grilla.',
+      'La reserva que entra por tu link aparece sola, sin recargar la página.',
       'El color te dice qué está cobrado y qué falta cobrar.',
       'Los turnos fijos del día, listados arriba de un vistazo.',
     ],

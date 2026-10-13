@@ -66,8 +66,9 @@ export function PaymentsSection() {
 
           <Reveal delay={520}>
             <p className="mt-9 max-w-md rounded-2xl border border-cal/10 bg-pista px-5 py-4 text-sm text-ink-soft">
-              ¿No querés cobrar online? Dejás reservar de palabra y el turno queda confirmado al instante. Vos
-              elegís, y también cuánto es la seña: el 30%, la mitad o el turno entero.
+              ¿No querés cobrar online? Dejás reservar de palabra y el turno queda confirmado al instante; la
+              primera vez, el jugador confirma su número con un WhatsApp. Vos elegís, y también cuánto es la
+              seña: el 30%, la mitad o el turno entero.
             </p>
           </Reveal>
         </div>

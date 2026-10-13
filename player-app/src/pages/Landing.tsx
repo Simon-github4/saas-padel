@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { setPageMeta } from '../seo';
+import { AfterBookingSection } from './marketing/AfterBookingSection';
 import { ClosingSection } from './marketing/ClosingSection';
 import { BRAND } from './marketing/config';
 import { DemoSection } from './marketing/DemoSection';
@@ -26,8 +27,9 @@ import './marketing/landing.css';
  * pestaña, distinto del de la SPA, y lo restaura al salir.
  *
  * <p>El orden cuenta una historia: la promesa andando (portada), el dolor de
- * hoy (los mensajes), probarlo con las propias manos (demo), el cobro de la seña, el detalle
- * (funciones), las pantallas reales (capturas), cómo se empieza, cuánto sale, el módulo de gimnasio que se suma
+ * hoy (los mensajes), probarlo con las propias manos (demo), el cobro de la seña, lo
+ * que el jugador resuelve solo después de reservar, el detalle (funciones), las
+ * pantallas reales (capturas), cómo se empieza, cuánto sale, el módulo de gimnasio que se suma
  * aparte (para el club que además lo tiene) y las dudas.
  */
 export function Landing() {
@@ -50,6 +52,7 @@ export function Landing() {
         <MessagesMarquee />
         <DemoSection />
         <PaymentsSection />
+        <AfterBookingSection />
         <FeaturesSection />
         <ShowcaseSection />
         <NetworkSection />
