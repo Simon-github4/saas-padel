@@ -285,6 +285,9 @@ function YaInstalada({
   );
 }
 
+/** Cuánto se espera, después de tocar "Abrir en…", para dar por hecho que no se abrió. */
+const ESPERA_SALIDA_MS = 2500;
+
 /**
  * Lo único que ve quien abrió el link adentro de otra app (Instagram, Facebook,
  * TikTok…): el botón para pasar al navegador.
@@ -295,14 +298,49 @@ function YaInstalada({
  * Internet; ahí aparecen el botón de instalar y la guía.
  *
  * <p>En Android el botón abre Chrome con un intent, que las apps dejan pasar. En el
- * iPhone abre Safari con {@code x-safari-https://}, que depende de la app y de
- * tener iOS 17: por eso abajo va cómo abrirla a mano, y el link para copiar.
+ * iPhone no hay una forma que anden todas (ver {@link safariUrl}): por eso abajo va
+ * cómo abrirla a mano, y el link para copiar.
+ *
+ * <p>Si la app no deja pasar el link, tocar el botón no hace nada, sin ningún error.
+ * Por eso, después de tocarlo, se mira si esta página siguió al frente: si se abrió
+ * el navegador, pasó a segundo plano. Si sigue al frente, se le dice que no se
+ * abrió y cómo hacerlo a mano, en vez de dejarlo tocando un botón muerto.
  */
 function AbrirEnNavegador({ plataforma }: { plataforma: InstallPlatform }) {
   const ios = plataforma === 'ios';
   const navegador = ios ? 'Safari' : 'Chrome';
   const link = window.location.href;
   const [copia, setCopia] = useState<'nada' | 'copiado' | 'fallo'>('nada');
+  // Cuántas veces tocó el botón: cada toque vuelve a mirar si se abrió.
+  const [intentos, setIntentos] = useState(0);
+  const [noSeAbrio, setNoSeAbrio] = useState(false);
+
+  useEffect(() => {
+    if (intentos === 0) {
+      return;
+    }
+    let salio = false;
+    const marcarSalida = () => {
+      salio = true;
+    };
+    const alOcultarse = () => {
+      if (document.visibilityState === 'hidden') {
+        salio = true;
+      }
+    };
+    document.addEventListener('visibilitychange', alOcultarse);
+    window.addEventListener('pagehide', marcarSalida);
+    // El aviso de Instagram antes de abrir el navegador le saca el foco a la página.
+    window.addEventListener('blur', marcarSalida);
+    // Holgado: en un celular lento, pasar a otra app tarda más de un segundo.
+    const espera = window.setTimeout(() => setNoSeAbrio(!salio), ESPERA_SALIDA_MS);
+    return () => {
+      window.clearTimeout(espera);
+      document.removeEventListener('visibilitychange', alOcultarse);
+      window.removeEventListener('pagehide', marcarSalida);
+      window.removeEventListener('blur', marcarSalida);
+    };
+  }, [intentos]);
 
   const copiar = () => {
     void (navigator.clipboard?.writeText(link) ?? Promise.reject(new Error('sin portapapeles'))).then(
@@ -322,18 +360,35 @@ function AbrirEnNavegador({ plataforma }: { plataforma: InstallPlatform }) {
       {/* En la compu no hay a qué navegador mandarlo: queda abrirla a mano. */}
       {plataforma !== 'desktop' && (
         <a
-          href={ios ? safariUrl() : chromeIntentUrl()}
+          href={ios ? safariUrl(navigator.userAgent) : chromeIntentUrl()}
+          onClick={() => {
+            setNoSeAbrio(false);
+            setIntentos((n) => n + 1);
+          }}
           className="block w-full rounded-full bg-ladrillo px-5 py-4 text-base font-bold uppercase tracking-[0.12em] text-cal [box-shadow:var(--shadow-glow)]"
         >
           Abrir en {navegador}
         </a>
       )}
+      {noSeAbrio && (
+        <Alert>
+          <p className="text-base font-semibold">Esta app no dejó abrir {navegador}.</p>
+          <p className="mt-1">
+            Hacelo a mano: tocá los tres puntitos <strong>(···)</strong> de arriba a la derecha y elegí{' '}
+            <strong>{ios ? 'Abrir en el navegador externo' : 'Abrir en Chrome'}</strong> o{' '}
+            <strong>Abrir en el navegador</strong>.
+          </p>
+        </Alert>
+      )}
       <div className="space-y-3 border-t border-cal/10 pt-4 text-sm leading-relaxed text-ink-soft">
-        <p>
-          {plataforma !== 'desktop' && '¿No se abrió? '}Tocá los tres puntitos de arriba y elegí{' '}
-          <strong>{ios ? 'Abrir en el navegador externo' : 'Abrir en Chrome'}</strong> o{' '}
-          <strong>Abrir en el navegador</strong>.
-        </p>
+        {/* Con el aviso de arriba, esto sería lo mismo dos veces. */}
+        {!noSeAbrio && (
+          <p>
+            {plataforma !== 'desktop' && '¿No se abrió? '}Tocá los tres puntitos de arriba y elegí{' '}
+            <strong>{ios ? 'Abrir en el navegador externo' : 'Abrir en Chrome'}</strong> o{' '}
+            <strong>Abrir en el navegador</strong>.
+          </p>
+        )}
         {copia === 'fallo' ? (
           <p>
             Copiá este link y pegalo en {navegador}:{' '}

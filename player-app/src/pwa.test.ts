@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isInAppBrowser } from './pwa';
+import { isInAppBrowser, safariUrl } from './pwa';
 
 /** User agents reales, recortados a lo que importa. */
 const UA = {
@@ -41,5 +41,23 @@ describe('isInAppBrowser', () => {
     expect(isInAppBrowser(UA.safariIphone)).toBe(false);
     expect(isInAppBrowser(UA.chromeIphone)).toBe(false);
     expect(isInAppBrowser(UA.chromeCompu)).toBe(false);
+  });
+});
+
+describe('safariUrl', () => {
+  const pagina = 'https://turnospadel.com/instalar?desde=ig';
+
+  it('desde Instagram usa su propio "abrir en el navegador externo", que sí deja pasar', () => {
+    // x-safari-https:// Instagram lo ignora sin ningún error: el botón no hacía nada.
+    expect(safariUrl(UA.instagramIphone, pagina)).toBe(
+      'instagram://extbrowser/?url=https%3A%2F%2Fturnospadel.com%2Finstalar%3Fdesde%3Dig',
+    );
+  });
+
+  it('desde las demás apps va con x-safari, con el mismo protocolo de la página', () => {
+    expect(safariUrl(UA.facebookIphone, pagina)).toBe('x-safari-https://turnospadel.com/instalar?desde=ig');
+    expect(safariUrl(UA.tiktokIphone, 'http://192.168.0.10:5174/instalar')).toBe(
+      'x-safari-http://192.168.0.10:5174/instalar',
+    );
   });
 });

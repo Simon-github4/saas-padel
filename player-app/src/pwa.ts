@@ -216,13 +216,24 @@ export function chromeIntentUrl(): string {
 }
 
 /**
- * Link que abre esta misma página en Safari desde el navegador de otra app en el
- * iPhone (iOS 17 o más nuevo). Depende de que la app lo deje pasar: si no, no hace
- * nada, y por eso /instalar explica también cómo abrirla a mano.
+ * Link que abre {@code url} en el navegador del iPhone desde el de otra app.
+ *
+ * <p>No hay una forma oficial: cada app deja pasar una distinta, y si no la deja
+ * pasar el toque no hace nada, sin ningún error. Por eso /instalar explica también
+ * cómo abrirla a mano.
+ *
+ * <p>Instagram ignora {@code x-safari-https://} desde mediados de 2025: con eso el
+ * botón de /instalar no hacía nada. Lo que sí deja pasar es su propio "abrir en el
+ * navegador externo" ({@code instagram://extbrowser/?url=}), que no está
+ * documentado y antes muestra un aviso de Instagram; abre el navegador
+ * predeterminado, que en casi todos los iPhone es Safari. Las demás apps van con
+ * {@code x-safari-https://} (iOS 17 o más nuevo), que algunas dejan pasar.
  */
-export function safariUrl(): string {
-  const { protocol, host, pathname, search } = window.location;
-  return `x-safari-${protocol.replace(':', '')}://${host}${pathname}${search}`;
+export function safariUrl(ua: string, url: string = window.location.href): string {
+  if (/Instagram/.test(ua)) {
+    return `instagram://extbrowser/?url=${encodeURIComponent(url)}`;
+  }
+  return url.replace(/^(https?):\/\//, 'x-safari-$1://');
 }
 
 export function useInstallState(): InstallState {
