@@ -285,8 +285,8 @@ function YaInstalada({
   );
 }
 
-/** Cuánto se espera, después de tocar "Abrir en…", para dar por hecho que no se abrió. */
-const ESPERA_SALIDA_MS = 2500;
+/** Cuánto se espera, después de tocar "Abrir en…", para preguntar si se abrió. */
+const ESPERA_SALIDA_MS = 4000;
 
 /**
  * Lo único que ve quien abrió el link adentro de otra app (Instagram, Facebook,
@@ -303,8 +303,15 @@ const ESPERA_SALIDA_MS = 2500;
  *
  * <p>Si la app no deja pasar el link, tocar el botón no hace nada, sin ningún error.
  * Por eso, después de tocarlo, se mira si esta página siguió al frente: si se abrió
- * el navegador, pasó a segundo plano. Si sigue al frente, se le dice que no se
- * abrió y cómo hacerlo a mano, en vez de dejarlo tocando un botón muerto.
+ * el navegador, pasó a segundo plano. Si sigue al frente un rato después, se le
+ * pregunta si se abrió y cómo hacerlo a mano, en vez de dejarlo tocando un botón
+ * muerto.
+ *
+ * <p>Es una pregunta y no un error porque seguir al frente no prueba que falló:
+ * Instagram pregunta antes de abrir el navegador, y su aviso no le saca el foco a
+ * la página. Al que tardaba en contestarle le aparecía "no se abrió" en rojo aunque
+ * después se abriera. Por lo mismo, si la página pasa a segundo plano más tarde,
+ * la pregunta se va.
  */
 function AbrirEnNavegador({ plataforma }: { plataforma: InstallPlatform }) {
   const ios = plataforma === 'ios';
@@ -322,15 +329,15 @@ function AbrirEnNavegador({ plataforma }: { plataforma: InstallPlatform }) {
     let salio = false;
     const marcarSalida = () => {
       salio = true;
+      setNoSeAbrio(false);
     };
     const alOcultarse = () => {
       if (document.visibilityState === 'hidden') {
-        salio = true;
+        marcarSalida();
       }
     };
     document.addEventListener('visibilitychange', alOcultarse);
     window.addEventListener('pagehide', marcarSalida);
-    // El aviso de Instagram antes de abrir el navegador le saca el foco a la página.
     window.addEventListener('blur', marcarSalida);
     // Holgado: en un celular lento, pasar a otra app tarda más de un segundo.
     const espera = window.setTimeout(() => setNoSeAbrio(!salio), ESPERA_SALIDA_MS);
@@ -371,17 +378,17 @@ function AbrirEnNavegador({ plataforma }: { plataforma: InstallPlatform }) {
         </a>
       )}
       {noSeAbrio && (
-        <Alert>
-          <p className="text-base font-semibold">Esta app no dejó abrir {navegador}.</p>
+        <Alert tone="info">
+          <p className="text-base font-semibold text-cal">¿No se abrió {navegador}?</p>
           <p className="mt-1">
-            Hacelo a mano: tocá los tres puntitos <strong>(···)</strong> de arriba a la derecha y elegí{' '}
+            Tocá los tres puntitos <strong>(···)</strong> de arriba a la derecha y elegí{' '}
             <strong>{ios ? 'Abrir en el navegador externo' : 'Abrir en Chrome'}</strong> o{' '}
             <strong>Abrir en el navegador</strong>.
           </p>
         </Alert>
       )}
       <div className="space-y-3 border-t border-cal/10 pt-4 text-sm leading-relaxed text-ink-soft">
-        {/* Con el aviso de arriba, esto sería lo mismo dos veces. */}
+        {/* Con la pregunta de arriba, esto sería lo mismo dos veces. */}
         {!noSeAbrio && (
           <p>
             {plataforma !== 'desktop' && '¿No se abrió? '}Tocá los tres puntitos de arriba y elegí{' '}
