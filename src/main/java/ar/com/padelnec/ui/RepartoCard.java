@@ -53,7 +53,7 @@ class RepartoCard extends Div {
     }
 
     /**
-     * La columna del costado: lo facturado del dia arriba y lo que falta cobrar
+     * La columna del costado: lo vendido del dia arriba y lo que falta cobrar
      * abajo. La planilla de la izquierda ya da el detalle de lo cobrado por
      * medio de pago; aca van los dos numeros que la completan.
      *
@@ -63,8 +63,11 @@ class RepartoCard extends Div {
      * cierre.
      */
     private Aside summary(DayCash caja) {
-        Div billed = stat("Facturado", Money.format(caja.billed()),
-                "Turnos y buffet del día, igual que en Estadísticas");
+        // "Vendido" y no "Facturado", aunque sea el mismo numero que Estadisticas:
+        // en el mostrador "facturado" suena a factura, y vendido es lo que se dice.
+        // La aclaracion dice cual es su nombre alla, para que el dueño los cruce.
+        Div billed = stat("Vendido", Money.format(caja.billed()),
+                "Turnos y buffet del día. En Estadísticas es el Facturado");
         billed.addClassName("caja-reparto__stat--billed");
 
         Aside aside = new Aside(billed, pending(caja));
