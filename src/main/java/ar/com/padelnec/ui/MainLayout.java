@@ -6,10 +6,12 @@ import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.gym.GymModule;
 import ar.com.padelnec.gym.ui.GymNavigation;
 import ar.com.padelnec.notification.NewBookingFeed;
+import ar.com.padelnec.notification.push.PanelPushService;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.AlertService;
 import ar.com.padelnec.service.TenantService;
 import com.vaadin.flow.component.AttachEvent;
+import com.vaadin.flow.component.ClientCallable;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.DetachEvent;
 import com.vaadin.flow.component.UI;
@@ -130,12 +132,17 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
     private Instant lastBookingSeen = Instant.now();
     private int pollTicks;
 
+    private final PanelPushService panelPushService;
+    /** "Avisarme en este celular"; nulo si este usuario no puede tener avisos. */
+    private DevicePushItem devicePush;
+
     public MainLayout(AuthenticationContext authenticationContext, AlertService alertService,
                       TenantService tenantService, AppProperties properties, GymModule gymModule,
-                      NewBookingFeed newBookingFeed) {
+                      NewBookingFeed newBookingFeed, PanelPushService panelPushService) {
         this.authenticationContext = authenticationContext;
         this.alertService = alertService;
         this.newBookingFeed = newBookingFeed;
+        this.panelPushService = panelPushService;
         this.gymEnabled = gymModule.isEnabled();
         Tenant club = tenantService.requireCurrent();
         this.clubName = club.getName();
@@ -319,8 +326,28 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         role.addClassNames(LumoUtility.FontSize.XSMALL, LumoUtility.TextColor.SECONDARY);
         menu.addItem(role).setEnabled(false);
 
-        menu.addItem("Salir", event -> authenticationContext.logout());
+        // Los avisos al celular son de quien atiende un club: soporte no tiene club.
+        currentUser().filter(user -> DevicePushItem.availableFor(user, panelPushService))
+                .ifPresent(user -> devicePush = new DevicePushItem(menu, panelPushService, user));
+
+        menu.addItem("Salir", event -> logout());
         return bar;
+    }
+
+    /** Quien sale de un dispositivo deja de recibir ahi los avisos de reservas. */
+    private void logout() {
+        if (devicePush != null) {
+            devicePush.forgetOnLogout();
+        }
+        authenticationContext.logout();
+    }
+
+    /** Respuesta del navegador sobre los avisos: el estado al abrir, o el resultado de tocar la opcion. */
+    @ClientCallable
+    private void pushReply(String state, String endpoint, boolean mobile, String subscription, String message) {
+        if (devicePush != null && state != null) {
+            devicePush.reply(state, endpoint, mobile, subscription, message);
+        }
     }
 
     private static String roleLabel(ClubUserPrincipal user) {
@@ -414,10 +441,11 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
     /**
      * Revisa cada tanto si entraron alertas nuevas.
      *
-     * <p>El panel no tiene push: sin esto, el mostrador parado en la agenda no se
-     * entera de que un jugador cancelo por la web un turno con gente en lista de
-     * espera hasta que cambia de pantalla, y a esa altura el turno ya puede
-     * haberse perdido. Las alertas se consultan cada treinta segundos, y las
+     * <p>El panel abierto no recibe nada del servidor por su cuenta (los avisos
+     * al celular van aparte, ver {@link DevicePushItem}): sin esto, el mostrador
+     * parado en la agenda no se entera de que un jugador cancelo por la web un
+     * turno con gente en lista de espera hasta que cambia de pantalla, y a esa
+     * altura el turno ya puede haberse perdido. Las alertas se consultan cada treinta segundos, y las
      * reservas nuevas cada diez (esas salen de memoria, ver {@link NewBookingFeed}).
      */
     @Override
@@ -427,6 +455,9 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         ui.setPollInterval(POLL_MILLIS);
         ui.getPage().executeJs(CHIME_SETUP);
         alertPoll = ui.addPollListener(event -> onPoll());
+        if (devicePush != null) {
+            devicePush.attach(ui, getElement());
+        }
     }
 
     @Override

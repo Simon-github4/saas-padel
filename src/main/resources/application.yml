@@ -112,6 +112,12 @@ app:
     client-id: ${MP_CLIENT_ID:}
     client-secret: ${MP_CLIENT_SECRET:}
     webhook-secret: ${MP_WEBHOOK_SECRET:}
+  push:
+    # Avisos al celular del club cuando entra una reserva por la pagina (Web
+    # Push). Sin las dos claves no hay avisos; en dev se generan solas.
+    vapid-public-key: ${PUSH_VAPID_PUBLIC_KEY:}
+    vapid-private-key: ${PUSH_VAPID_PRIVATE_KEY:}
+    vapid-subject: ${PUSH_VAPID_SUBJECT:}
   analytics:
     enabled: ${ANALYTICS_ENABLED:true}
     retention-months: 12

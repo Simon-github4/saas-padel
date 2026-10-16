@@ -3,6 +3,7 @@ package ar.com.padelnec.service;
 import ar.com.padelnec.domain.ClubUser;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.UserRole;
+import ar.com.padelnec.notification.push.PanelPushService;
 import ar.com.padelnec.repository.ClubUserRepository;
 import ar.com.padelnec.web.BusinessRuleException;
 import java.util.Optional;
@@ -30,6 +31,7 @@ public class ClubUserService {
     private final ClubUserRepository clubUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final PanelRememberService panelRememberService;
+    private final PanelPushService panelPushService;
 
     public Optional<ClubUser> findStaff(UUID clubId) {
         return clubUserRepository.findFirstByClubIdAndRole(clubId, UserRole.STAFF);
@@ -71,8 +73,9 @@ public class ClubUserService {
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         clubUserRepository.save(user);
         // Una clave nueva tiene que sacar a quien entraba con la vieja, tambien
-        // desde un dispositivo recordado.
+        // desde un dispositivo recordado, y dejar de mandarle avisos al celular.
         panelRememberService.forgetAll(userId);
+        panelPushService.forgetAll(userId);
     }
 
     @Transactional
@@ -81,8 +84,10 @@ public class ClubUserService {
         user.setEnabled(enabled);
         clubUserRepository.save(user);
         if (!enabled) {
-            // Volver a habilitarlo no devuelve los dispositivos: entra con la clave.
+            // Volver a habilitarlo no devuelve los dispositivos: entra con la clave
+            // y vuelve a pedir los avisos.
             panelRememberService.forgetAll(userId);
+            panelPushService.forgetAll(userId);
         }
     }
 

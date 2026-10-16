@@ -137,6 +137,9 @@ public class SecurityConfig {
                         // inicio del celular. Misma razon: el navegador los pide sin sesion.
                         "/manifest.webmanifest", "/sw.js", "/icon-192.png", "/icon-512.png",
                         "/icon-maskable-512.png",
+                        // El panel instalable y su service worker de avisos
+                        // (PanelPwaController): el navegador los pide sin sesion.
+                        "/panel.webmanifest", "/panel-sw.js",
                         // Logos de otras marcas que muestra la landing (Mercado Pago):
                         // misma razon, sin esto la imagen llega como el login del panel.
                         "/marcas/**",

@@ -2,6 +2,7 @@ package ar.com.padelnec.ui;
 
 import com.vaadin.flow.component.dependency.StyleSheet;
 import com.vaadin.flow.component.page.AppShellConfigurator;
+import com.vaadin.flow.server.AppShellSettings;
 import com.vaadin.flow.theme.Theme;
 import com.vaadin.flow.theme.lumo.Lumo;
 
@@ -21,4 +22,15 @@ import com.vaadin.flow.theme.lumo.Lumo;
 @Theme("padel-saas")
 @StyleSheet(Lumo.UTILITY_STYLESHEET)
 public class AppShell implements AppShellConfigurator {
+
+    /**
+     * El panel se instala como app propia, "TurnosPadel Club" (ver
+     * {@code PanelPwaController}). En iPhone hace falta instalarlo para recibir los
+     * avisos de reservas: Safari solo los permite desde la pantalla de inicio.
+     */
+    @Override
+    public void configurePage(AppShellSettings settings) {
+        settings.addLink("manifest", "/panel.webmanifest");
+        settings.addLink("apple-touch-icon", "/apple-touch-icon.png");
+    }
 }

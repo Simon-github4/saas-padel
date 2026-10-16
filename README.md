@@ -185,6 +185,29 @@ navegador pide la página y sus recursos en paralelo con la misma cookie, y esa
 rotación lo tomaría como un robo y cerraría todos los dispositivos del usuario. Lo
 cubre `PanelRememberMeTest`.
 
+**Los avisos al celular del club son Web Push hecho a mano.** Quien atiende puede
+tocar "Avisarme en este celular" en su menú (arriba a la derecha) y le llega una
+notificación por cada reserva que entra por la página, con el panel cerrado: "Cancha 2
+· sáb 17/10 09:30 · Juan Pérez · Paga en el club". Es de cada persona en cada
+dispositivo (tabla `push_subscription`) y no depende de la sesión; se borra al
+apagarla, al tocar "Salir" en ese dispositivo, al cambiar la clave o deshabilitar al
+usuario, y cuando el servicio de push contesta 404/410. Un solo lugar decide "entró
+una reserva web nueva" (`NewBookingFeed`, una vez por reserva aunque después se
+confirme) y de ahí salen el cartel con sonido del panel abierto y este aviso, que se
+manda en un hilo aparte (`PanelPushNotifier`): ni el pedido del jugador ni el webhook
+de MercadoPago esperan a FCM o a Apple. Sin librería de Web Push: el cifrado
+`aes128gcm` de RFC 8291 sale con el JDK (lo valida el ejemplo del propio RFC en
+`WebPushEncryptionTest`) y la firma VAPID con nimbus, que ya estaba. El panel se
+instala como "TurnosPadel Club" con su manifest y un service worker propio en
+`/panel-sw.js`, alcance `/admin/`, que solo muestra avisos: sin `fetch` ni cache, por
+eso no se usa el `@PWA` de Vaadin, que arma uno de Workbox que cachea. El permiso se
+pide en el navegador en el momento del toque, sin ir antes al servidor: Safari y
+Firefox lo niegan si llega después. En iPhone hace falta instalar el panel en la
+pantalla de inicio (Safari no permite avisos desde una pestaña), y la opción lo dice.
+La suscripción llega desde la página y el servidor le hace un POST, así que solo se
+aceptan endpoints de los servicios de push conocidos (Google, Mozilla, Apple,
+Microsoft). Lo cubre `PanelPushTest`.
+
 **La identidad del jugador es la cuenta, no el teléfono.** El historial de
 `/account` sale de `booking.player_account_id`, que se completa cuando la reserva
 se hace con sesión iniciada. Antes cruzaba clubes emparejando el teléfono de la
@@ -411,6 +434,8 @@ plantillas aprobadas por Meta y que cada club conecte su cuenta de MercadoPago.
 | `MP_CLIENT_ID`, `MP_CLIENT_SECRET` | Aplicación de MercadoPago (Tus integraciones) con la que se conectan los clubes por OAuth |
 | `MP_WEBHOOK_SECRET` | Clave secreta de webhooks de esa aplicación: una sola para todos los clubes |
 | `GOOGLE_CLIENT_ID` | Login con Google en la app del jugador |
+| `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY` | Claves de los avisos al celular del club (Web Push), en Base64 URL. Se generan una sola vez con `npx web-push generate-vapid-keys`. Sin ellas no hay avisos y la opción no aparece en el panel; en dev se generan solas (`target/dev-vapid-keys.local`). **Si cambian, cada persona tiene que volver a activar los avisos.** |
+| `PUSH_VAPID_SUBJECT` | Contacto que ven los servicios de push si algo falla: `mailto:alguien@...` o una URL `https://`. Vacía, `mailto:` con `MAIL_FROM` |
 
 Sobre las plantillas: WhatsApp solo permite texto libre dentro de las 24 horas
 posteriores a un mensaje del jugador. Todos los avisos de este sistema los inicia el

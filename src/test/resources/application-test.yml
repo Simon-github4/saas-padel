@@ -17,6 +17,11 @@ app:
     client-id: test-client-id
   mail:
     provider: log
+  push:
+    # El par de claves del ejemplo de RFC 8291 (Apendice A): publico, solo para
+    # tests. Con claves, toda reserva web de los tests pasa tambien por el aviso.
+    vapid-public-key: BP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A8
+    vapid-private-key: yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw
   jobs:
     # Los @Scheduled quedan apagados: los tests invocan el trabajo directamente.
     enabled: false
