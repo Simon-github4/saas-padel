@@ -196,19 +196,24 @@ public class CashRegisterService {
      * <p>Un cobro de turno no dice que paga: las consumiciones se suman al total
      * del turno ({@code ProductService.registerSale}) y el mostrador cobra un solo
      * importe. La regla es que se paga primero la cancha: la seña es siempre de
-     * la cancha, y lo que se consume se cobra al final. Lo que pasa del precio de
-     * la cancha es buffet, hasta lo consumido; si se pago de mas, el excedente
-     * vuelve a contar como turno, que es donde va a salir su devolucion.
+     * la cancha, y lo que se consume se cobra al final. Todo lo que pasa del
+     * precio de la cancha es buffet.
+     *
+     * <p>Sin tope en lo consumido, a proposito: lo consumido cambia cuando se
+     * saca un producto, y con tope un cobro ya hecho se pasaba de parte. Se
+     * cargaba y cobraba un producto (buffet), se sacaba y se devolvia, y el cobro
+     * de antes aparecia como turno; al volver a cargarlo, otra vez buffet. Los
+     * numeros cerraban, pero los renglones cambiaban de etiqueta solos. El precio
+     * de la cancha (total menos lo consumido) no cambia al cargar o sacar
+     * productos, asi que cada movimiento se queda en su parte. Lo cobrado de mas
+     * cuenta como buffet: casi siempre es un producto que se saco despues de
+     * cobrarlo, y su devolucion resta de ahi.
      *
      * <p>Por eso no alcanza con los cobros de hoy: una seña del lunes ya cubrio
      * parte de la cancha de un turno que se termina de cobrar el sabado. Se
      * recorren todos los cobros del turno en orden y cada uno se lleva lo que
      * movio de la parte del buffet. Una devolucion recorre lo mismo para atras, y
      * por eso resta primero del buffet sin un caso aparte.
-     *
-     * <p>Se calcula con los precios de hoy, no con los del momento del cobro: si
-     * despues se saco una consumicion, el reparto de un dia pasado puede
-     * moverse. El total del dia no se mueve.
      */
     private Map<UUID, BigDecimal> buffetShares(List<CashMovementRow> rows) {
         Map<UUID, BigDecimal> totalPrices = rows.stream()
@@ -225,23 +230,22 @@ public class CashRegisterService {
         Map<UUID, BigDecimal> paidSoFar = new HashMap<>();
         for (BookingPaymentRow payment : paymentRepository.findBookingPayments(
                 totalPrices.keySet(), PaymentStatus.APPROVED)) {
-            BigDecimal buffet = consumed.getOrDefault(payment.bookingId(), BigDecimal.ZERO);
-            if (buffet.signum() == 0) {
-                continue;
-            }
-            BigDecimal court = totalPrices.get(payment.bookingId()).subtract(buffet).max(BigDecimal.ZERO);
+            // Tambien en un turno sin consumiciones hoy: si tuvo una, cobrada y
+            // despues sacada, ese cobro y su devolucion siguen siendo buffet.
+            BigDecimal court = totalPrices.get(payment.bookingId())
+                    .subtract(consumed.getOrDefault(payment.bookingId(), BigDecimal.ZERO))
+                    .max(BigDecimal.ZERO);
             BigDecimal before = paidSoFar.getOrDefault(payment.bookingId(), BigDecimal.ZERO);
             BigDecimal after = before.add(payment.amount());
             paidSoFar.put(payment.bookingId(), after);
-            shares.put(payment.paymentId(),
-                    buffetPart(after, court, buffet).subtract(buffetPart(before, court, buffet)));
+            shares.put(payment.paymentId(), buffetPart(after, court).subtract(buffetPart(before, court)));
         }
         return shares;
     }
 
-    /** De lo pagado hasta ahora en un turno, cuanto cubre el buffet: lo que pasa de la cancha, hasta lo consumido. */
-    private static BigDecimal buffetPart(BigDecimal paid, BigDecimal court, BigDecimal buffet) {
-        return paid.subtract(court).max(BigDecimal.ZERO).min(buffet);
+    /** De lo pagado hasta ahora en un turno, cuanto es buffet: lo que pasa del precio de la cancha. */
+    private static BigDecimal buffetPart(BigDecimal paid, BigDecimal court) {
+        return paid.subtract(court).max(BigDecimal.ZERO);
     }
 
     /**

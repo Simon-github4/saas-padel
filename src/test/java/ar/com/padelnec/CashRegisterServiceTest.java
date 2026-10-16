@@ -338,6 +338,60 @@ class CashRegisterServiceTest {
         assertThat(caja.cash()).isEqualByComparingTo("21500");
     }
 
+    @Test
+    @DisplayName("Un cobro de buffet sigue siendo buffet aunque despues se saque el producto y se devuelva")
+    void aBuffetChargeKeepsItsPartWhenTheProductIsRemovedAndRefunded() {
+        Booking booking = confirmed(LocalTime.of(12, 30), "Cliente A");
+        consume(booking, "Agua", "1500", 3);
+        pay(booking, "24500", PaymentMethod.CASH, TUESDAY.atTime(13, 0));
+        Product gatorade = productService.createProduct("Gatorade", new BigDecimal("2500"));
+        ProductSale sale = productService.registerSale(fresh(booking), gatorade, 1, mostrador.getId());
+        pay(booking, "2500", PaymentMethod.CASH, TUESDAY.atTime(14, 0));
+        productService.removeSale(sale.getId());
+        refundCash(booking, "2500", LocalTime.of(14, 30));
+
+        DayCash caja = cashRegisterService.of(club, TUESDAY);
+
+        // Antes, sacar el producto bajaba lo consumido y el cobro de las 14 y su
+        // devolucion pasaban a figurar como turno.
+        assertThat(caja.movements()).hasSize(3);
+        assertSplit(caja.movements().get(1).turnosAmount(), caja.movements().get(1).buffetAmount(), "0", "2500");
+        assertSplit(caja.movements().get(2).turnosAmount(), caja.movements().get(2).buffetAmount(), "0", "-2500");
+        assertThat(caja.totalTurnos()).isEqualByComparingTo("20000");
+        assertThat(caja.totalBuffet()).isEqualByComparingTo("4500");
+
+        // Y al volver a cargarlo y cobrarlo, lo de antes no se mueve.
+        productService.registerSale(fresh(booking), gatorade, 1, mostrador.getId());
+        pay(booking, "2500", PaymentMethod.CASH, TUESDAY.atTime(15, 0));
+
+        DayCash despues = cashRegisterService.of(club, TUESDAY);
+        assertThat(despues.movements())
+                .extracting(movement -> movement.buffetAmount().signum())
+                .containsExactly(1, 1, -1, 1);
+        assertThat(despues.totalTurnos()).isEqualByComparingTo("20000");
+        assertThat(despues.totalBuffet()).isEqualByComparingTo("7000");
+    }
+
+    @Test
+    @DisplayName("En un turno sin consumiciones, un producto cobrado y despues sacado y devuelto es buffet")
+    void aRemovedProductInABookingWithoutConsumptionsIsStillBuffet() {
+        Booking booking = confirmed(LocalTime.of(12, 30), "Cliente A");
+        pay(booking, "20000", PaymentMethod.CASH, TUESDAY.atTime(13, 0));
+        Product gatorade = productService.createProduct("Gatorade", new BigDecimal("2500"));
+        ProductSale sale = productService.registerSale(fresh(booking), gatorade, 1, mostrador.getId());
+        pay(booking, "2500", PaymentMethod.CASH, TUESDAY.atTime(14, 0));
+        productService.removeSale(sale.getId());
+        refundCash(booking, "2500", LocalTime.of(14, 30));
+
+        DayCash caja = cashRegisterService.of(club, TUESDAY);
+
+        assertThat(caja.movements())
+                .extracting(movement -> movement.buffetAmount().signum())
+                .containsExactly(0, 1, -1);
+        assertThat(caja.totalTurnos()).isEqualByComparingTo("20000");
+        assertThat(caja.totalBuffet()).isEqualByComparingTo("0");
+    }
+
     // ------------------------------------------------------------ utilidades
 
     /** Por valor y no con equals: un cero que sale de un max() no trae la escala de la columna. */
