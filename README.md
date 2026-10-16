@@ -431,7 +431,9 @@ Los cambios futuros se agregan como `V2__...`, `V3__...`, sin editar el V1.
 
 Una base de desarrollo creada con las migraciones anteriores a la consolidación
 no arranca (Flyway rechaza el historial): hay que resetearla con
-`DEV_DB_RESET=true` o `mvn clean`.
+`DEV_DB_RESET=true` o `mvn clean`. Lo mismo pasa al volver de una rama con
+migraciones propias; para no pisar esa base, `DEV_DB_DIR` arranca con otra carpeta
+(por ejemplo `target/devdb-otra-rama`).
 
 ### Desplegar con Docker
 
