@@ -31,4 +31,13 @@ public interface ProductSaleRepository extends JpaRepository<ProductSale, UUID> 
             WHERE ps.createdAt >= :from AND ps.createdAt < :until
             """)
     List<BuffetSaleRow> findSalesBetween(@Param("from") Instant from, @Param("until") Instant until);
+
+    /** Lo consumido en cada uno de estos turnos, sumado. Un turno sin consumiciones no aparece. */
+    @Query("""
+            SELECT new ar.com.padelnec.repository.BookingConsumptionRow(ps.booking.id, SUM(ps.unitPrice * ps.quantity))
+            FROM ProductSale ps
+            WHERE ps.booking.id IN :bookingIds
+            GROUP BY ps.booking.id
+            """)
+    List<BookingConsumptionRow> sumByBooking(@Param("bookingIds") Collection<UUID> bookingIds);
 }

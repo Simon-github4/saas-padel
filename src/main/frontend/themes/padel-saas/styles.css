@@ -990,3 +990,245 @@ vaadin-side-nav-item[current]::part(item) {
 .settings-save-bar[dirty] .settings-save-bar__hint {
   display: inline;
 }
+
+/* =====================================================================
+   Caja: el reparto entre los turnos y el buffet
+   =====================================================================
+
+   Dos colores propios para las dos partes, y ninguno de los que ya dicen
+   algo en el panel: el naranja es la marca y las acciones, el rojo lo que
+   falta cobrar o se devolvio, el azul y el amarillo son estados de la
+   agenda. Verde azulado por la cancha y violeta para el buffet: se
+   distinguen tambien sin ver bien los colores, porque difieren en claridad
+   y no solo en tono. */
+html {
+  --caja-turnos-color: #0f766e;
+  --caja-turnos-text-color: #115e59;
+  --caja-buffet-color: #7c3aed;
+  --caja-buffet-text-color: #5b21b6;
+}
+
+.caja-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--lumo-space-m);
+  width: 100%;
+}
+
+/* La planilla manda; lo pendiente es una tarjeta al costado, que en el
+   celular baja abajo de la planilla. */
+.caja-reparto {
+  flex: 1 1 26rem;
+  max-width: 42rem;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: var(--lumo-space-m);
+  border: 1px solid var(--lumo-contrast-10pct);
+  border-radius: var(--lumo-border-radius-m);
+  background: var(--lumo-base-color);
+}
+
+.caja-top__pending {
+  flex: 1 1 13rem;
+  max-width: 20rem;
+}
+
+.caja-reparto__title {
+  margin: 0;
+  font-size: var(--lumo-font-size-m);
+}
+
+.caja-reparto__proportion {
+  margin-top: var(--lumo-space-s);
+}
+
+.caja-reparto__bar {
+  display: flex;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--lumo-contrast-5pct);
+}
+
+.caja-reparto__bar-part--turnos {
+  background: var(--caja-turnos-color);
+}
+
+.caja-reparto__bar-part--buffet {
+  background: var(--caja-buffet-color);
+}
+
+.caja-reparto__legend {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--lumo-space-xs);
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 600;
+}
+
+.caja-reparto__legend span:first-child {
+  color: var(--caja-turnos-text-color);
+}
+
+.caja-reparto__legend span:last-child {
+  color: var(--caja-buffet-text-color);
+}
+
+.caja-reparto__table {
+  width: 100%;
+  margin-top: var(--lumo-space-s);
+  border-collapse: collapse;
+  font-size: var(--lumo-font-size-m);
+}
+
+.caja-reparto__table th,
+.caja-reparto__table td {
+  padding: 0.5rem 0 0.5rem 0.75rem;
+  text-align: end;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--lumo-contrast-10pct);
+}
+
+.caja-reparto__table th[scope="row"] {
+  padding-inline-start: 0;
+  text-align: start;
+  font-weight: 500;
+  white-space: normal;
+}
+
+/* Mismo rotulo que el encabezado de las grillas, y cada columna subrayada
+   con el color de su parte: es lo que ata la columna a la barra de arriba. */
+.caja-reparto__table thead th {
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lumo-secondary-text-color);
+  border-bottom-width: 2px;
+}
+
+.caja-reparto__table thead .caja-reparto__col--turnos {
+  color: var(--caja-turnos-text-color);
+  border-bottom-color: var(--caja-turnos-color);
+}
+
+.caja-reparto__table thead .caja-reparto__col--buffet {
+  color: var(--caja-buffet-text-color);
+  border-bottom-color: var(--caja-buffet-color);
+}
+
+.caja-reparto__table thead .caja-reparto__col--total {
+  border-bottom-color: var(--lumo-contrast-30pct);
+}
+
+.caja-reparto__table tbody td:last-child {
+  font-weight: 600;
+}
+
+.caja-reparto__note {
+  display: block;
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 400;
+  color: var(--lumo-tertiary-text-color);
+}
+
+.caja-reparto__table tbody tr:last-child > * {
+  border-bottom: none;
+}
+
+.caja-reparto__table tfoot th,
+.caja-reparto__table tfoot td {
+  border-top: 2px solid var(--lumo-contrast-20pct);
+  border-bottom: none;
+  font-weight: 700;
+}
+
+.caja-reparto__table tfoot td:last-child {
+  font-size: var(--lumo-font-size-l);
+}
+
+.caja-reparto__table .caja-reparto__amount--negative {
+  color: var(--lumo-error-text-color);
+}
+
+/* En el celular entran las cuatro columnas sin scroll lateral: un punto
+   mas chico y menos aire entre importes. */
+@media (max-width: 480px) {
+  .caja-reparto__table {
+    font-size: var(--lumo-font-size-s);
+  }
+
+  .caja-reparto__table th,
+  .caja-reparto__table td {
+    padding-inline-start: 0.5rem;
+  }
+
+  .caja-reparto__table tfoot td:last-child {
+    font-size: var(--lumo-font-size-m);
+  }
+
+  .caja-top__pending {
+    max-width: none;
+  }
+}
+
+.caja-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lumo-space-s);
+  width: 100%;
+}
+
+/* Todo · Turnos · Buffet: un control segmentado, el elegido levantado
+   sobre el riel como una tecla apretada. */
+.caja-filter {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--lumo-border-radius-m);
+  background: var(--lumo-contrast-5pct);
+}
+
+.caja-filter__option {
+  margin: 0;
+  background: transparent;
+  color: var(--lumo-secondary-text-color);
+}
+
+.caja-filter__option[aria-pressed="true"] {
+  background: var(--lumo-base-color);
+  color: var(--lumo-body-text-color);
+  box-shadow: 0 0 0 1px var(--lumo-contrast-10pct);
+}
+
+/* Una etiqueta debajo de la otra y no en fila: la grilla mide el ancho de la
+   columna por su contenido, y en fila un cobro mixto la ensanchaba lo
+   suficiente como para sacar la tabla de pantalla. */
+.caja-parts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.caja-part {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--lumo-border-radius-s);
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.caja-part--turnos {
+  color: var(--caja-turnos-text-color);
+  background: color-mix(in srgb, var(--caja-turnos-color) 12%, var(--lumo-base-color));
+}
+
+.caja-part--buffet {
+  color: var(--caja-buffet-text-color);
+  background: color-mix(in srgb, var(--caja-buffet-color) 12%, var(--lumo-base-color));
+}

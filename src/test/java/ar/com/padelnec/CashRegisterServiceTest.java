@@ -196,7 +196,7 @@ class CashRegisterServiceTest {
         assertThat(caja.buffet())
                 .extracting(BuffetLine::productName, BuffetLine::quantity, BuffetLine::total)
                 .containsExactly(tuple("Agua", 2, new BigDecimal("3000.00")));
-        assertThat(caja.buffetTotal()).isEqualByComparingTo("3000");
+        assertThat(caja.buffetSold()).isEqualByComparingTo("3000");
         // La consumicion todavia no se cobro: sube lo que el turno debe, no la caja.
         assertThat(caja.total()).isEqualByComparingTo("0");
         assertThat(caja.pending()).isEqualByComparingTo("23000");
@@ -223,7 +223,7 @@ class CashRegisterServiceTest {
                 .singleElement()
                 .satisfies(movement -> {
                     assertThat(movement.customerName()).isEqualTo("Venta rápida");
-                    assertThat(movement.buffet()).isTrue();
+                    assertThat(movement.buffetOrder()).isTrue();
                     assertThat(movement.amount()).isEqualByComparingTo("3000");
                 });
         assertThat(caja.pending()).isEqualByComparingTo("0");
@@ -248,11 +248,15 @@ class CashRegisterServiceTest {
                 .singleElement()
                 .satisfies(movement -> {
                     assertThat(movement.customerName()).isEqualTo("Juan, mira el partido");
-                    assertThat(movement.buffet()).isTrue();
+                    assertThat(movement.buffetOrder()).isTrue();
                     assertThat(movement.courtName()).isNull();
                     assertThat(movement.amount()).isEqualByComparingTo("4000");
                 });
         assertThat(caja.cash()).isEqualByComparingTo("4000");
+        // Un pedido sin turno es buffet entero.
+        assertThat(caja.movements().get(0).buffetAmount()).isEqualByComparingTo("4000");
+        assertThat(caja.totalBuffet()).isEqualByComparingTo("4000");
+        assertThat(caja.totalTurnos()).isEqualByComparingTo("0");
         assertThat(caja.buffet())
                 .extracting(BuffetLine::productName, BuffetLine::quantity)
                 .containsExactly(tuple("Café", 3));
@@ -262,7 +266,96 @@ class CashRegisterServiceTest {
         assertThat(caja.pendingBookings()).isZero();
     }
 
+    @Test
+    @DisplayName("Un cobro de turno sin consumiciones es todo de los turnos")
+    void aBookingWithoutConsumptionsIsAllTurnos() {
+        Booking booking = confirmed(LocalTime.of(12, 30), "Cliente A");
+        payCash(booking, "20000", LocalTime.of(13, 0));
+
+        DayCash caja = cashRegisterService.of(club, TUESDAY);
+
+        assertThat(caja.movements().get(0).buffetAmount()).isEqualByComparingTo("0");
+        assertThat(caja.totalTurnos()).isEqualByComparingTo("20000");
+        assertThat(caja.totalBuffet()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    @DisplayName("Un turno con consumiciones paga primero la cancha y despues el buffet")
+    void aBookingPaysTheCourtFirstAndThenTheBuffet() {
+        Booking booking = confirmed(LocalTime.of(12, 30), "Cliente A");
+        consume(booking, "Agua", "1500", 3);
+        pay(booking, "8000", PaymentMethod.CASH, TUESDAY.atTime(13, 0));
+        pay(booking, "16500", PaymentMethod.TRANSFER, TUESDAY.atTime(14, 0));
+
+        DayCash caja = cashRegisterService.of(club, TUESDAY);
+
+        // Los primeros 8000 son cancha; de los 16500, 12000 terminan de pagar la
+        // cancha y 4500 son las tres aguas.
+        assertThat(caja.movements()).hasSize(2);
+        assertSplit(caja.movements().get(0).turnosAmount(), caja.movements().get(0).buffetAmount(), "8000", "0");
+        assertSplit(caja.movements().get(1).turnosAmount(), caja.movements().get(1).buffetAmount(), "12000", "4500");
+        // Cada metodo suma lo suyo de cada parte, y las dos partes dan su total.
+        MethodTotal cash = caja.byMethod().get(0);
+        MethodTotal transfer = caja.byMethod().get(1);
+        assertSplit(cash.turnos(), cash.buffet(), "8000", "0");
+        assertSplit(transfer.turnos(), transfer.buffet(), "12000", "4500");
+        assertThat(transfer.total()).isEqualByComparingTo("16500");
+        assertThat(caja.totalTurnos()).isEqualByComparingTo("20000");
+        assertThat(caja.totalBuffet()).isEqualByComparingTo("4500");
+        assertThat(caja.total()).isEqualByComparingTo("24500");
+    }
+
+    @Test
+    @DisplayName("El saldo cobrado otro dia cuenta lo que ya se habia pagado de la cancha")
+    void theBalanceCollectedLaterKnowsWhatWasAlreadyPaid() {
+        Booking booking = confirmed(LocalTime.of(12, 30), "Cliente A");
+        consume(booking, "Agua", "1500", 3);
+        pay(booking, "20000", PaymentMethod.TRANSFER, TUESDAY.minusDays(1).atTime(21, 0));
+        pay(booking, "4500", PaymentMethod.CASH, TUESDAY.atTime(14, 0));
+
+        DayCash caja = cashRegisterService.of(club, TUESDAY);
+
+        // La cancha la cubrio el pago del lunes: lo de hoy es todo buffet.
+        assertThat(caja.totalTurnos()).isEqualByComparingTo("0");
+        assertThat(caja.totalBuffet()).isEqualByComparingTo("4500");
+        assertThat(cashRegisterService.of(club, TUESDAY.minusDays(1)).totalTurnos())
+                .isEqualByComparingTo("20000");
+    }
+
+    @Test
+    @DisplayName("Una devolucion de un turno con consumiciones resta primero del buffet")
+    void aRefundTakesFromTheBuffetFirst() {
+        Booking booking = confirmed(LocalTime.of(12, 30), "Cliente A");
+        consume(booking, "Agua", "1500", 3);
+        pay(booking, "24500", PaymentMethod.CASH, TUESDAY.atTime(13, 0));
+        refundCash(booking, "3000", LocalTime.of(13, 30));
+
+        DayCash caja = cashRegisterService.of(club, TUESDAY);
+
+        assertThat(caja.movements().get(1).buffetAmount()).isEqualByComparingTo("-3000");
+        assertThat(caja.totalTurnos()).isEqualByComparingTo("20000");
+        assertThat(caja.totalBuffet()).isEqualByComparingTo("1500");
+        assertThat(caja.cash()).isEqualByComparingTo("21500");
+    }
+
     // ------------------------------------------------------------ utilidades
+
+    /** Por valor y no con equals: un cero que sale de un max() no trae la escala de la columna. */
+    private void assertSplit(BigDecimal turnos, BigDecimal buffet, String expectedTurnos, String expectedBuffet) {
+        assertThat(turnos).as("turnos").isEqualByComparingTo(expectedTurnos);
+        assertThat(buffet).as("buffet").isEqualByComparingTo(expectedBuffet);
+    }
+
+    private void consume(Booking booking, String product, String price, int quantity) {
+        Product created = productService.createProduct(product, new BigDecimal(price));
+        productService.registerSale(fresh(booking), created, quantity, mostrador.getId());
+    }
+
+    private void pay(Booking booking, String amount, PaymentMethod method, java.time.LocalDateTime at) {
+        Payment payment = paymentService.registerManualPayment(
+                fresh(booking), new BigDecimal(amount), method, mostrador.getId());
+        backdate("payment", payment.getId(), at);
+    }
 
     private Booking confirmed(LocalTime time, String name) {
         Booking booking = bookingService.create(club, new NewBooking(court.getId(),

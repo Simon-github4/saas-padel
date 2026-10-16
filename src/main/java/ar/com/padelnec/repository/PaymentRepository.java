@@ -3,6 +3,7 @@ package ar.com.padelnec.repository;
 import ar.com.padelnec.domain.Payment;
 import ar.com.padelnec.domain.enums.PaymentStatus;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -54,17 +55,31 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
      */
     @Query("""
             SELECT new ar.com.padelnec.repository.CashMovementRow(
-                p.createdAt, p.method, p.amount, p.registeredBy, b.id, o.id,
-                COALESCE(b.bookedName, c.fullName, o.customerName), co.name, b.startTime)
+                p.id, p.createdAt, p.method, p.amount, p.registeredBy, b.id, o.id,
+                COALESCE(b.bookedName, c.fullName, o.customerName), co.name, b.startTime, b.totalPrice)
             FROM Payment p
             LEFT JOIN p.booking b
             LEFT JOIN b.customer c
             LEFT JOIN b.court co
             LEFT JOIN p.buffetOrder o
             WHERE p.status = :status AND p.createdAt >= :from AND p.createdAt < :until
-            ORDER BY p.createdAt ASC
+            ORDER BY p.createdAt ASC, p.id ASC
             """)
     List<CashMovementRow> findMovementsBetween(@Param("from") Instant from,
                                                @Param("until") Instant until,
                                                @Param("status") PaymentStatus status);
+
+    /**
+     * Todos los cobros de unos turnos, de cualquier dia, en el orden en que
+     * entraron: con el mismo desempate que {@link #findMovementsBetween}, asi dos
+     * cobros del mismo instante se reparten igual en las dos lecturas.
+     */
+    @Query("""
+            SELECT new ar.com.padelnec.repository.BookingPaymentRow(p.id, p.booking.id, p.createdAt, p.amount)
+            FROM Payment p
+            WHERE p.status = :status AND p.booking.id IN :bookingIds
+            ORDER BY p.createdAt ASC, p.id ASC
+            """)
+    List<BookingPaymentRow> findBookingPayments(@Param("bookingIds") Collection<UUID> bookingIds,
+                                                @Param("status") PaymentStatus status);
 }

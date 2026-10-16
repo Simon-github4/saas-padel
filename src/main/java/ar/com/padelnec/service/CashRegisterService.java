@@ -6,6 +6,8 @@ import ar.com.padelnec.domain.ClubUser;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.domain.enums.PaymentStatus;
+import ar.com.padelnec.repository.BookingConsumptionRow;
+import ar.com.padelnec.repository.BookingPaymentRow;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.BuffetOrderRepository;
 import ar.com.padelnec.repository.BuffetSaleRow;
@@ -17,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,7 +30,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * La caja de un dia: que plata se movio, por que via y quien la cargo.
+ * La caja de un dia: que plata se movio, por que via, quien la cargo y cuanto
+ * fue de los turnos y cuanto del buffet.
  *
  * <p>Es una lectura, no un libro de caja: todavia no hay apertura, ni fondo
  * inicial, ni gastos, ni cierre firmado. Lo que responde es la pregunta que el
@@ -63,21 +67,34 @@ public class CashRegisterService {
      *
      * <p>{@code amount} negativo es una devolucion. {@code registeredByName} es
      * nulo cuando no lo cargo una persona: los pagos de MercadoPago los asienta
-     * el webhook. En un cobro de buffet ({@code buffet}) no hay turno:
-     * {@code courtName} y {@code bookingStartTime} son nulos y
+     * el webhook. En un cobro de un pedido de buffet ({@code buffetOrder}) no hay
+     * turno: {@code courtName} y {@code bookingStartTime} son nulos y
      * {@code customerName} es a nombre de quien fue el pedido, o "Venta rápida"
      * si se cobró sin nombre.
+     *
+     * <p>{@code buffetAmount} es la parte del importe que fue buffet: todo, en un
+     * pedido; en un turno, lo que paso del precio de la cancha (ver
+     * {@link CashRegisterService#buffetShares}). El resto es de los turnos.
      */
-    public record Movement(Instant at, PaymentMethod method, BigDecimal amount,
+    public record Movement(Instant at, PaymentMethod method, BigDecimal amount, BigDecimal buffetAmount,
                            String registeredByName, String customerName, String courtName,
-                           Instant bookingStartTime, boolean buffet) {
+                           Instant bookingStartTime, boolean buffetOrder) {
 
         public boolean isRefund() {
             return amount.signum() < 0;
         }
+
+        public BigDecimal turnosAmount() {
+            return amount.subtract(buffetAmount);
+        }
     }
 
-    public record MethodTotal(PaymentMethod method, BigDecimal total) {
+    /** Lo cobrado por un metodo, repartido entre los turnos y el buffet. */
+    public record MethodTotal(PaymentMethod method, BigDecimal turnos, BigDecimal buffet) {
+
+        public BigDecimal total() {
+            return turnos.add(buffet);
+        }
     }
 
     public record BuffetLine(String productName, int quantity, BigDecimal total) {
@@ -90,13 +107,21 @@ public class CashRegisterService {
      * numero que se contrasta contra billetes: la transferencia y MercadoPago hay
      * que buscarlos en un banco, no en el cajon.
      *
+     * <p>{@code total} es todo lo cobrado, y {@code totalTurnos} y
+     * {@code totalBuffet} lo mismo repartido: los socios que se dividen el
+     * negocio por partes no liquidan igual la cancha que el buffet.
+     *
      * <p>{@code pending} suma lo que deben los turnos del dia y los pedidos de
      * buffet abiertos ese dia; {@code pendingBookings} y {@code pendingOrders}
      * cuentan cada uno por separado.
+     *
+     * <p>{@code buffet} y {@code buffetSold} son lo vendido en el buffet, no lo
+     * cobrado: una consumicion se cobra con el turno, a veces otro dia.
      */
     public record DayCash(LocalDate date, List<Movement> movements, List<MethodTotal> byMethod,
-                          BigDecimal total, BigDecimal cash, BigDecimal pending, int pendingBookings,
-                          int pendingOrders, List<BuffetLine> buffet, BigDecimal buffetTotal) {
+                          BigDecimal total, BigDecimal totalTurnos, BigDecimal totalBuffet, BigDecimal cash,
+                          BigDecimal pending, int pendingBookings, int pendingOrders,
+                          List<BuffetLine> buffet, BigDecimal buffetSold) {
     }
 
     @Transactional(readOnly = true)
@@ -110,13 +135,16 @@ public class CashRegisterService {
         Instant until = date.plusDays(1).atStartOfDay(club.zoneId()).toInstant();
 
         Map<UUID, String> names = staffNames(club);
-        List<Movement> movements = paymentRepository
-                .findMovementsBetween(from, until, PaymentStatus.APPROVED).stream()
-                .map(row -> toMovement(row, names))
+        List<CashMovementRow> rows = paymentRepository.findMovementsBetween(from, until, PaymentStatus.APPROVED);
+        Map<UUID, BigDecimal> buffetShares = buffetShares(rows);
+        List<Movement> movements = rows.stream()
+                .map(row -> toMovement(row, names, buffetShares))
                 .toList();
 
         List<MethodTotal> byMethod = totalsByMethod(movements);
-        BigDecimal total = byMethod.stream().map(MethodTotal::total)
+        BigDecimal totalTurnos = byMethod.stream().map(MethodTotal::turnos)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalBuffet = byMethod.stream().map(MethodTotal::buffet)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal cash = byMethod.stream()
                 .filter(entry -> entry.method() == PaymentMethod.CASH)
@@ -125,7 +153,7 @@ public class CashRegisterService {
                 .orElse(BigDecimal.ZERO);
 
         List<BuffetLine> buffet = buffetLines(from, until);
-        BigDecimal buffetTotal = buffet.stream().map(BuffetLine::total)
+        BigDecimal buffetSold = buffet.stream().map(BuffetLine::total)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<Booking> pendientes = bookingRepository.findAgenda(
@@ -142,35 +170,97 @@ public class CashRegisterService {
                 .add(pedidosPendientes.stream().map(BuffetOrder::balanceDue)
                         .reduce(BigDecimal.ZERO, BigDecimal::add));
 
-        return new DayCash(date, movements, byMethod, total, cash, pending, pendientes.size(),
-                pedidosPendientes.size(), buffet, buffetTotal);
+        return new DayCash(date, movements, byMethod, totalTurnos.add(totalBuffet), totalTurnos, totalBuffet,
+                cash, pending, pendientes.size(), pedidosPendientes.size(), buffet, buffetSold);
     }
 
     // ------------------------------------------------------------ internos
 
-    private Movement toMovement(CashMovementRow row, Map<UUID, String> names) {
-        boolean buffet = row.buffetOrderId() != null;
-        String customer = buffet && row.customerFullName() == null
+    private Movement toMovement(CashMovementRow row, Map<UUID, String> names,
+                                Map<UUID, BigDecimal> buffetShares) {
+        boolean buffetOrder = row.buffetOrderId() != null;
+        String customer = buffetOrder && row.customerFullName() == null
                 ? BuffetOrder.QUICK_SALE
                 : row.customerFullName();
-        return new Movement(row.createdAt(), row.method(), row.amount(),
+        BigDecimal buffetAmount = buffetOrder
+                ? row.amount()
+                : buffetShares.getOrDefault(row.paymentId(), BigDecimal.ZERO);
+        return new Movement(row.createdAt(), row.method(), row.amount(), buffetAmount,
                 row.registeredBy() == null ? null : names.get(row.registeredBy()),
-                customer, row.courtName(), row.bookingStartTime(), buffet);
+                customer, row.courtName(), row.bookingStartTime(), buffetOrder);
+    }
+
+    /**
+     * Cuanto de cada cobro de turno del dia fue buffet, por id de pago.
+     *
+     * <p>Un cobro de turno no dice que paga: las consumiciones se suman al total
+     * del turno ({@code ProductService.registerSale}) y el mostrador cobra un solo
+     * importe. La regla es que se paga primero la cancha: la seña es siempre de
+     * la cancha, y lo que se consume se cobra al final. Lo que pasa del precio de
+     * la cancha es buffet, hasta lo consumido; si se pago de mas, el excedente
+     * vuelve a contar como turno, que es donde va a salir su devolucion.
+     *
+     * <p>Por eso no alcanza con los cobros de hoy: una seña del lunes ya cubrio
+     * parte de la cancha de un turno que se termina de cobrar el sabado. Se
+     * recorren todos los cobros del turno en orden y cada uno se lleva lo que
+     * movio de la parte del buffet. Una devolucion recorre lo mismo para atras, y
+     * por eso resta primero del buffet sin un caso aparte.
+     *
+     * <p>Se calcula con los precios de hoy, no con los del momento del cobro: si
+     * despues se saco una consumicion, el reparto de un dia pasado puede
+     * moverse. El total del dia no se mueve.
+     */
+    private Map<UUID, BigDecimal> buffetShares(List<CashMovementRow> rows) {
+        Map<UUID, BigDecimal> totalPrices = rows.stream()
+                .filter(row -> row.bookingId() != null)
+                .collect(Collectors.toMap(CashMovementRow::bookingId, CashMovementRow::bookingTotalPrice,
+                        (first, second) -> first));
+        if (totalPrices.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, BigDecimal> consumed = productSaleRepository.sumByBooking(totalPrices.keySet()).stream()
+                .collect(Collectors.toMap(BookingConsumptionRow::bookingId, BookingConsumptionRow::total));
+
+        Map<UUID, BigDecimal> shares = new HashMap<>();
+        Map<UUID, BigDecimal> paidSoFar = new HashMap<>();
+        for (BookingPaymentRow payment : paymentRepository.findBookingPayments(
+                totalPrices.keySet(), PaymentStatus.APPROVED)) {
+            BigDecimal buffet = consumed.getOrDefault(payment.bookingId(), BigDecimal.ZERO);
+            if (buffet.signum() == 0) {
+                continue;
+            }
+            BigDecimal court = totalPrices.get(payment.bookingId()).subtract(buffet).max(BigDecimal.ZERO);
+            BigDecimal before = paidSoFar.getOrDefault(payment.bookingId(), BigDecimal.ZERO);
+            BigDecimal after = before.add(payment.amount());
+            paidSoFar.put(payment.bookingId(), after);
+            shares.put(payment.paymentId(),
+                    buffetPart(after, court, buffet).subtract(buffetPart(before, court, buffet)));
+        }
+        return shares;
+    }
+
+    /** De lo pagado hasta ahora en un turno, cuanto cubre el buffet: lo que pasa de la cancha, hasta lo consumido. */
+    private static BigDecimal buffetPart(BigDecimal paid, BigDecimal court, BigDecimal buffet) {
+        return paid.subtract(court).max(BigDecimal.ZERO).min(buffet);
     }
 
     /**
      * Los tres metodos siempre, incluso en cero.
      *
-     * <p>Un dia sin efectivo tiene que decir cero, no esconder la tarjeta: que
+     * <p>Un dia sin efectivo tiene que decir cero, no esconder la fila: que
      * falte se lee como que el dato no se calculo, y es justo el numero que el
      * mostrador va a buscar para cerrar.
      */
     private List<MethodTotal> totalsByMethod(List<Movement> movements) {
-        Map<PaymentMethod, BigDecimal> sums = movements.stream()
-                .collect(Collectors.groupingBy(Movement::method,
-                        Collectors.reducing(BigDecimal.ZERO, Movement::amount, BigDecimal::add)));
+        Map<PaymentMethod, List<Movement>> byMethod = movements.stream()
+                .collect(Collectors.groupingBy(Movement::method));
         return METHOD_ORDER.stream()
-                .map(method -> new MethodTotal(method, sums.getOrDefault(method, BigDecimal.ZERO)))
+                .map(method -> {
+                    List<Movement> ofMethod = byMethod.getOrDefault(method, List.of());
+                    return new MethodTotal(method,
+                            ofMethod.stream().map(Movement::turnosAmount).reduce(BigDecimal.ZERO, BigDecimal::add),
+                            ofMethod.stream().map(Movement::buffetAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
+                })
                 .toList();
     }
 
