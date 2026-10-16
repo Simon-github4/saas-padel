@@ -228,7 +228,13 @@ también para los días anteriores al cambio. Lo cubre `CashRegisterServiceTest`
 En Estadísticas, **Facturado** suma los turnos (por fecha del turno, con lo
 consumido en ellos) y los pedidos de buffet sin turno (por fecha de venta), en un
 solo número. Lo consumido en un turno no se suma dos veces porque ya está en su
-total. Lo cubre `BookingStatsServiceTest`.
+total. La regla vive en un solo lugar (`BookingStatsService.facturadoOf`), y la
+caja del día le pide ese número a `BookingStatsService.facturado` en vez de
+recalcularlo, para que las dos pantallas den siempre lo mismo. Por eso el
+facturado de la caja va por fecha calendario y lo pendiente por la agenda del día:
+en un club que cierra después de medianoche, un turno de las 00:30 es pendiente de
+la noche anterior y facturado del día siguiente. Lo cubren `BookingStatsServiceTest`
+y `CashRegisterServiceTest`.
 
 **Los teléfonos argentinos se fuerzan a celular.** Escrito sin el 15 ni el 9,
 `2262 415000` es indistinguible de una línea fija. Sin esa corrección, el mismo

@@ -187,6 +187,23 @@ public class BookingStatsService {
         return summarize(club, courts, from, toExclusive, bookings, payments, sales, blackouts, "Total");
     }
 
+    /**
+     * Lo facturado en un rango, y nada mas: el mismo numero que
+     * {@link PeriodStats#facturado}, sin la ocupacion ni los cobros que arma
+     * {@link #summary}.
+     *
+     * <p>Lo usa la caja del dia para mostrar el facturado del dia. Pregunta aca y
+     * no lo recalcula por su cuenta para que las dos pantallas den siempre lo
+     * mismo: una regla copiada en dos lugares es como empiezan a no coincidir.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal facturado(Tenant club, LocalDate from, LocalDate to) {
+        Instant fromInstant = from.atStartOfDay(club.zoneId()).toInstant();
+        Instant untilInstant = to.plusDays(1).atStartOfDay(club.zoneId()).toInstant();
+        return facturadoOf(bookingRepository.findStatsBetween(fromInstant, untilInstant),
+                productSaleRepository.findOrderSalesBetween(fromInstant, untilInstant));
+    }
+
     /** Todo lo que pinta el Dashboard de una sola pasada: ver {@link #dashboardFor}. */
     public record DashboardSnapshot(PeriodStats summary, List<PeriodStats> periods,
                                     List<HourlyStat> topHours, List<CustomerStat> topCustomers,
@@ -397,12 +414,7 @@ public class BookingStatsService {
         int reservados = 0;
         int cancelados = 0;
         int noShows = 0;
-        // Los pedidos de buffet sin turno facturan por el dia en que se vendieron:
-        // no tienen turno al que pegarse. Lo consumido en un turno no se suma
-        // aca porque ya viene dentro de su total_price, mas abajo.
-        BigDecimal facturado = sales.stream()
-                .map(SaleAmountRow::subtotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal facturado = facturadoOf(bookings, sales);
         // Lo cobrado sale de los pagos del periodo, no de sumar paid_amount de los
         // turnos: ese campo dice cuanto lleva pago un turno, no cuando entro esa
         // plata, y ademas se perdia entero si el turno terminaba cancelado.
@@ -425,7 +437,6 @@ public class BookingStatsService {
             }
             if (booking.status().occupiesSlot()) {
                 horas = horas.plus(booking.duration());
-                facturado = facturado.add(booking.totalPrice());
                 LocalDate day = booking.startTime().atZone(club.zoneId()).toLocalDate();
                 occupiedByDay.merge(day, 1, Integer::sum);
             }
@@ -497,6 +508,23 @@ public class BookingStatsService {
                 .anyMatch(blackout -> blackout.getCourt() == null
                         && !blackout.getStartTime().isAfter(dayStart)
                         && !blackout.getEndTime().isBefore(dayEnd));
+    }
+
+    /**
+     * La regla de lo facturado, en un solo lugar: lo que valen los turnos que
+     * ocupan la cancha, con lo consumido en ellos, mas lo vendido en pedidos de
+     * buffet sin turno.
+     *
+     * <p>Los pedidos facturan por el dia en que se vendieron: no tienen turno al
+     * que pegarse. Lo consumido en un turno no se suma de las ventas porque ya
+     * viene dentro de su total_price.
+     */
+    private static BigDecimal facturadoOf(List<BookingStatsRow> bookings, List<SaleAmountRow> sales) {
+        BigDecimal turnos = bookings.stream()
+                .filter(booking -> booking.status().occupiesSlot())
+                .map(BookingStatsRow::totalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sales.stream().map(SaleAmountRow::subtotal).reduce(turnos, BigDecimal::add);
     }
 
     private BigDecimal facturado(List<BookingStatsRow> bookings) {

@@ -1038,7 +1038,20 @@ html {
 .caja-reparto__aside {
   display: flex;
   flex-direction: column;
+  gap: var(--lumo-space-m);
+  padding-top: var(--lumo-space-m);
+  border-top: 1px solid var(--lumo-contrast-10pct);
+}
+
+/* Facturado arriba y pendiente abajo, separados con la misma linea fina que
+   los renglones de la planilla. */
+.caja-reparto__stat {
+  display: flex;
+  flex-direction: column;
   gap: var(--lumo-space-xs);
+}
+
+.caja-reparto__stat + .caja-reparto__stat {
   padding-top: var(--lumo-space-m);
   border-top: 1px solid var(--lumo-contrast-10pct);
 }
@@ -1057,7 +1070,7 @@ html {
   line-height: 1.2;
 }
 
-.caja-reparto__aside-value--due {
+.caja-reparto__stat--due .caja-reparto__aside-value {
   color: var(--lumo-error-text-color);
 }
 

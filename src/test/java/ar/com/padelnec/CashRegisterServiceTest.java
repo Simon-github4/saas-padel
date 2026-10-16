@@ -16,6 +16,7 @@ import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.BookingService.NewBooking;
 import ar.com.padelnec.service.BookingService.PaymentChoice;
+import ar.com.padelnec.service.BookingStatsService;
 import ar.com.padelnec.service.BuffetOrderService;
 import ar.com.padelnec.service.CashRegisterService;
 import ar.com.padelnec.service.CashRegisterService.DayCash;
@@ -75,6 +76,7 @@ class CashRegisterServiceTest {
     }
 
     @Autowired private CashRegisterService cashRegisterService;
+    @Autowired private BookingStatsService bookingStatsService;
     @Autowired private BookingService bookingService;
     @Autowired private PaymentService paymentService;
     @Autowired private ProductService productService;
@@ -390,6 +392,26 @@ class CashRegisterServiceTest {
                 .containsExactly(0, 1, -1);
         assertThat(caja.totalTurnos()).isEqualByComparingTo("20000");
         assertThat(caja.totalBuffet()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    @DisplayName("Lo facturado del dia es el mismo numero que Facturado en Estadisticas")
+    void billedIsTheSameNumberAsStatistics() {
+        Booking booking = confirmed(LocalTime.of(12, 30), "Cliente A");
+        consume(booking, "Agua", "1500", 2);
+        Product cafe = productService.createProduct("Café", new BigDecimal("2000"));
+        BuffetOrder order = buffetOrderService.open("Juan", mostrador.getId());
+        ProductSale sale = productService.registerSale(order, cafe, 3, mostrador.getId());
+        backdate("product_sale", sale.getId(), TUESDAY.atTime(17, 0));
+        // Sin cobrar nada: facturado no es lo cobrado.
+
+        DayCash caja = cashRegisterService.of(club, TUESDAY);
+
+        // 20000 de la cancha, 3000 de las aguas del turno y 6000 del pedido.
+        assertThat(caja.billed()).isEqualByComparingTo("29000");
+        assertThat(caja.billed()).isEqualByComparingTo(
+                bookingStatsService.summary(club, TUESDAY, TUESDAY).facturado());
+        assertThat(caja.total()).isEqualByComparingTo("0");
     }
 
     // ------------------------------------------------------------ utilidades

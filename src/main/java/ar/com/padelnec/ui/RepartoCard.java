@@ -20,7 +20,7 @@ import java.util.List;
 /**
  * Lo cobrado en el dia como una planilla: un renglon por medio de pago y una
  * columna para los turnos, otra para el buffet y otra para el total, con lo
- * que falta cobrar al costado.
+ * facturado y lo que falta cobrar al costado.
  *
  * <p>Reemplaza a la fila de tarjetas por metodo. Las tarjetas respondian cuanto
  * entro por cada via; los socios que se reparten el negocio por partes necesitan
@@ -47,33 +47,40 @@ class RepartoCard extends Div {
         }
         main.add(table(caja));
 
-        Div layout = new Div(main, pending(caja));
+        Div layout = new Div(main, summary(caja));
         layout.addClassName("caja-reparto__layout");
         add(layout);
     }
 
     /**
-     * Lo que falta cobrar de los turnos y los pedidos de buffet del dia, al
-     * costado de la planilla y no en una tarjeta aparte.
+     * La columna del costado: lo facturado del dia arriba y lo que falta cobrar
+     * abajo. La planilla de la izquierda ya da el detalle de lo cobrado por
+     * medio de pago; aca van los dos numeros que la completan.
      *
      * <p>Era una tarjeta suelta al lado, con otro alto y otra tipografia que la
      * planilla: se leia como un dato de otra pantalla. Adentro, con el mismo
-     * rotulo que los encabezados de la tabla, queda claro que es la otra mitad
-     * del mismo cierre: lo que entro y lo que todavia no.
+     * rotulo que los encabezados de la tabla, queda claro que es parte del mismo
+     * cierre.
+     */
+    private Aside summary(DayCash caja) {
+        Div billed = stat("Facturado", Money.format(caja.billed()),
+                "Turnos y buffet del día, igual que en Estadísticas");
+        billed.addClassName("caja-reparto__stat--billed");
+
+        Aside aside = new Aside(billed, pending(caja));
+        aside.addClassName("caja-reparto__aside");
+        return aside;
+    }
+
+    /**
+     * Lo que falta cobrar de los turnos y los pedidos de buffet del dia.
      *
      * <p>Va en rojo solo si hay algo: en cero es una buena noticia, no una
      * advertencia, y pintarlo igual entrena a ignorar el color.
      */
-    private Aside pending(DayCash caja) {
-        Span label = new Span("Pendiente de cobro");
-        label.addClassName("caja-reparto__aside-label");
-
-        Span value = new Span(Money.format(caja.pending()));
-        value.addClassNames("caja-reparto__aside-value", "tabular");
-
+    private Div pending(DayCash caja) {
         String detail;
         if (caja.pending().signum() > 0) {
-            value.addClassName("caja-reparto__aside-value--due");
             List<String> parts = new ArrayList<>();
             if (caja.pendingBookings() > 0) {
                 parts.add(caja.pendingBookings() == 1 ? "1 turno" : caja.pendingBookings() + " turnos");
@@ -85,12 +92,24 @@ class RepartoCard extends Div {
         } else {
             detail = "Los turnos y pedidos están al día";
         }
+        Div stat = stat("Pendiente de cobro", Money.format(caja.pending()), detail);
+        if (caja.pending().signum() > 0) {
+            stat.addClassName("caja-reparto__stat--due");
+        }
+        return stat;
+    }
+
+    private Div stat(String label, String value, String detail) {
+        Span labelSpan = new Span(label);
+        labelSpan.addClassName("caja-reparto__aside-label");
+        Span valueSpan = new Span(value);
+        valueSpan.addClassNames("caja-reparto__aside-value", "tabular");
         Span note = new Span(detail);
         note.addClassName("caja-reparto__note");
 
-        Aside aside = new Aside(label, value, note);
-        aside.addClassName("caja-reparto__aside");
-        return aside;
+        Div stat = new Div(labelSpan, valueSpan, note);
+        stat.addClassName("caja-reparto__stat");
+        return stat;
     }
 
     /**

@@ -66,6 +66,7 @@ public class CashRegisterService {
     private final BuffetOrderRepository buffetOrderRepository;
     private final ClubUserRepository clubUserRepository;
     private final SlotGenerator slotGenerator;
+    private final BookingStatsService bookingStatsService;
 
     /**
      * Un movimiento de plata del dia.
@@ -116,6 +117,13 @@ public class CashRegisterService {
      * {@code totalBuffet} lo mismo repartido: los socios que se dividen el
      * negocio por partes no liquidan igual la cancha que el buffet.
      *
+     * <p>{@code billed} es lo facturado del dia, el mismo numero que Facturado en
+     * Estadisticas para ese dia ({@link BookingStatsService#facturado}): los
+     * turnos por fecha calendario, con lo consumido en ellos, y los pedidos de
+     * buffet por fecha de venta. No tiene por que dar cobrado mas pendiente: lo
+     * cobrado incluye señas de otros dias, y un turno despues de medianoche es
+     * pendiente de la agenda del dia pero facturado del dia siguiente.
+     *
      * <p>{@code pending} suma lo que deben los turnos del dia y los pedidos de
      * buffet abiertos ese dia; {@code pendingBookings} y {@code pendingOrders}
      * cuentan cada uno por separado.
@@ -125,7 +133,7 @@ public class CashRegisterService {
      */
     public record DayCash(LocalDate date, List<Movement> movements, List<MethodTotal> byMethod,
                           BigDecimal total, BigDecimal totalTurnos, BigDecimal totalBuffet, BigDecimal cash,
-                          BigDecimal pending, int pendingBookings, int pendingOrders,
+                          BigDecimal billed, BigDecimal pending, int pendingBookings, int pendingOrders,
                           List<BuffetLine> buffet, BigDecimal buffetSold) {
     }
 
@@ -176,7 +184,8 @@ public class CashRegisterService {
                         .reduce(BigDecimal.ZERO, BigDecimal::add));
 
         return new DayCash(date, movements, byMethod, totalTurnos.add(totalBuffet), totalTurnos, totalBuffet,
-                cash, pending, pendientes.size(), pedidosPendientes.size(), buffet, buffetSold);
+                cash, bookingStatsService.facturado(club, date, date), pending, pendientes.size(),
+                pedidosPendientes.size(), buffet, buffetSold);
     }
 
     // ------------------------------------------------------------ internos
