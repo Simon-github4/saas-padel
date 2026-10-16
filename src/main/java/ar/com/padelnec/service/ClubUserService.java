@@ -29,6 +29,7 @@ public class ClubUserService {
 
     private final ClubUserRepository clubUserRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PanelRememberService panelRememberService;
 
     public Optional<ClubUser> findStaff(UUID clubId) {
         return clubUserRepository.findFirstByClubIdAndRole(clubId, UserRole.STAFF);
@@ -69,6 +70,9 @@ public class ClubUserService {
         ClubUser user = ownedStaff(club, userId);
         user.setPasswordHash(passwordEncoder.encode(rawPassword));
         clubUserRepository.save(user);
+        // Una clave nueva tiene que sacar a quien entraba con la vieja, tambien
+        // desde un dispositivo recordado.
+        panelRememberService.forgetAll(userId);
     }
 
     @Transactional
@@ -76,6 +80,10 @@ public class ClubUserService {
         ClubUser user = ownedStaff(club, userId);
         user.setEnabled(enabled);
         clubUserRepository.save(user);
+        if (!enabled) {
+            // Volver a habilitarlo no devuelve los dispositivos: entra con la clave.
+            panelRememberService.forgetAll(userId);
+        }
     }
 
     /**

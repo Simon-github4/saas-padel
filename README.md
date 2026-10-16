@@ -172,6 +172,19 @@ Los tokens de reserva (`management_token` y sus hermanos) siguen en claro: viaja
 WhatsApp y hay que poder resolverlos desde la URL, y ese cambio es más grande. Lo
 cubre `TokenStorageTest`.
 
+**El panel recuerda el dispositivo 15 días.** La sesión del panel vive en la memoria
+del proceso: se pierde a los 30 minutos sin uso —en el celular, apenas Chrome congela
+la pestaña con la pantalla apagada— y con cada deploy. Al entrar con la clave queda
+una cookie (`panel-recordado`, `HttpOnly`) que vuelve a armar la sesión sola durante
+15 días fijos desde ese ingreso: usarlo todos los días no lo estira. Siempre activo,
+sin casilla: el formulario de login de Vaadin no tiene dónde ponerla. La base guarda
+la huella del token, como las sesiones del jugador, y lo olvida al tocar "Salir", al
+cambiar la clave o al deshabilitar al usuario. El token no rota en cada uso, como el
+`PersistentTokenBasedRememberMeServices` de Spring: al volver con la sesión vencida el
+navegador pide la página y sus recursos en paralelo con la misma cookie, y esa
+rotación lo tomaría como un robo y cerraría todos los dispositivos del usuario. Lo
+cubre `PanelRememberMeTest`.
+
 **La identidad del jugador es la cuenta, no el teléfono.** El historial de
 `/account` sale de `booking.player_account_id`, que se completa cuando la reserva
 se hace con sesión iniciada. Antes cruzaba clubes emparejando el teléfono de la

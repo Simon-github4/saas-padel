@@ -1,5 +1,6 @@
 package ar.com.padelnec.config;
 
+import ar.com.padelnec.security.PanelRememberMeServices;
 import ar.com.padelnec.ui.LoginView;
 import com.vaadin.flow.spring.security.VaadinSecurityConfigurer;
 import org.springframework.beans.factory.ObjectProvider;
@@ -170,13 +171,19 @@ public class SecurityConfig {
      * <p>El filtro de auto-login solo existe bajo el perfil {@code dev}; en
      * cualquier otro perfil el ObjectProvider viene vacio y la cadena queda tal
      * cual, con su login normal.
+     *
+     * <p>El "recordarme" ({@link PanelRememberMeServices}) tambien se suma como
+     * handler de logout: Vaadin le pasa a su {@code AuthenticationContext} los
+     * handlers de esta cadena, asi que el "Salir" del menu olvida el dispositivo.
      */
     @Bean
     public SecurityFilterChain adminChain(HttpSecurity http,
-                                          ObjectProvider<DevAutoLoginFilter> devAutoLogin)
+                                          ObjectProvider<DevAutoLoginFilter> devAutoLogin,
+                                          PanelRememberMeServices rememberMe)
             throws Exception {
         http.with(VaadinSecurityConfigurer.vaadin(),
                 configurer -> configurer.loginView(LoginView.class, "/"));
+        http.rememberMe(remember -> remember.rememberMeServices(rememberMe));
         devAutoLogin.ifAvailable(filter -> http.addFilterBefore(filter, AuthorizationFilter.class));
         http.headers(headers -> headers
                 .frameOptions(frame -> frame.deny())

@@ -35,6 +35,17 @@
       "autoPort": false
     },
     {
+      "name": "backend-recordarme",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--app.dev-auto-login=false --server.servlet.session.timeout=1m"
+      ],
+      "env": { "DEV_DB_PORT": "54410", "DEV_DB_DIR": "target/devdb-recordarme" },
+      "port": 8080
+    },
+    {
       "name": "backend-verificacion-whatsapp",
       "runtimeExecutable": "mvn",
       "runtimeArgs": [
