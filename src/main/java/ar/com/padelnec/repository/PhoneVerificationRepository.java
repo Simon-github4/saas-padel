@@ -29,6 +29,19 @@ public interface PhoneVerificationRepository extends JpaRepository<PhoneVerifica
     /** Para no repartir un codigo que ya tiene otro pedido en curso. */
     boolean existsByCodeAndExpiresAtAfterAndConfirmedAtIsNull(String code, Instant now);
 
+    /**
+     * Lo confirma solo si nadie lo confirmo antes. Un UPDATE condicionado y no leer y
+     * guardar: dos mensajes iguales que llegan juntos no pueden confirmarlo -- y
+     * reservar su turno -- los dos.
+     *
+     * @return 1 si lo confirmo este llamado, 0 si ya estaba confirmado
+     */
+    @Transactional
+    @Modifying
+    @Query("UPDATE PhoneVerification v SET v.confirmedAt = :now, v.updatedAt = :now "
+            + "WHERE v.id = :id AND v.confirmedAt IS NULL")
+    int confirm(@Param("id") UUID id, @Param("now") Instant now);
+
     /** Limpieza oportunista: pasado el dia, un pedido ya no cuenta para nada. */
     @Transactional
     void deleteAllByExpiresAtBefore(Instant instant);

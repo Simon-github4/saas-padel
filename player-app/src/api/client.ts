@@ -23,6 +23,18 @@ export interface PhoneVerificationStart {
 
 export type PhoneVerificationStatus = 'PENDING' | 'VERIFIED' | 'EXPIRED';
 
+/**
+ * En qué anda la confirmación del número. Cuando llega el WhatsApp, el servidor
+ * reserva el turno que la página le mandó al pedirla: ya verificado, viene la
+ * reserva que salió o el error por el que no salió (con la misma forma que los de
+ * la API). Sin ninguno de los dos, la página reserva ella.
+ */
+export interface PhoneVerificationProgress {
+  status: PhoneVerificationStatus;
+  booking: BookingCreated | null;
+  error: { code: string; reason: string | null; message: string } | null;
+}
+
 /** Paredes de la cancha: GLASS es blindex. */
 export type CourtWall = 'GLASS' | 'WALL';
 /** Piso de la cancha: con alfombra de césped sintético o sin ella. */
@@ -398,16 +410,24 @@ export const api = {
    * Antes de reservar sin seña: si el número nunca se verificó, el WhatsApp que el
    * jugador nos tiene que mandar desde ese número para confirmarlo. Los verificados
    * pasan directo.
+   *
+   * <p>Lleva el turno que se está reservando (y la sesión, si hay): cuando llega el
+   * WhatsApp el servidor lo reserva solo, aunque esta página ya no esté abierta.
    */
-  startPhoneVerification: (slug: string, phoneNumber: string) =>
+  startPhoneVerification: (
+    slug: string,
+    body: { phoneNumber: string; courtId: string; startTime: string; fullName: string },
+    token?: string,
+  ) =>
     request<PhoneVerificationStart>(`/${slug}/phone-verification`, {
       method: 'POST',
-      body: JSON.stringify({ phoneNumber }),
+      body: JSON.stringify(body),
+      token,
     }),
 
-  /** Si ya llegó el WhatsApp. La página pregunta cada par de segundos mientras espera. */
+  /** Si ya llegó el WhatsApp, y la reserva. La página pregunta cada par de segundos mientras espera. */
   phoneVerificationStatus: (slug: string, verificationId: string) =>
-    request<{ status: PhoneVerificationStatus }>(`/${slug}/phone-verification/${verificationId}`),
+    request<PhoneVerificationProgress>(`/${slug}/phone-verification/${verificationId}`),
 
   /**
    * El token va cuando hay sesión iniciada, y es lo que hace que el turno

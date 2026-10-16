@@ -26,10 +26,23 @@ public final class BookingDtos {
             @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice) {
     }
 
-    /** Antes de reservar sin sena: si este telefono tiene que confirmarse por WhatsApp. */
+    /**
+     * Antes de reservar sin sena: si este telefono tiene que confirmarse por WhatsApp.
+     *
+     * <p>Con el turno que se esta reservando, que sale solo cuando llega el mensaje,
+     * aunque la pagina ya no este abierta. Las paginas viejas no lo mandan y reservan
+     * ellas al enterarse.
+     */
     public record PhoneVerificationRequest(
             @NotBlank(message = "Necesitamos tu teléfono")
-            @Size(max = 25) String phoneNumber) {
+            @Size(max = 25) String phoneNumber,
+            UUID courtId,
+            Instant startTime,
+            @Size(max = 120) String fullName) {
+
+        public boolean holdsBooking() {
+            return courtId != null && startTime != null && fullName != null && !fullName.isBlank();
+        }
     }
 
     /**
@@ -45,8 +58,18 @@ public final class BookingDtos {
         }
     }
 
-    /** PENDING, VERIFIED o EXPIRED: ver {@code PhoneVerificationService.Status}. */
-    public record PhoneVerificationStatusResponse(String status) {
+    /**
+     * PENDING, VERIFIED o EXPIRED: ver {@code PhoneVerificationService.Status}.
+     *
+     * <p>Ya verificado, la reserva que salio sola al llegar el mensaje o el error por
+     * el que no salio. Sin ninguno de los dos, la pagina reserva ella.
+     */
+    public record PhoneVerificationStatusResponse(String status, CreateBookingResponse booking,
+                                                  BookingErrorResponse error) {
+    }
+
+    /** Un error al reservar con la misma forma que los de la API: codigo, motivo y mensaje. */
+    public record BookingErrorResponse(String code, String reason, String message) {
     }
 
     /** Si el telefono puede reservar y pagar en el club, aunque el club pida sena. */

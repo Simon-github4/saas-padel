@@ -71,7 +71,13 @@ public class NotificationService {
                 String.valueOf(club.getConfirmationTtlMinutes()),
                 link);
 
-        dispatch(club, booking, NotificationTemplate.CONFIRMATION_REQUEST, variables, """
+        dispatch(club, booking, NotificationTemplate.CONFIRMATION_REQUEST, variables,
+                confirmationRequestMessage(club, booking));
+    }
+
+    /** Mismo texto que manda {@link #confirmationRequest}, para contestarlo en un WhatsApp que nos llego. */
+    public String confirmationRequestMessage(Tenant club, Booking booking) {
+        return """
                 ¡Hola %s! Tu turno en *%s* está casi listo:
                 %s
 
@@ -80,7 +86,7 @@ public class NotificationService {
 
                 Si no lo confirmás, la cancha vuelve a quedar libre."""
                 .formatted(firstName(booking), club.getName(), slotLine(club, booking),
-                        club.getConfirmationTtlMinutes(), link));
+                        club.getConfirmationTtlMinutes(), confirmationLink(booking));
     }
 
     /** Turno confirmado de palabra: se paga en el club. */

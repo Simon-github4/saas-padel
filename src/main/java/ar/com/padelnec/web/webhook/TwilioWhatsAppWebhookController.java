@@ -1,8 +1,7 @@
 package ar.com.padelnec.web.webhook;
 
 import ar.com.padelnec.config.AppProperties;
-import ar.com.padelnec.service.PhoneVerificationService;
-import ar.com.padelnec.service.PhoneVerificationService.InboundOutcome;
+import ar.com.padelnec.service.WhatsAppInboxService;
 import com.twilio.security.RequestValidator;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.HashMap;
@@ -21,7 +20,8 @@ import org.springframework.web.bind.annotation.RestController;
  * Los WhatsApp que nos escriben los jugadores, reenviados por Twilio.
  *
  * <p>Hoy solo sirven para verificar telefonos: el jugador manda el mensaje que le
- * armo la pagina y aca se confirma ({@link PhoneVerificationService#handleInbound}).
+ * armo la pagina, aca se confirma y sale el turno que estaba reservando
+ * ({@link WhatsAppInboxService}).
  * La respuesta va en la misma respuesta HTTP, como TwiML: Twilio la manda como
  * mensaje, sin otra llamada a su API. Es texto libre, que WhatsApp deja mandar
  * porque el jugador acaba de escribir.
@@ -38,7 +38,7 @@ public class TwilioWhatsAppWebhookController {
 
     static final String PATH = "/api/webhooks/twilio/whatsapp";
 
-    private final PhoneVerificationService phoneVerificationService;
+    private final WhatsAppInboxService inbox;
     private final AppProperties properties;
 
     @PostMapping(produces = MediaType.APPLICATION_XML_VALUE)
@@ -56,8 +56,7 @@ public class TwilioWhatsAppWebhookController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
 
-        InboundOutcome outcome = phoneVerificationService.handleInbound(params.get("From"), params.get("Body"));
-        return ResponseEntity.ok(twiml(reply(outcome)));
+        return ResponseEntity.ok(twiml(inbox.receive(params.get("From"), params.get("Body"))));
     }
 
     private boolean isSignedByTwilio(String signature, Map<String, String> params) {
@@ -76,20 +75,6 @@ public class TwilioWhatsAppWebhookController {
             return configured.trim();
         }
         return properties.getBaseUrl() + PATH;
-    }
-
-    private static String reply(InboundOutcome outcome) {
-        return switch (outcome) {
-            // La pagina reserva sola apenas se confirma: al volver, el turno ya esta.
-            case VERIFIED -> "¡Listo! Tu número quedó confirmado. Volvé a la página para ver tu reserva.";
-            case ALREADY_VERIFIED -> "Tu número ya está confirmado. Volvé a la página para terminar tu reserva.";
-            case WRONG_NUMBER -> "Ese código se pidió para otro número. En la página, revisá que el teléfono "
-                    + "sea el de este WhatsApp y volvé a tocar el botón.";
-            case UNKNOWN_CODE -> "Ese código venció o no es correcto. Volvé a la página y tocá de nuevo "
-                    + "el botón para confirmar tu número.";
-            case NO_CODE -> "Hola, este número es solo para confirmar teléfonos al reservar en TurnosPadel. "
-                    + "Para consultas sobre tu turno, escribile directamente a tu club.";
-        };
     }
 
     private static String twiml(String message) {

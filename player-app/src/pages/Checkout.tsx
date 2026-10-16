@@ -11,6 +11,7 @@ import {
   type CourtSurface,
   type CourtWall,
   type PaymentChoice,
+  type PhoneVerificationProgress,
   type Slot,
 } from '../api/client';
 import { track, trackNow } from '../analytics';
@@ -94,16 +95,16 @@ export function Checkout({
 
   // Primera reserva sin seña de un número que nunca se verificó: el jugador nos
   // tiene que mandar un WhatsApp desde ese número, con el mensaje que le armó el
-  // servidor. Mientras tanto se pregunta si llegó, y cuando llega la reserva sale
-  // sola: volver de WhatsApp y encontrar el turno tomado es todo lo que tiene que hacer.
+  // servidor. El pedido lleva el turno, y cuando llega el mensaje el servidor lo
+  // reserva solo, aunque esta página ya no exista (desde el navegador de Instagram,
+  // al volver de WhatsApp no existe). Mientras tanto se pregunta si llegó, para
+  // mostrar el turno apenas sale.
   const [verification, setVerification] = useState<Verification | null>(null);
   // En la compu el link no sirve de mucho: WhatsApp está en el celular. Ahí va el QR.
   const [onDesktop] = useState(isDesktop);
-  // La reserva que sale sola tiene que ver lo último que escribió (el nombre se
-  // puede corregir mientras espera), no lo que había cuando empezó a esperar.
-  const submitRef = useRef<((paymentChoice: PaymentChoice, afterVerification?: boolean) => Promise<void>) | null>(
-    null,
-  );
+  // Lo que pasa cuando llega el mensaje tiene que ver la sesión y los datos de
+  // ahora, no los de cuando empezó a esperar.
+  const settleRef = useRef<((progress: PhoneVerificationProgress) => Promise<void>) | null>(null);
   useEffect(() => {
     if (!verification || verification.status !== 'PENDING') {
       return;
@@ -112,16 +113,16 @@ export function Checkout({
     let done = false;
     async function check(id: string) {
       try {
-        const { status } = await api.phoneVerificationStatus(slug, id);
+        const progress = await api.phoneVerificationStatus(slug, id);
         if (cancelled || done) {
           return;
         }
-        if (status === 'VERIFIED') {
+        if (progress.status === 'VERIFIED') {
           done = true;
           track('phone_verified', { slotAt: slot.startsAt, paymentChoice: 'PAY_AT_CLUB' });
           setVerification((current) => current && { ...current, status: 'VERIFIED' });
-          void submitRef.current?.('PAY_AT_CLUB', true);
-        } else if (status === 'EXPIRED') {
+          void settleRef.current?.(progress);
+        } else if (progress.status === 'EXPIRED') {
           setVerification((current) => current && { ...current, status: 'EXPIRED' });
         }
       } catch {
@@ -146,7 +147,11 @@ export function Checkout({
     };
   }, [verification?.id, verification?.status, slug, slot.startsAt]);
 
-  /** Otro número: el mensaje que se estaba esperando era para el anterior. */
+  /**
+   * Otro número u otros datos: el mensaje que se estaba esperando era para lo
+   * anterior. Al volver a tocar reservar, el servidor devuelve el mismo mensaje
+   * (si el número es el mismo) con el turno nuevo.
+   */
   function closeVerification() {
     setVerification(null);
   }
@@ -157,7 +162,11 @@ export function Checkout({
    * @return si hace falta confirmarlo; si no, se reserva directo
    */
   async function startVerification(): Promise<boolean> {
-    const started = await api.startPhoneVerification(slug, phone);
+    const started = await api.startPhoneVerification(
+      slug,
+      { phoneNumber: phone, courtId: court.courtId, startTime: slot.startsAt, fullName },
+      session?.token,
+    );
     if (!started.verificationRequired || !started.verificationId || !started.whatsappLink) {
       return false;
     }
@@ -220,8 +229,9 @@ export function Checkout({
   }
 
   /**
-   * @param afterVerification la reserva que sale sola cuando llega el WhatsApp: el
-   *     formulario ya se mandó una vez y el número ya está confirmado
+   * @param afterVerification llegó el WhatsApp pero el servidor no reservó (el
+   *     número se verificó por otro lado): el formulario ya se mandó una vez y el
+   *     número ya está confirmado
    */
   async function submit(paymentChoice: PaymentChoice, afterVerification = false) {
     setError(null);
@@ -257,92 +267,9 @@ export function Checkout({
         },
         session?.token,
       );
-
-      // El final del embudo, con el id de la reserva real: es lo que permite
-      // preguntarle después a la base si el que entró por la búsqueda global
-      // terminó pagando. Sale ya, sin esperar el lote: con seña, la línea de
-      // abajo se lleva al jugador a MercadoPago y la cola se pierde ahí.
-      trackNow('booking_created', {
-        slotAt: slot.startsAt,
-        paymentChoice,
-        bookingId: booking.bookingId,
-      });
-
-      // Está logueado: el nombre (y el teléfono, si todavía no tenía) que
-      // escribió le quedan guardados a la cuenta, para no volver a pedírselos.
-      if (session) {
-        const name = fullName.trim();
-        const saved = name ? playerApi.updateProfile(session.token, name, phone).catch(() => {}) : Promise.resolve();
-        if (name) {
-          updateLocalProfile(name, phone);
-        }
-        // Si el teléfono se verificó en esta reserva, el servidor ya lo hizo el de
-        // la cuenta y quedó fijo: se trae para que la próxima lo muestre así.
-        void saved.then(() => refreshProfile());
-      } else {
-        // Sin cuenta, este dispositivo es la unica forma de volver a
-        // /manage/:token despues de salir de esta pantalla.
-        rememberGuestBooking({
-          bookingId: booking.bookingId,
-          managementToken: booking.managementToken,
-          clubName: club.name,
-          clubSlug: slug,
-          courtName: court.courtName,
-          startTime: slot.startsAt,
-          // El fin es lo que decide cuándo se olvida: una hora después de
-          // terminar, el link ya no sirve para nada y se borra solo.
-          endTime: slot.endsAt,
-        });
-        // Para ofrecérselos la próxima vez, hasta que se haga una cuenta.
-        rememberGuestContact({ fullName, phone });
-      }
-
-      // Con seña, el jugador sigue en MercadoPago; el turno queda reservado
-      // mientras tanto y se cae solo si no paga.
-      if (booking.checkoutUrl) {
-        window.location.href = booking.checkoutUrl;
-        return;
-      }
-      setResult(booking);
-      onBooked?.();
+      finishBooking(booking, paymentChoice);
     } catch (err) {
-      // Con el código del error: un checkout que falla no es un abandono, y
-      // mezclarlos da una conversión pesimista y sin diagnóstico.
-      track('booking_failed', {
-        slotAt: slot.startsAt,
-        paymentChoice,
-        detail: err instanceof ApiError ? err.analyticsCode : 'UNKNOWN',
-      });
-      if (err instanceof ApiError && err.slotTaken) {
-        // No hay nada que corregir: alguien llegó primero. Se refresca la grilla.
-        onSlotTaken();
-        return;
-      }
-      if (err instanceof ApiError && err.reason === 'VERIFICATION_REQUIRED') {
-        // El servidor pide confirmar el número y el checkout no lo sabía (por
-        // ejemplo, se prendió la verificación mientras llenaba el formulario).
-        try {
-          if (await startVerification()) {
-            return;
-          }
-        } catch {
-          // Cae al cartel general con el mensaje del servidor.
-        }
-      }
-      if (err instanceof ApiError && err.reason === 'ACCOUNT_PHONE_LOCKED') {
-        // La cuenta ya tenía el número verificado y esta sesión no lo sabía.
-        void refreshProfile();
-      }
-      // Con el teléfono de la cuenta el campo no se muestra: ahí el error va al cartel general.
-      if (err instanceof ApiError && isPhoneError(err) && !phoneFixed) {
-        setPhoneError(err.message);
-        return;
-      }
-      if (err instanceof ApiError && isNameError(err)) {
-        setNameError(err.message);
-        return;
-      }
-      setError(err instanceof ApiError ? err.message : 'No pudimos tomar la reserva.');
+      await failBooking(err, paymentChoice);
     } finally {
       setSending(false);
       // La que sale sola ya no espera nada: si salió, se muestra el turno; si no,
@@ -353,7 +280,119 @@ export function Checkout({
     }
   }
 
-  submitRef.current = submit;
+  /**
+   * Llegó el WhatsApp. Si el pedido llevaba el turno, el servidor ya lo reservó o
+   * dice por qué no pudo; si no viene ninguna de las dos cosas, el número se
+   * verificó por otro lado y la reserva sale desde acá.
+   */
+  async function settleVerification(progress: PhoneVerificationProgress) {
+    if (progress.booking) {
+      setVerification(null);
+      finishBooking(progress.booking, 'PAY_AT_CLUB');
+      return;
+    }
+    if (progress.error) {
+      setVerification(null);
+      const { message, code, reason } = progress.error;
+      await failBooking(new ApiError(message, code, code === 'SLOT_TAKEN' ? 409 : 422, reason), 'PAY_AT_CLUB');
+      return;
+    }
+    await submit('PAY_AT_CLUB', true);
+  }
+
+  settleRef.current = settleVerification;
+
+  /** Salió la reserva, la haya hecho esta página o el servidor al llegar el WhatsApp. */
+  function finishBooking(booking: BookingCreated, paymentChoice: PaymentChoice) {
+    // El final del embudo, con el id de la reserva real: es lo que permite
+    // preguntarle después a la base si el que entró por la búsqueda global
+    // terminó pagando. Sale ya, sin esperar el lote: con seña, la línea de
+    // abajo se lleva al jugador a MercadoPago y la cola se pierde ahí.
+    trackNow('booking_created', {
+      slotAt: slot.startsAt,
+      paymentChoice,
+      bookingId: booking.bookingId,
+    });
+
+    // Está logueado: el nombre (y el teléfono, si todavía no tenía) que
+    // escribió le quedan guardados a la cuenta, para no volver a pedírselos.
+    if (session) {
+      const name = fullName.trim();
+      const saved = name ? playerApi.updateProfile(session.token, name, phone).catch(() => {}) : Promise.resolve();
+      if (name) {
+        updateLocalProfile(name, phone);
+      }
+      // Si el teléfono se verificó en esta reserva, el servidor ya lo hizo el de
+      // la cuenta y quedó fijo: se trae para que la próxima lo muestre así.
+      void saved.then(() => refreshProfile());
+    } else {
+      // Sin cuenta, este dispositivo es la unica forma de volver a
+      // /manage/:token despues de salir de esta pantalla.
+      rememberGuestBooking({
+        bookingId: booking.bookingId,
+        managementToken: booking.managementToken,
+        clubName: club.name,
+        clubSlug: slug,
+        courtName: court.courtName,
+        startTime: slot.startsAt,
+        // El fin es lo que decide cuándo se olvida: una hora después de
+        // terminar, el link ya no sirve para nada y se borra solo.
+        endTime: slot.endsAt,
+      });
+      // Para ofrecérselos la próxima vez, hasta que se haga una cuenta.
+      rememberGuestContact({ fullName, phone });
+    }
+
+    // Con seña, el jugador sigue en MercadoPago; el turno queda reservado
+    // mientras tanto y se cae solo si no paga.
+    if (booking.checkoutUrl) {
+      window.location.href = booking.checkoutUrl;
+      return;
+    }
+    setResult(booking);
+    onBooked?.();
+  }
+
+  /** No salió la reserva: el error abajo del campo que hay que corregir, o arriba. */
+  async function failBooking(err: unknown, paymentChoice: PaymentChoice) {
+    // Con el código del error: un checkout que falla no es un abandono, y
+    // mezclarlos da una conversión pesimista y sin diagnóstico.
+    track('booking_failed', {
+      slotAt: slot.startsAt,
+      paymentChoice,
+      detail: err instanceof ApiError ? err.analyticsCode : 'UNKNOWN',
+    });
+    if (err instanceof ApiError && err.slotTaken) {
+      // No hay nada que corregir: alguien llegó primero. Se refresca la grilla.
+      onSlotTaken();
+      return;
+    }
+    if (err instanceof ApiError && err.reason === 'VERIFICATION_REQUIRED') {
+      // El servidor pide confirmar el número y el checkout no lo sabía (por
+      // ejemplo, se prendió la verificación mientras llenaba el formulario).
+      try {
+        if (await startVerification()) {
+          return;
+        }
+      } catch {
+        // Cae al cartel general con el mensaje del servidor.
+      }
+    }
+    if (err instanceof ApiError && err.reason === 'ACCOUNT_PHONE_LOCKED') {
+      // La cuenta ya tenía el número verificado y esta sesión no lo sabía.
+      void refreshProfile();
+    }
+    // Con el teléfono de la cuenta el campo no se muestra: ahí el error va al cartel general.
+    if (err instanceof ApiError && isPhoneError(err) && !phoneFixed) {
+      setPhoneError(err.message);
+      return;
+    }
+    if (err instanceof ApiError && isNameError(err)) {
+      setNameError(err.message);
+      return;
+    }
+    setError(err instanceof ApiError ? err.message : 'No pudimos tomar la reserva.');
+  }
 
   /** Pasó el plazo sin que llegara el mensaje: uno nuevo, con otro código. */
   async function restartVerification() {
@@ -377,6 +416,10 @@ export function Checkout({
   if (result) {
     return <Booked booking={result} club={club} court={court} slot={slot} phone={phone} fullName={fullName} />;
   }
+
+  // Mientras espera el WhatsApp, la cancha y el nombre ya viajaron con el pedido:
+  // son los de la reserva que sale cuando llegue. Para cambiarlos, "Cambiar datos".
+  const waiting = verification !== null;
 
   const rows = [
     { label: 'Cuándo', value: longDate(slot.startsAt, club.timeZone) },
@@ -416,8 +459,9 @@ export function Checkout({
                   key={option.courtId}
                   type="button"
                   aria-pressed={isChosen}
+                  disabled={waiting && !isChosen}
                   onClick={() => setCourt(option)}
-                  className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition ${
+                  className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition disabled:opacity-50 ${
                     isChosen
                       ? 'border-cal bg-cal text-pista'
                       : 'border-cal/10 bg-vidrio hover:border-cal/25'
@@ -490,6 +534,7 @@ export function Checkout({
           placeholder="Nombre y apellido"
           autoComplete="name"
           error={nameError}
+          disabled={waiting}
         />
         {phoneFixed ? (
           <div className="rounded-xl border border-cal/10 bg-vidrio px-4 py-3">
@@ -564,7 +609,7 @@ export function Checkout({
           {verification.status === 'PENDING' && (
             <p className="flex items-center justify-center gap-2 text-xs text-ink-soft">
               <span className="size-2 animate-pulse rounded-full bg-wapp" aria-hidden="true" />
-              Esperando tu mensaje. Cuando llegue, la reserva se confirma sola.
+              Esperando tu mensaje. Cuando llegue, tu turno queda reservado y te lo confirmamos por WhatsApp.
             </p>
           )}
 
@@ -586,7 +631,7 @@ export function Checkout({
                 onClick={closeVerification}
                 className="text-ink-mute underline-offset-4 hover:underline"
               >
-                Cambiar número
+                Cambiar datos
               </button>
             )}
           </div>

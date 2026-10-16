@@ -16,12 +16,15 @@ import ar.com.padelnec.service.CheckoutService;
 import ar.com.padelnec.service.CheckoutService.CheckoutResult;
 import ar.com.padelnec.service.CourtSearchService;
 import ar.com.padelnec.service.PhoneVerificationService;
+import ar.com.padelnec.service.PhoneVerificationService.PendingBooking;
+import ar.com.padelnec.service.PhoneVerificationService.Progress;
 import ar.com.padelnec.service.PlayerAuthService;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.service.WaitlistService;
 import ar.com.padelnec.support.QrCodes;
 import ar.com.padelnec.web.dto.AvailabilityResponse;
 import ar.com.padelnec.web.dto.BookingDtos.BookingDetailResponse;
+import ar.com.padelnec.web.dto.BookingDtos.BookingErrorResponse;
 import ar.com.padelnec.web.dto.BookingDtos.BookingShareResponse;
 import ar.com.padelnec.web.dto.BookingDtos.CancellationResponse;
 import ar.com.padelnec.web.dto.BookingDtos.CreateBookingRequest;
@@ -207,30 +210,57 @@ public class PublicBookingController {
      * <p>El club no cambia la verificacion, que vale para toda la plataforma: solo
      * pone su nombre en el mensaje, para que al jugador no le parezca raro.
      *
+     * <p>El pedido guarda el turno que se esta reservando, con la cuenta si hay
+     * sesion: cuando llega el mensaje la reserva sale sola, aunque la pagina ya no
+     * este abierta ({@code WhatsAppInboxService}).
+     *
      * <p>Con su propio cupo por origen: sin limite, esto llena la tabla de pedidos.
      * El tope por numero lo lleva el servicio.
      */
     @PostMapping("/{slug}/phone-verification")
     public PhoneVerificationResponse requestPhoneVerification(@PathVariable String slug,
                                                               @Valid @RequestBody PhoneVerificationRequest request,
+                                                              @RequestHeader(name = HttpHeaders.AUTHORIZATION,
+                                                                      required = false) String authorization,
                                                               HttpServletRequest httpRequest) {
         rateLimiter.check("phone-code:" + ClientIp.of(httpRequest));
         Tenant club = tenantService.activate(slug);
-        return phoneVerificationService.requestVerification(request.phoneNumber(), club)
+        PendingBooking booking = null;
+        if (request.holdsBooking()) {
+            UUID accountId = playerAccountId(authorization);
+            // Como al reservar: con el telefono de la cuenta ya fijo, no se reserva con
+            // otro. Mejor saberlo ahora que despues de mandar el WhatsApp.
+            if (accountId != null) {
+                playerAuthService.requireAccountPhone(accountId, request.phoneNumber());
+            }
+            booking = new PendingBooking(request.courtId(), request.startTime(), request.fullName(), accountId);
+        }
+        return phoneVerificationService.requestVerification(request.phoneNumber(), club, booking)
                 .map(challenge -> new PhoneVerificationResponse(true, challenge.id(), challenge.whatsappLink(),
                         QrCodes.svgDataUri(challenge.whatsappLink())))
                 .orElseGet(PhoneVerificationResponse::notRequired);
     }
 
     /**
-     * Si ya llego el mensaje. La pagina pregunta cada par de segundos mientras
-     * espera, asi que no pasa por el cupo por origen: el id no se adivina y la
-     * respuesta no dice nada del numero.
+     * Si ya llego el mensaje y, si trajo turno, la reserva que salio o por que no.
+     * La pagina pregunta cada par de segundos mientras espera, asi que no pasa por
+     * el cupo por origen: el id no se adivina y es lo unico que se necesita para ver
+     * el turno, igual que el token de gestion.
      */
     @GetMapping("/{slug}/phone-verification/{verificationId}")
     public PhoneVerificationStatusResponse phoneVerificationStatus(@PathVariable String slug,
                                                                    @PathVariable UUID verificationId) {
-        return new PhoneVerificationStatusResponse(phoneVerificationService.status(verificationId).name());
+        Progress progress = phoneVerificationService.progress(verificationId);
+        CreateBookingResponse booking = null;
+        if (progress.bookingId() != null) {
+            Tenant club = tenantService.activate(slug);
+            booking = bookingService.findById(progress.bookingId())
+                    .map(found -> bookingResponse(club, new CheckoutResult(found, null)))
+                    .orElse(null);
+        }
+        BookingErrorResponse error = progress.failure() == null ? null : new BookingErrorResponse(
+                progress.failure().code(), progress.failure().reason(), progress.failure().message());
+        return new PhoneVerificationStatusResponse(progress.status().name(), booking, error);
     }
 
     /** Alta de la reserva. Devuelve el link de pago o el aviso de confirmacion. */
@@ -269,18 +299,7 @@ public class PublicBookingController {
                 request.phoneNumber(),
                 PaymentChoice.valueOf(request.paymentChoice().name()),
                 accountId));
-
-        return new CreateBookingResponse(
-                result.booking().getId(),
-                result.booking().getStatus().name(),
-                notificationService.managementLink(result.booking()),
-                result.booking().getManagementToken(),
-                notificationService.shareLink(result.booking()),
-                result.checkoutUrl(),
-                result.requiresWhatsappConfirmation(),
-                result.booking().getTotalPrice(),
-                result.booking().getDepositAmount(),
-                messageFor(club, result));
+        return bookingResponse(club, result);
     }
 
     /** Confirmacion del flujo sin pago, desde el link de WhatsApp. */
@@ -356,6 +375,21 @@ public class PublicBookingController {
                     "Necesitás iniciar sesión para anotarte en la lista de espera.");
         }
         return playerAuthService.resolveSession(authorization.substring("Bearer ".length()).trim());
+    }
+
+    /** Lo que ve la pagina de una reserva que salio, la haya hecho ella o el WhatsApp. */
+    private CreateBookingResponse bookingResponse(Tenant club, CheckoutResult result) {
+        return new CreateBookingResponse(
+                result.booking().getId(),
+                result.booking().getStatus().name(),
+                notificationService.managementLink(result.booking()),
+                result.booking().getManagementToken(),
+                notificationService.shareLink(result.booking()),
+                result.checkoutUrl(),
+                result.requiresWhatsappConfirmation(),
+                result.booking().getTotalPrice(),
+                result.booking().getDepositAmount(),
+                messageFor(club, result));
     }
 
     private String messageFor(Tenant club, CheckoutResult result) {

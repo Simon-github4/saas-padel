@@ -32,6 +32,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.crypto.Mac;
@@ -294,6 +295,142 @@ class PhoneVerificationApiIntegrationTest {
         assertThat(requestVerification(NEW_PHONE).get("verificationRequired").asBoolean()).isTrue();
     }
 
+    // ------------------------------------- la reserva sale al llegar el mensaje
+
+    @Test
+    @DisplayName("Con el turno en el pedido, la reserva sale sola al llegar el WhatsApp, sin que la pagina haga nada")
+    void heldBookingIsMadeWhenTheMessageArrives() {
+        // Como estan los clubes en produccion: sin el link de confirmacion aparte.
+        club.setRequiresBookingConfirmation(false);
+        club = fixture.save(club);
+        JsonNode slot = slot(0);
+        JsonNode challenge = requestVerification(NEW_PHONE, slot, null);
+
+        // La pagina ya no existe (el navegador de Instagram la cerro): nadie mas reserva.
+        String reply = inbound(NEW_PHONE_WHATSAPP, messageIn(challenge.get("whatsappLink").asText()));
+
+        Booking booking = onlyBooking();
+        assertThat(booking.getStartTime()).isEqualTo(Instant.parse(slot.get("startsAt").asText()));
+        assertThat(booking.getCourt().getId().toString()).isEqualTo(courtOf(slot));
+        assertThat(booking.getBookedName()).isEqualTo("Claudia Perez");
+        assertThat(booking.getSource()).isEqualTo(BookingSource.WEB);
+        assertThat(reply).contains("quedó confirmado").contains("/manage/" + booking.getManagementToken());
+
+        // Si la pagina sigue abierta, se entera por aca y muestra el turno.
+        JsonNode progress = progress(challenge);
+        assertThat(progress.get("status").asText()).isEqualTo("VERIFIED");
+        assertThat(progress.get("booking").get("bookingId").asText()).isEqualTo(booking.getId().toString());
+        assertThat(progress.get("booking").get("managementToken").asText()).isEqualTo(booking.getManagementToken());
+        assertThat(progress.get("error").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Si el club pide confirmar cada turno, la respuesta trae el link para confirmarlo")
+    void heldBookingInAClubThatConfirmsGetsTheLink() {
+        JsonNode challenge = requestVerification(NEW_PHONE, slot(0), null);
+
+        String reply = inbound(NEW_PHONE_WHATSAPP, messageIn(challenge.get("whatsappLink").asText()));
+
+        assertThat(reply).contains("/confirm/" + onlyBooking().getConfirmationToken());
+        assertThat(progress(challenge).get("booking").get("awaitingWhatsappConfirmation").asBoolean()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Si otro toma el turno mientras tanto, el numero queda confirmado y la respuesta lo dice")
+    void heldBookingThatLostTheSlotReportsIt() {
+        JsonNode slot = slot(0);
+        JsonNode challenge = requestVerification(NEW_PHONE, slot, null);
+        book(slot, "2262438817", "DEPOSIT_ONLINE").expectStatus().isCreated();
+
+        String reply = inbound(NEW_PHONE_WHATSAPP, messageIn(challenge.get("whatsappLink").asText()));
+
+        assertThat(reply).contains("no se pudo reservar").contains("/club/club-necochea?fecha=");
+        JsonNode progress = progress(challenge);
+        assertThat(progress.get("status").asText()).isEqualTo("VERIFIED");
+        assertThat(progress.get("booking").isNull()).isTrue();
+        assertThat(progress.get("error").get("code").asText()).isEqualTo("SLOT_TAKEN");
+        // El numero quedo probado: el proximo turno sale sin codigo.
+        assertThat(requestVerification(NEW_PHONE).get("verificationRequired").asBoolean()).isFalse();
+        book(slot(1), NEW_PHONE, "PAY_AT_CLUB").expectStatus().isCreated();
+    }
+
+    @Test
+    @DisplayName("Pedirlo de nuevo con otro horario cambia el turno que sale, con el mismo mensaje")
+    void askingAgainWithAnotherSlotMovesTheHeldBooking() {
+        JsonNode first = requestVerification(NEW_PHONE, slot(0), null);
+        JsonNode slot = slot(1);
+        JsonNode second = requestVerification(NEW_PHONE, slot, null);
+        assertThat(second.get("verificationId").asText()).isEqualTo(first.get("verificationId").asText());
+
+        inbound(NEW_PHONE_WHATSAPP, messageIn(first.get("whatsappLink").asText()));
+
+        assertThat(onlyBooking().getStartTime()).isEqualTo(Instant.parse(slot.get("startsAt").asText()));
+    }
+
+    @Test
+    @DisplayName("Mandar el mensaje dos veces no reserva dos veces")
+    void sendingTheMessageTwiceBooksOnce() {
+        String message = messageIn(requestVerification(NEW_PHONE, slot(0), null).get("whatsappLink").asText());
+        inbound(NEW_PHONE_WHATSAPP, message);
+
+        assertThat(inbound(NEW_PHONE_WHATSAPP, message)).contains("ya quedó reservado");
+        onlyBooking();
+    }
+
+    @Test
+    @DisplayName("Con sesion, la reserva que sale sola queda en la cuenta y el numero pasa a ser el suyo")
+    void heldBookingBelongsToTheAccount() {
+        // Un mail por test que inicia sesion: el cupo de intentos por mail dura entre tests.
+        String token = account("claudia@example.com", "2262555123");
+        JsonNode challenge = requestVerification(NEW_PHONE, slot(0), token);
+
+        inbound(NEW_PHONE_WHATSAPP, messageIn(challenge.get("whatsappLink").asText()));
+
+        UUID accountId = playerAccounts.findAll().getFirst().getId();
+        assertThat(onlyBooking().getPlayerAccountId()).isEqualTo(accountId);
+        JsonNode me = me(token);
+        assertThat(me.get("phoneNumber").asText()).isEqualTo("+5492262415000");
+        assertThat(me.get("phoneLocked").asBoolean()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Mientras la reserva sale la pagina sigue esperando; si se corto en el medio, reserva ella")
+    void pageWaitsWhileTheHeldBookingIsBeingMade() {
+        JsonNode challenge = requestVerification(NEW_PHONE, slot(0), null);
+        // Como queda el pedido entre que se confirma y se reserva.
+        PhoneVerification verification = verifications.findAll().getFirst();
+        verification.setConfirmedAt(Instant.now());
+        verifications.save(verification);
+
+        assertThat(status(challenge)).isEqualTo("PENDING");
+
+        verification.setConfirmedAt(Instant.now().minus(Duration.ofMinutes(2)));
+        verifications.save(verification);
+        JsonNode progress = progress(challenge);
+        assertThat(progress.get("status").asText()).isEqualTo("VERIFIED");
+        assertThat(progress.get("booking").isNull()).isTrue();
+        assertThat(progress.get("error").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Con el telefono de la cuenta ya fijo, pedir el mensaje para otro numero se frena antes de mandarlo")
+    void lockedAccountPhoneIsCheckedBeforeTheMessage() {
+        String token = account("lucia@example.com", "2262555123");
+        verify("2262555123", "whatsapp:+5492262555123");
+        book(slot(0), "2262555123", "PAY_AT_CLUB", token).expectStatus().isCreated();
+
+        JsonNode error = client.post().uri("/api/public/club-necochea/phone-verification")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("Authorization", "Bearer " + token)
+                .body(verificationBody(NEW_PHONE, slot(1)))
+                .exchange()
+                .expectStatus().isEqualTo(422)
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+
+        assertThat(error.get("reason").asText()).isEqualTo("ACCOUNT_PHONE_LOCKED");
+    }
+
     // ------------------------------------------------ telefono de la cuenta
 
     @Test
@@ -393,14 +530,52 @@ class PhoneVerificationApiIntegrationTest {
                 .returnResult().getResponseBody();
     }
 
+    /** Como lo pide la pagina de hoy: con el turno, que sale solo al llegar el mensaje. */
+    private JsonNode requestVerification(String phone, JsonNode slot, String token) {
+        var request = client.post().uri("/api/public/club-necochea/phone-verification")
+                .contentType(MediaType.APPLICATION_JSON);
+        if (token != null) {
+            request = request.header("Authorization", "Bearer " + token);
+        }
+        return request.body(verificationBody(phone, slot))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(JsonNode.class)
+                .returnResult().getResponseBody();
+    }
+
+    private Map<String, Object> verificationBody(String phone, JsonNode slot) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("phoneNumber", phone);
+        body.put("courtId", courtOf(slot));
+        body.put("startTime", Instant.parse(slot.get("startsAt").asText()).toString());
+        body.put("fullName", "Claudia Perez");
+        return body;
+    }
+
     private String status(JsonNode challenge) {
+        return progress(challenge).get("status").asText();
+    }
+
+    private JsonNode progress(JsonNode challenge) {
         return client.get()
                 .uri("/api/public/club-necochea/phone-verification/" + challenge.get("verificationId").asText())
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(JsonNode.class)
-                .returnResult().getResponseBody()
-                .get("status").asText();
+                .returnResult().getResponseBody();
+    }
+
+    /** La unica reserva del club, que tiene que haber. */
+    private Booking onlyBooking() {
+        TenantContext.set(club.getId());
+        try {
+            List<Booking> all = bookings.findAll();
+            assertThat(all).hasSize(1);
+            return all.getFirst();
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     /** Lo que haria Twilio al llegar un WhatsApp: postea el mensaje firmado. Devuelve el TwiML. */
@@ -469,7 +644,7 @@ class PhoneVerificationApiIntegrationTest {
 
     private RestTestClient.ResponseSpec book(JsonNode slot, String phone, String paymentChoice, String token) {
         Map<String, Object> body = new HashMap<>();
-        body.put("courtId", slot.get("available").get(0).get("courtId").asText());
+        body.put("courtId", courtOf(slot));
         body.put("startTime", Instant.parse(slot.get("startsAt").asText()).toString());
         body.put("fullName", "Simon Diaz");
         body.put("phoneNumber", phone);
@@ -487,6 +662,11 @@ class PhoneVerificationApiIntegrationTest {
                 .expectStatus().isEqualTo(422)
                 .expectBody(JsonNode.class)
                 .returnResult().getResponseBody();
+    }
+
+    /** La primera cancha libre del turno: la que reservan los dos lados del test. */
+    private static String courtOf(JsonNode slot) {
+        return slot.get("available").get(0).get("courtId").asText();
     }
 
     /** El turno numero {@code index} del dia con las dos canchas libres. */
