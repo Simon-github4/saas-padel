@@ -41,6 +41,11 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>Las estadisticas ({@link BookingStatsService}) miran lo mismo desde otro
  * lado: alla el rango es largo y el foco esta en el turno; aca es un dia y el
  * foco esta en el movimiento.
+ *
+ * <p>El reparto entre turnos y buffet no se guarda: se calcula al leer, con la
+ * regla de {@link #buffetShares}. La decision, y lo que esa regla no ve a
+ * sabiendas, esta en el README ("Decisiones que conviene conocer antes de tocar
+ * el codigo").
  */
 @Service
 @RequiredArgsConstructor

@@ -194,6 +194,42 @@ privacidad promete que no hay rastreo de terceros. Además la conversión ya viv
 esta base, así que el embudo sale de un JOIN y no de una integración. Ver
 [Estadísticas de visitas](#estadísticas-de-visitas).
 
+**El reparto de la caja entre turnos y buffet se calcula al leer, no se guarda.**
+Un cobro de turno es un solo importe: las consumiciones se suman al total del
+turno (`ProductService.registerSale`) y `payment` no dice qué parte pagó. La caja
+del día lo reparte con una regla, en `CashRegisterService.buffetShares`:
+
+- El precio de la cancha es el total del turno menos lo consumido en él.
+- Los cobros del turno, en orden y de cualquier día, llenan primero la cancha
+  (la seña es siempre cancha). **Todo lo que pasa del precio de la cancha es
+  buffet**, también lo cobrado de más.
+- Una devolución recorre lo mismo para atrás: resta primero del buffet.
+- Un cobro de un pedido de buffet sin turno es buffet entero.
+
+Por qué sin tope en lo consumido: lo consumido cambia cuando se saca un producto, y
+con tope un cobro ya hecho cambiaba de parte. Se cobraba una bebida (buffet), se
+sacaba y se devolvía, y el cobro de antes pasaba a figurar como turno; al volver a
+cargarla, otra vez buffet. El precio de la cancha no se mueve al cargar o sacar
+productos, así que cada movimiento se queda en su parte.
+
+Lo que la regla no ve, a sabiendas:
+- Si el mostrador cobra de más en un turno sin consumiciones (25.000 por una cancha
+  de 20.000), el excedente figura como buffet hasta que se devuelve. La devolución
+  también sale del buffet, así que los turnos siempre dan bien.
+- Si las bebidas se pagan antes que la cancha y por otro medio, la regla las cuenta
+  como cancha. El total del día da bien; el reparto por medio de pago puede quedar
+  corrido.
+
+Corregir esos dos casos obliga a guardar la parte de cada cobro en el momento de
+cobrar (una columna en `payment` y su migración) y dejar de recalcularla. No se
+hizo porque son casos de error de tipeo o poco frecuentes, y calcular al leer vale
+también para los días anteriores al cambio. Lo cubre `CashRegisterServiceTest`.
+
+En Estadísticas, **Facturado** suma los turnos (por fecha del turno, con lo
+consumido en ellos) y los pedidos de buffet sin turno (por fecha de venta), en un
+solo número. Lo consumido en un turno no se suma dos veces porque ya está en su
+total. Lo cubre `BookingStatsServiceTest`.
+
 **Los teléfonos argentinos se fuerzan a celular.** Escrito sin el 15 ni el 9,
 `2262 415000` es indistinguible de una línea fija. Sin esa corrección, el mismo
 jugador queda como dos clientes según cómo haya tipeado, con su historial y su marca
