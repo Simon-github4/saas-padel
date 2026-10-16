@@ -4,6 +4,7 @@ import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.service.CashRegisterService.DayCash;
 import ar.com.padelnec.service.CashRegisterService.MethodTotal;
 import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.html.Aside;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H3;
 import com.vaadin.flow.component.html.NativeTable;
@@ -13,10 +14,13 @@ import com.vaadin.flow.component.html.NativeTableRow;
 import com.vaadin.flow.component.html.Span;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Lo cobrado en el dia como una planilla: un renglon por medio de pago y una
- * columna para los turnos, otra para el buffet y otra para el total.
+ * columna para los turnos, otra para el buffet y otra para el total, con lo
+ * que falta cobrar al costado.
  *
  * <p>Reemplaza a la fila de tarjetas por metodo. Las tarjetas respondian cuanto
  * entro por cada via; los socios que se reparten el negocio por partes necesitan
@@ -34,13 +38,59 @@ class RepartoCard extends Div {
 
         H3 title = new H3("Reparto del día");
         title.addClassName("caja-reparto__title");
-        add(title);
+        Div main = new Div(title);
+        main.addClassName("caja-reparto__main");
 
         Component bar = proportionBar(caja.totalTurnos(), caja.totalBuffet());
         if (bar != null) {
-            add(bar);
+            main.add(bar);
         }
-        add(table(caja));
+        main.add(table(caja));
+
+        Div layout = new Div(main, pending(caja));
+        layout.addClassName("caja-reparto__layout");
+        add(layout);
+    }
+
+    /**
+     * Lo que falta cobrar de los turnos y los pedidos de buffet del dia, al
+     * costado de la planilla y no en una tarjeta aparte.
+     *
+     * <p>Era una tarjeta suelta al lado, con otro alto y otra tipografia que la
+     * planilla: se leia como un dato de otra pantalla. Adentro, con el mismo
+     * rotulo que los encabezados de la tabla, queda claro que es la otra mitad
+     * del mismo cierre: lo que entro y lo que todavia no.
+     *
+     * <p>Va en rojo solo si hay algo: en cero es una buena noticia, no una
+     * advertencia, y pintarlo igual entrena a ignorar el color.
+     */
+    private Aside pending(DayCash caja) {
+        Span label = new Span("Pendiente de cobro");
+        label.addClassName("caja-reparto__aside-label");
+
+        Span value = new Span(Money.format(caja.pending()));
+        value.addClassNames("caja-reparto__aside-value", "tabular");
+
+        String detail;
+        if (caja.pending().signum() > 0) {
+            value.addClassName("caja-reparto__aside-value--due");
+            List<String> parts = new ArrayList<>();
+            if (caja.pendingBookings() > 0) {
+                parts.add(caja.pendingBookings() == 1 ? "1 turno" : caja.pendingBookings() + " turnos");
+            }
+            if (caja.pendingOrders() > 0) {
+                parts.add(caja.pendingOrders() == 1 ? "1 pedido" : caja.pendingOrders() + " pedidos");
+            }
+            detail = String.join(" y ", parts) + " con saldo";
+        } else {
+            detail = "Los turnos y pedidos están al día";
+        }
+        Span note = new Span(detail);
+        note.addClassName("caja-reparto__note");
+
+        Aside aside = new Aside(label, value, note);
+        aside.addClassName("caja-reparto__aside");
+        return aside;
     }
 
     /**

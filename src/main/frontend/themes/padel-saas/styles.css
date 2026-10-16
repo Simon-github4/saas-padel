@@ -1009,29 +1009,83 @@ html {
 }
 
 .caja-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--lumo-space-m);
   width: 100%;
 }
 
-/* La planilla manda; lo pendiente es una tarjeta al costado, que en el
-   celular baja abajo de la planilla. */
+/* Una sola tarjeta a todo el ancho, como la tabla de movimientos de abajo:
+   la planilla a la izquierda y lo pendiente en una columna al costado, con
+   el mismo rotulo que los encabezados de la tabla. Antes lo pendiente era
+   una tarjeta suelta, con otro alto y otra letra, y a la derecha sobraba
+   pantalla. Cuando parte la tarjeta lo decide su propio ancho (container
+   query) y no la ventana: el menu lateral abierto o cerrado cambia cuanto
+   lugar le queda. */
 .caja-reparto {
-  flex: 1 1 26rem;
-  max-width: 42rem;
-  min-width: 0;
+  container-type: inline-size;
   box-sizing: border-box;
+  width: 100%;
   padding: var(--lumo-space-m);
   border: 1px solid var(--lumo-contrast-10pct);
   border-radius: var(--lumo-border-radius-m);
   background: var(--lumo-base-color);
 }
 
-.caja-top__pending {
-  flex: 1 1 13rem;
-  max-width: 20rem;
+.caja-reparto__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--lumo-space-m);
+}
+
+.caja-reparto__aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumo-space-xs);
+  padding-top: var(--lumo-space-m);
+  border-top: 1px solid var(--lumo-contrast-10pct);
+}
+
+.caja-reparto__aside-label {
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lumo-secondary-text-color);
+}
+
+.caja-reparto__aside-value {
+  font-size: var(--lumo-font-size-xl);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.caja-reparto__aside-value--due {
+  color: var(--lumo-error-text-color);
+}
+
+/* A lo ancho, los importes se agrupan contra la columna de lo pendiente
+   (width: 1% achica cada columna de numeros a su contenido y el rotulo se
+   queda con el resto), como en una planilla de cierre: el renglon se sigue
+   con la linea, y las cifras quedan juntas para compararlas. */
+@container (min-width: 44rem) {
+  .caja-reparto__layout {
+    grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem);
+    gap: var(--lumo-space-l);
+  }
+
+  .caja-reparto__aside {
+    padding-top: 0;
+    padding-inline-start: var(--lumo-space-l);
+    border-top: none;
+    border-inline-start: 1px solid var(--lumo-contrast-10pct);
+  }
+
+  .caja-reparto__table thead th:not(.caja-reparto__corner) {
+    width: 1%;
+  }
+
+  .caja-reparto__table th,
+  .caja-reparto__table td {
+    padding-inline-start: 2.5rem;
+  }
 }
 
 .caja-reparto__title {
@@ -1168,9 +1222,6 @@ html {
     font-size: var(--lumo-font-size-m);
   }
 
-  .caja-top__pending {
-    max-width: none;
-  }
 }
 
 .caja-section-heading {

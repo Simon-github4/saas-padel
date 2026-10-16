@@ -9,9 +9,10 @@ import com.vaadin.flow.theme.lumo.LumoUtility;
  * La tarjeta de un numero grande con su rotulo debajo.
  *
  * <p>Vivia dentro de {@code DashboardView} en tres variantes que se armaban a
- * mano. La caja del dia necesita las mismas, y dos juegos de spans con las
- * mismas clases de Lumo en dos pantallas que el club compara entre si es como
- * empiezan a separarse los estilos.
+ * mano. Se saco aparte cuando la caja del dia empezo a usar las mismas: dos
+ * juegos de spans con las mismas clases de Lumo en dos pantallas que el club
+ * compara entre si es como empiezan a separarse los estilos. La caja despues
+ * paso a su planilla ({@link RepartoCard}).
  *
  * <p>Los agregados se piden encadenados ({@code new KpiCard(...).footnote(...)})
  * porque casi ninguna tarjeta los lleva todos: un constructor con cuatro

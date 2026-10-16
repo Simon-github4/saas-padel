@@ -29,7 +29,6 @@ import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
@@ -176,33 +175,9 @@ public class CajaView extends VerticalLayout {
                         Money.format(caja.total())));
 
         top.removeAll();
-        top.add(new RepartoCard(caja), pendingCard(caja));
+        top.add(new RepartoCard(caja));
         showMovements();
         buffetGrid.setItems(caja.buffet());
-    }
-
-    /**
-     * Lo que falta cobrar de los turnos y los pedidos de buffet del dia.
-     *
-     * <p>Va en rojo solo si hay algo: en cero es una buena noticia, no una
-     * advertencia, y pintarlo igual entrena a ignorar el color.
-     */
-    private KpiCard pendingCard(DayCash caja) {
-        KpiCard card = new KpiCard("Pendiente de cobro", Money.format(caja.pending()));
-        card.addClassName("caja-top__pending");
-        if (caja.pending().signum() > 0) {
-            List<String> parts = new ArrayList<>();
-            if (caja.pendingBookings() > 0) {
-                parts.add(caja.pendingBookings() == 1 ? "1 turno" : caja.pendingBookings() + " turnos");
-            }
-            if (caja.pendingOrders() > 0) {
-                parts.add(caja.pendingOrders() == 1 ? "1 pedido" : caja.pendingOrders() + " pedidos");
-            }
-            card.alert().footnote(String.join(" y ", parts) + " con saldo");
-        } else {
-            card.footnote("Los turnos y pedidos están al día");
-        }
-        return card;
     }
 
     // --------------------------------------------------------------- tablas
