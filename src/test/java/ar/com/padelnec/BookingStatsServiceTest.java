@@ -6,9 +6,12 @@ import static org.assertj.core.api.Assertions.tuple;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Booking;
+import ar.com.padelnec.domain.BuffetOrder;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Payment;
 import ar.com.padelnec.domain.PlayerAccount;
+import ar.com.padelnec.domain.Product;
+import ar.com.padelnec.domain.ProductSale;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.PaymentMethod;
@@ -25,7 +28,9 @@ import ar.com.padelnec.service.BookingStatsService.HourlyStat;
 import ar.com.padelnec.service.BookingStatsService.PaymentMethodStat;
 import ar.com.padelnec.service.BookingStatsService.PeriodStats;
 import ar.com.padelnec.service.BookingStatsService.Periodo;
+import ar.com.padelnec.service.BuffetOrderService;
 import ar.com.padelnec.service.PaymentService;
+import ar.com.padelnec.service.ProductService;
 import ar.com.padelnec.service.SlotGenerator;
 import jakarta.persistence.EntityManagerFactory;
 import java.math.BigDecimal;
@@ -83,6 +88,8 @@ class BookingStatsServiceTest {
     @Autowired private BookingStatsService statsService;
     @Autowired private BookingService bookingService;
     @Autowired private PaymentService paymentService;
+    @Autowired private ProductService productService;
+    @Autowired private BuffetOrderService buffetOrderService;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private BookingRepository bookingRepository;
     @Autowired private PlayerAccountRepository playerAccountRepository;
@@ -327,7 +334,44 @@ class BookingStatsServiceTest {
                 .containsExactly(tuple(PaymentMethod.CASH, new BigDecimal("10000.00")));
     }
 
+    @Test
+    @DisplayName("Lo vendido en un pedido de buffet sin turno suma al facturado del dia en que se vendio")
+    void aBuffetOrderCountsAsBilledOnTheDayItWasSold() {
+        Product cafe = productService.createProduct("Café", new BigDecimal("2000"));
+        BuffetOrder order = buffetOrderService.open("Juan", null);
+        ProductSale sale = productService.registerSale(order, cafe, 3, null);
+        backdate("product_sale", sale.getId(), MONDAY.atTime(18, 0));
+
+        assertThat(statsService.summary(club, MONDAY, MONDAY).facturado()).isEqualByComparingTo("6000");
+        assertThat(statsService.summary(club, TUESDAY, TUESDAY).facturado()).isEqualByComparingTo("0");
+        // La tabla por periodo cuenta lo mismo que la tarjeta.
+        assertThat(statsService.statsFor(club, Periodo.DIA, MONDAY, TUESDAY))
+                .extracting(PeriodStats::facturado)
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(new BigDecimal("6000"), BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("Lo consumido en un turno factura una sola vez, con el turno")
+    void aConsumptionInABookingIsBilledOnce() {
+        Booking booking = reserve(LocalTime.of(12, 30), "2262415000", "Cliente A");
+        confirm(booking);
+        Product agua = productService.createProduct("Agua", new BigDecimal("1500"));
+        ProductSale sale = productService.registerSale(
+                bookingService.findByIdWithDetails(booking.getId()).orElseThrow(), agua, 2, null);
+        // El mismo dia que el turno: si se sumara por los dos lados, se veria aca.
+        backdate("product_sale", sale.getId(), TUESDAY.atTime(13, 0));
+
+        // 20000 de la cancha y 3000 de las dos aguas: no 26000.
+        assertThat(statsService.summary(club, TUESDAY, TUESDAY).facturado()).isEqualByComparingTo("23000");
+    }
+
     // ------------------------------------------------------------ utilidades
+
+    private void backdate(String table, java.util.UUID id, java.time.LocalDateTime at) {
+        jdbc.update("UPDATE " + table + " SET created_at = ? WHERE id = ?",
+                OffsetDateTime.ofInstant(at.atZone(ZONE).toInstant(), ZoneOffset.UTC), id);
+    }
 
     private Booking reserve(LocalTime time, String phone, String name) {
         return reserve(TUESDAY, time, phone, name);

@@ -17,6 +17,8 @@ import ar.com.padelnec.repository.CourtScheduleRepository;
 import ar.com.padelnec.repository.PaymentCashRow;
 import ar.com.padelnec.repository.PaymentRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
+import ar.com.padelnec.repository.ProductSaleRepository;
+import ar.com.padelnec.repository.SaleAmountRow;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
@@ -62,6 +64,7 @@ public class BookingStatsService {
     private final PaymentRepository paymentRepository;
     private final BlackoutRepository blackoutRepository;
     private final PlayerAccountRepository playerAccountRepository;
+    private final ProductSaleRepository productSaleRepository;
     private final SlotGenerator slotGenerator;
 
     public enum Periodo {
@@ -73,7 +76,9 @@ public class BookingStatsService {
      *
      * <p>Ojo con las dos columnas de plata, porque no se cuentan igual y no tienen
      * por que dar lo mismo. {@code facturado} es lo que valen los turnos que caen
-     * en el periodo: responde "cuanto vendio la cancha". {@code cobrado} es la
+     * en el periodo, con lo que se consumio en ellos, mas lo vendido en pedidos de
+     * buffet sin turno, por fecha de venta: responde "cuanto vendio el club".
+     * {@code cobrado} es la
      * plata que entro dentro del periodo, sin importar para cuando era el turno ni
      * si despues se cancelo: responde "cuanto paso por la caja". Una sena cobrada
      * hoy por un turno del mes que viene suma al cobrado de hoy y al facturado del
@@ -123,14 +128,17 @@ public class BookingStatsService {
         // caer en un bucket distinto al del turno que lo origino.
         List<PaymentCashRow> allPayments = paymentRepository.findCashBetween(
                 rangeFromInstant, rangeUntilInstant, PaymentStatus.APPROVED);
+        List<SaleAmountRow> allSales = productSaleRepository.findOrderSalesBetween(
+                rangeFromInstant, rangeUntilInstant);
 
-        return buildPeriods(club, courts, periodo, from, to, rangeEnd, allBookings, allPayments, blackouts);
+        return buildPeriods(club, courts, periodo, from, to, rangeEnd, allBookings, allPayments, allSales,
+                blackouts);
     }
 
     /** El cuerpo de {@link #statsFor}, sobre datos ya traidos: lo reusa {@link #dashboardFor}. */
     private List<PeriodStats> buildPeriods(Tenant club, Courts courts, Periodo periodo,
             LocalDate from, LocalDate to, LocalDate rangeEnd, List<BookingStatsRow> allBookings,
-            List<PaymentCashRow> allPayments, List<Blackout> blackouts) {
+            List<PaymentCashRow> allPayments, List<SaleAmountRow> allSales, List<Blackout> blackouts) {
         List<PeriodStats> result = new ArrayList<>();
         for (LocalDate bucketStart = bucketStart(periodo, from); !bucketStart.isAfter(to);
                 bucketStart = nextBucketStart(periodo, bucketStart)) {
@@ -148,7 +156,11 @@ public class BookingStatsService {
                     .filter(p -> !p.createdAt().isBefore(bucketFromInstant)
                             && p.createdAt().isBefore(bucketUntilInstant))
                     .toList();
-            result.add(summarize(club, courts, queryFrom, queryTo, bookings, payments, blackouts,
+            List<SaleAmountRow> sales = allSales.stream()
+                    .filter(s -> !s.createdAt().isBefore(bucketFromInstant)
+                            && s.createdAt().isBefore(bucketUntilInstant))
+                    .toList();
+            result.add(summarize(club, courts, queryFrom, queryTo, bookings, payments, sales, blackouts,
                     label(periodo, bucketStart)));
         }
         return result;
@@ -170,8 +182,9 @@ public class BookingStatsService {
         List<BookingStatsRow> bookings = bookingRepository.findStatsBetween(fromInstant, untilInstant);
         List<PaymentCashRow> payments = paymentRepository.findCashBetween(
                 fromInstant, untilInstant, PaymentStatus.APPROVED);
+        List<SaleAmountRow> sales = productSaleRepository.findOrderSalesBetween(fromInstant, untilInstant);
         List<Blackout> blackouts = blackoutRepository.findOverlapping(fromInstant, untilInstant);
-        return summarize(club, courts, from, toExclusive, bookings, payments, blackouts, "Total");
+        return summarize(club, courts, from, toExclusive, bookings, payments, sales, blackouts, "Total");
     }
 
     /** Todo lo que pinta el Dashboard de una sola pasada: ver {@link #dashboardFor}. */
@@ -203,10 +216,13 @@ public class BookingStatsService {
         List<Blackout> blackouts = blackoutRepository.findOverlapping(rangeFromInstant, rangeUntilInstant);
         List<PaymentCashRow> allPayments = paymentRepository.findCashBetween(
                 rangeFromInstant, rangeUntilInstant, PaymentStatus.APPROVED);
+        List<SaleAmountRow> allSales = productSaleRepository.findOrderSalesBetween(
+                rangeFromInstant, rangeUntilInstant);
 
-        PeriodStats summary = summarize(club, courts, from, rangeEnd, allBookings, allPayments, blackouts, "Total");
-        List<PeriodStats> periods =
-                buildPeriods(club, courts, periodo, from, to, rangeEnd, allBookings, allPayments, blackouts);
+        PeriodStats summary = summarize(club, courts, from, rangeEnd, allBookings, allPayments, allSales,
+                blackouts, "Total");
+        List<PeriodStats> periods = buildPeriods(club, courts, periodo, from, to, rangeEnd, allBookings,
+                allPayments, allSales, blackouts);
         List<BookingStatsRow> occupying =
                 allBookings.stream().filter(b -> b.status().occupiesSlot()).toList();
 
@@ -375,13 +391,18 @@ public class BookingStatsService {
 
     private PeriodStats summarize(Tenant club, Courts courts, LocalDate bucketStart,
                                   LocalDate bucketEndExclusive, List<BookingStatsRow> bookings,
-                                  List<PaymentCashRow> payments, List<Blackout> blackouts,
-                                  String label) {
+                                  List<PaymentCashRow> payments, List<SaleAmountRow> sales,
+                                  List<Blackout> blackouts, String label) {
         int jugados = 0;
         int reservados = 0;
         int cancelados = 0;
         int noShows = 0;
-        BigDecimal facturado = BigDecimal.ZERO;
+        // Los pedidos de buffet sin turno facturan por el dia en que se vendieron:
+        // no tienen turno al que pegarse. Lo consumido en un turno no se suma
+        // aca porque ya viene dentro de su total_price, mas abajo.
+        BigDecimal facturado = sales.stream()
+                .map(SaleAmountRow::subtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         // Lo cobrado sale de los pagos del periodo, no de sumar paid_amount de los
         // turnos: ese campo dice cuanto lleva pago un turno, no cuando entro esa
         // plata, y ademas se perdia entero si el turno terminaba cancelado.
