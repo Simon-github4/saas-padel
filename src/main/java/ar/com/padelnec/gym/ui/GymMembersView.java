@@ -190,7 +190,8 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             return GymViewSupport.badge(billing.anchor() == null ? "Sin cuota" : "Sin cuota vigente", "contrast");
         }
         if (!billing.started()) {
-            return GymViewSupport.badge("Empieza el " + SHORT_DAY.format(billing.active().getStartsOn()), "contrast");
+            // El inicio del ciclo, no el de la cuota activa: puede ser una vieja ya vencida.
+            return GymViewSupport.badge("Empieza el " + SHORT_DAY.format(billing.periodStart()), "contrast");
         }
         if (billing.monthsLate() >= 2) {
             return GymViewSupport.badge("Adeudás " + billing.monthsLate() + " cuotas", "error");

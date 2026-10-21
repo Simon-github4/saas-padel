@@ -58,6 +58,10 @@ public class GymBillingService {
      * ninguna empezo la primera que va a empezar. Los dias por semana, las sedes y la cuota a la
      * que se asocia un ingreso salen siempre de {@code active}: un adelanto con otro plan no
      * cambia lo que vale hoy.
+     *
+     * <p>{@code started} dice si ya rige alguna cuota: empezo el ciclo, o todavia no pero hoy lo
+     * cubre una cuota de antes (el mostrador arranco el mes de nuevo para cuando termine lo pago).
+     * En ese caso {@code paidUntil} es hasta donde llega lo pago desde hoy sin cortes.
      */
     public record Status(GymMember member, LocalDate anchor, boolean started, LocalDate periodStart,
                          LocalDate periodEnd, LocalDate paidUntil, boolean paidCurrent, int monthsLate,
@@ -146,10 +150,10 @@ public class GymBillingService {
         }
 
         YearMonth anchorMonth = YearMonth.from(anchor);
-        boolean started = !today.isBefore(periodStart(anchor, anchorMonth));
+        boolean cycleStarted = !today.isBefore(periodStart(anchor, anchorMonth));
         // Si el ciclo todavia no empezo (una cuota que arranca en unos dias), su mes "corriente" es el
         // primero: el anterior al ancla no es del socio.
-        YearMonth currentMonth = started ? currentYearMonth(anchor, today) : anchorMonth;
+        YearMonth currentMonth = cycleStarted ? currentYearMonth(anchor, today) : anchorMonth;
 
         List<Period> owed = new ArrayList<>();
         int monthsLate = 0;
@@ -201,11 +205,18 @@ public class GymBillingService {
             }
         }
 
+        // El mostrador arranco el mes de nuevo para despues de lo que el socio ya tenia pago: hasta que
+        // empiece el ciclo nuevo lo habilita la cuota de antes, y lo pago llega hasta el primer hueco.
+        boolean coveredBefore = !cycleStarted && paid.stream().anyMatch(m -> m.covers(today));
+        if (coveredBefore) {
+            paidUntil = coveredUntil(paid, today);
+        }
+        boolean started = cycleStarted || coveredBefore;
         boolean canEnter = started && plan != null && monthsLate <= 1;
         return new Status(member, anchor, started,
                 current == null ? periodStart(anchor, currentMonth) : current.start(),
                 current == null ? periodEnd(anchor, currentMonth) : current.end(),
-                paidUntil, isPaid(paid, current), monthsLate, owedTotal, pending, plan,
+                paidUntil, isPaid(paid, current) || coveredBefore, monthsLate, owedTotal, pending, plan,
                 plan != null ? plan.getDaysPerWeek() : 0, canEnter, activeOf(paid, today));
     }
 
@@ -227,5 +238,19 @@ public class GymBillingService {
     private static boolean isPaid(List<GymMembership> paid, Period period) {
         return paid.stream().anyMatch(m -> !m.getStartsOn().isAfter(period.start())
                 && !m.getEndsOn().isBefore(period.end()));
+    }
+
+    /** Hasta donde llega lo pago sin cortes desde {@code day}: cuota tras cuota, sin saltar huecos (null si nada lo cubre). */
+    private static LocalDate coveredUntil(List<GymMembership> paid, LocalDate day) {
+        LocalDate until = null;
+        for (LocalDate next = day; ; ) {
+            LocalDate probe = next;
+            GymMembership covering = paid.stream().filter(m -> m.covers(probe)).findFirst().orElse(null);
+            if (covering == null) {
+                return until;
+            }
+            until = covering.getEndsOn();
+            next = until.plusDays(1);
+        }
     }
 }

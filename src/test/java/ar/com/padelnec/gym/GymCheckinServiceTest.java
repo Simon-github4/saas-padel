@@ -10,17 +10,22 @@ import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymSede;
+import ar.com.padelnec.gym.domain.PayMethod;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
 import ar.com.padelnec.gym.service.GymCheckinService;
 import ar.com.padelnec.gym.service.GymCheckinService.CheckInResult;
 import ar.com.padelnec.gym.service.GymLocation.Point;
 import ar.com.padelnec.gym.service.GymMemberService;
+import ar.com.padelnec.gym.service.GymMembershipService;
 import ar.com.padelnec.service.ClubUserService;
 import ar.com.padelnec.web.BusinessRuleException;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,6 +67,7 @@ class GymCheckinServiceTest {
     @Autowired private GymCheckinService checkinService;
     @Autowired private GymCheckinRepository checkinRepository;
     @Autowired private GymMemberService memberService;
+    @Autowired private GymMembershipService membershipService;
     @Autowired private ClubUserService clubUserService;
     @Autowired private ClubFixture clubFixture;
     @Autowired private GymFixture gym;
@@ -456,5 +462,38 @@ class GymCheckinServiceTest {
         assertThatThrownBy(() -> scan(necochea))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Tu cuota empieza el 17/09/2026");
+    }
+
+    /** Una cuota cobrada hoy en el mostrador, con el mes arrancando de nuevo en {@code newStart}. */
+    private List<UUID> chargeFrom(LocalDate newStart, int daysPerWeek) {
+        return membershipService.charge(memberId, 1, new BigDecimal("30000"), daysPerWeek, PayMethod.CASH,
+                necochea.getId(), Set.of(necochea.getId()), null, MONDAY, newStart, null);
+    }
+
+    @Test
+    @DisplayName("Con el mes pago y un nuevo inicio de mes mas adelante, entra con la cuota de antes")
+    void aNewStartLaterStillLetsThePaidMonthIn() {
+        UUID september = chargeFrom(LocalDate.of(2026, 9, 1), 3).getFirst();
+        chargeFrom(LocalDate.of(2026, 10, 5), 2);
+
+        CheckInResult result = scan(necochea);
+
+        assertThat(result.alreadyRegistered()).isFalse();
+        // Vale hasta el fin de la de septiembre: el hueco hasta el 05/10 no se salta.
+        assertThat(result.validUntil()).isEqualTo(LocalDate.of(2026, 9, 30));
+        assertThat(result.weekLimit()).isEqualTo(3);
+        assertThat(checkinRepository.findByMemberIdAndLocalDate(memberId, MONDAY).orElseThrow()
+                .getMembership().getId()).isEqualTo(september);
+    }
+
+    @Test
+    @DisplayName("Con la cuota vieja vencida y un nuevo inicio mas adelante, el aviso dice cuando arranca el nuevo")
+    void aNewStartLaterAnnouncesItsOwnDate() {
+        chargeFrom(LocalDate.of(2026, 8, 1), 3);
+        chargeFrom(LocalDate.of(2026, 9, 20), 3);
+
+        assertThatThrownBy(() -> scan(necochea))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Tu cuota empieza el 20/09/2026");
     }
 }

@@ -111,7 +111,8 @@ public class GymCheckinService {
             throw new BusinessRuleException("No tenés una cuota vigente. Consultá en el mostrador.");
         }
         if (!status.started()) {
-            throw new BusinessRuleException("Tu cuota empieza el " + DAY.format(membership.getStartsOn()) + ".");
+            // El inicio del ciclo, no el de la cuota activa: puede ser una vieja ya vencida.
+            throw new BusinessRuleException("Tu cuota empieza el " + DAY.format(status.periodStart()) + ".");
         }
         if (!status.canEnter()) {
             throw new BusinessRuleException("Adeudás " + status.monthsLate() + " cuotas. Renová en el mostrador.");
