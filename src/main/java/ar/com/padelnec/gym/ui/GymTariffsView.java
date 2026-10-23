@@ -1,6 +1,7 @@
 package ar.com.padelnec.gym.ui;
 
 import ar.com.padelnec.gym.GymModule;
+import ar.com.padelnec.gym.domain.PlanLength;
 import ar.com.padelnec.gym.service.GymTariffService;
 import ar.com.padelnec.gym.service.GymTariffService.TariffRow;
 import ar.com.padelnec.web.BusinessRuleException;
@@ -25,11 +26,12 @@ import jakarta.annotation.security.RolesAllowed;
 import java.math.BigDecimal;
 
 /**
- * Las cuotas mensuales segun los dias por semana.
+ * Las cuotas segun los dias por semana: la mensual y la del pase de 15 dias.
  *
  * <p>Es lo que el mostrador usa para auto-completar el monto al cobrar: fijar aca
  * la tarifa "de 3 dias" hace que la cuota del trimestre salga sola, y de todos
- * modos cada venta se puede ajustar a mano. Solo el dueno.
+ * modos cada venta se puede ajustar a mano. Un plan puede tener solo una de las dos.
+ * Solo el dueno.
  */
 @Route(value = "gimnasio/cuotas", layout = ar.com.padelnec.ui.MainLayout.class)
 @PageTitle("Cuotas del gimnasio | Panel del club")
@@ -50,8 +52,8 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
 
         Button newTariff = new Button("Fijar tarifa", VaadinIcon.PLUS.create(), event -> openEdit(null));
         newTariff.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        Paragraph help = new Paragraph("La cuota mensual de cada plan. Al cobrar una cuota en «Socios», el mostrador "
-                + "toma de aca el monto del plan del socio, y lo puede ajustar a mano si hace falta.");
+        Paragraph help = new Paragraph("La cuota mensual y la del pase de 15 días de cada plan. Al cobrar en «Socios», "
+                + "el mostrador toma de acá el monto del plan del socio, y lo puede ajustar a mano si hace falta.");
         help.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.Margin.NONE);
 
         // El boton a la izquierda y el texto a su derecha.
@@ -62,10 +64,10 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
         toolbar.setPadding(false);
 
         grid.addColumn(this::daysLabel).setHeader("Plan").setFlexGrow(2);
-        grid.addComponentColumn(row -> row.price() == null
-                        ? GymViewSupport.badge("Sin fijar", "contrast small")
-                        : new Span(GymViewSupport.money(row.price())))
+        grid.addComponentColumn(row -> priceCell(row.monthPrice()))
                 .setHeader("Cuota mensual").setAutoWidth(true).setFlexGrow(0);
+        grid.addComponentColumn(row -> priceCell(row.fifteenDaysPrice()))
+                .setHeader("Cuota de 15 días").setAutoWidth(true).setFlexGrow(0);
         grid.addComponentColumn(this::actions).setHeader("").setAutoWidth(true).setFlexGrow(0);
         grid.setEmptyStateText("Todavía no hay tarifas. Tocá «Fijar tarifa» para fijar la primera.");
         grid.setSizeFull();
@@ -84,17 +86,17 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
         return row.daysPerWeek() == 1 ? "1 día por semana" : row.daysPerWeek() + " días por semana";
     }
 
+    private static Span priceCell(BigDecimal price) {
+        return price == null ? GymViewSupport.badge("Sin fijar", "contrast small")
+                : new Span(GymViewSupport.money(price));
+    }
+
     private HorizontalLayout actions(TariffRow row) {
-        Button edit = new Button(row.price() == null ? "Fijar" : "Editar", event -> openEdit(row));
-        edit.addThemeVariants(ButtonVariant.LUMO_SMALL, row.price() == null
-                ? ButtonVariant.LUMO_PRIMARY : ButtonVariant.LUMO_TERTIARY);
-        if (row.price() == null) {
-            HorizontalLayout cell = new HorizontalLayout(edit);
-            cell.setPadding(false);
-            return cell;
-        }
+        Button edit = new Button("Editar", event -> openEdit(row));
+        edit.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
         Button remove = new Button("Borrar", event -> {
-            tariffService.remove(row.daysPerWeek());
+            tariffService.remove(PlanLength.MONTH, row.daysPerWeek());
+            tariffService.remove(PlanLength.FIFTEEN_DAYS, row.daysPerWeek());
             refresh();
         });
         remove.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_ERROR);
@@ -119,25 +121,30 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
         }
         days.setWidthFull();
 
-        BigDecimalField price = new BigDecimalField("Cuota mensual");
-        price.setPrefixComponent(new Span("$"));
-        price.setRequired(true);
-        price.setWidthFull();
+        BigDecimalField monthPrice = new BigDecimalField("Cuota mensual");
+        monthPrice.setPrefixComponent(new Span("$"));
+        monthPrice.setWidthFull();
+        BigDecimalField fifteenDaysPrice = new BigDecimalField("Cuota de 15 días");
+        fifteenDaysPrice.setPrefixComponent(new Span("$"));
+        fifteenDaysPrice.setHelperText("Para el que viene de paso: vale 15 días y vence sin deuda. Vacío: no se ofrece.");
+        fifteenDaysPrice.setWidthFull();
         if (row != null) {
-            price.setValue(row.price());
+            monthPrice.setValue(row.monthPrice());
+            fifteenDaysPrice.setValue(row.fifteenDaysPrice());
         }
 
-        VerticalLayout body = new VerticalLayout(days, price);
+        VerticalLayout body = new VerticalLayout(days, monthPrice, fifteenDaysPrice);
         body.setPadding(false);
         dialog.add(body);
 
         Button save = new Button("Guardar", event -> {
-            if (price.getValue() == null) {
-                GymViewSupport.error("Poné el monto de la cuota.");
+            if (monthPrice.getValue() == null && fifteenDaysPrice.getValue() == null) {
+                GymViewSupport.error("Poné el monto de al menos una de las dos cuotas.");
                 return;
             }
             try {
-                tariffService.setPrice(days.getValue(), price.getValue());
+                savePrice(PlanLength.MONTH, days.getValue(), monthPrice.getValue());
+                savePrice(PlanLength.FIFTEEN_DAYS, days.getValue(), fifteenDaysPrice.getValue());
                 dialog.close();
                 refresh();
                 GymViewSupport.ok("Tarifa guardada");
@@ -148,7 +155,16 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
         save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         dialog.getFooter().add(new Button("Cancelar", event -> dialog.close()), save);
         dialog.open();
-        price.focus();
+        monthPrice.focus();
+    }
+
+    /** Vacío borra ese precio: el plan deja de ofrecer ese tipo de cuota. */
+    private void savePrice(PlanLength length, int daysPerWeek, BigDecimal price) {
+        if (price == null) {
+            tariffService.remove(length, daysPerWeek);
+        } else {
+            tariffService.setPrice(length, daysPerWeek, price);
+        }
     }
 
     private void refresh() {

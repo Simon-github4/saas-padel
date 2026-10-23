@@ -4,6 +4,7 @@ import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
 import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.domain.PayMethod;
+import ar.com.padelnec.gym.domain.PlanLength;
 import ar.com.padelnec.gym.repository.GymMemberRepository;
 import ar.com.padelnec.gym.repository.GymMembershipRepository;
 import ar.com.padelnec.gym.repository.GymSedeRepository;
@@ -135,7 +136,14 @@ public class GymMembershipService {
                                 + ": la cuota nueva tiene que arrancar después.");
                     });
         }
-        GymBillingService.Status status = billingService.status(member, today, newStart);
+        // Del regimen de pases al mensual: el ciclo arranca de nuevo despues de lo pago (o hoy),
+        // como un "Nuevo inicio de mes". Los dias de pases no cuentan como deuda.
+        LocalDate cycleStart = newStart;
+        if (cycleStart == null && membershipRepository.findFirstByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(
+                member.getId()).filter(GymMembership::isPass).isPresent()) {
+            cycleStart = billingService.nextStart(member, today);
+        }
+        GymBillingService.Status status = billingService.status(member, today, cycleStart);
         List<GymBillingService.Period> pending = status.pending();
         if (months > pending.size()) {
             throw new BusinessRuleException("Estás cobrando más de las "
@@ -153,7 +161,7 @@ public class GymMembershipService {
         } else {
             throw new BusinessRuleException("Elegí la cantidad de días por semana del socio.");
         }
-        BigDecimal unit = price != null ? price : tariffService.priceOf(effectiveDays);
+        BigDecimal unit = price != null ? price : tariffService.priceOf(PlanLength.MONTH, effectiveDays);
         if (price == null && unit == null) {
             throw new BusinessRuleException("Fijá antes la cuota para " + effectiveDays
                     + " días por semana, o poné el monto a mano.");
@@ -171,19 +179,111 @@ public class GymMembershipService {
             membership.setStartsOn(period.start());
             membership.setEndsOn(period.end());
             membership.setDaysPerWeek(effectiveDays);
+            membership.setPlanLength(PlanLength.MONTH);
             membership.setPrice(unit.setScale(2, java.math.RoundingMode.HALF_UP));
             membership.setPaidOn(collectedOn);
             membership.setPayMethod(payMethod);
             membership.setCollectedSede(collectedSede);
             membership.setRegisteredBy(registeredBy);
             membership.setSedes(sedes);
-            ids.add(membershipRepository.saveAndFlush(membership).getId());
+            try {
+                ids.add(membershipRepository.saveAndFlush(membership).getId());
+            } catch (DataIntegrityViolationException ex) {
+                // Otro cobro del mismo socio entro al mismo tiempo: la constraint de la base lo frena.
+                throw overlap();
+            }
         }
 
-        if (newStart != null || member.getBillingAnchor() == null) {
+        if (cycleStart != null || member.getBillingAnchor() == null) {
             member.setBillingAnchor(pending.getFirst().start());
         }
         return ids;
+    }
+
+    /**
+     * Cobra un pase de 15 dias: vale desde {@code startsOn} (null = el dia despues de lo pago, o
+     * hoy) hasta 14 dias despues, inclusive, y cuando vence no genera deuda. No toca el ancla: si
+     * el socio venia con el plan mensual, su ciclo queda cerrado mientras la ultima cuota sea un
+     * pase, y vuelve tal cual si el pase se anula. No se aceptan fechas para atras: un cobro de
+     * otro dia va en {@code paidOn}.
+     *
+     * <p>Si el socio debe cuotas mensuales, pasar a un pase hace que dejen de cobrarse: hace falta
+     * {@code dropMonthlyDebt} para confirmarlo. {@code price} es opcional: si no viene, sale de la
+     * tarifa de 15 dias de {@code daysPerWeek}.
+     */
+    @Transactional
+    public UUID chargePass(UUID memberId, LocalDate startsOn, BigDecimal price, int daysPerWeek,
+                           PayMethod payMethod, UUID collectedSedeId, Set<UUID> sedeIds, UUID registeredBy,
+                           LocalDate today, LocalDate paidOn, boolean dropMonthlyDebt) {
+        if (daysPerWeek < 1 || daysPerWeek > 7) {
+            throw new BusinessRuleException("Los días por semana van de 1 a 7.");
+        }
+        if (payMethod == null) {
+            throw new BusinessRuleException("Elegí cómo se pagó.");
+        }
+        if (collectedSedeId == null) {
+            throw new BusinessRuleException("Elegí la sede donde se cobró.");
+        }
+        if (sedeIds == null || sedeIds.isEmpty()) {
+            throw new BusinessRuleException("Elegí al menos una sede donde vale el pase.");
+        }
+        if (price != null && price.signum() < 0) {
+            throw new BusinessRuleException("Poné un monto válido.");
+        }
+        LocalDate collectedOn = paidOn != null ? paidOn : today;
+        if (collectedOn.isAfter(today)) {
+            throw new BusinessRuleException("La fecha de cobro no puede ser futura.");
+        }
+
+        GymMember member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe ese socio."));
+        LocalDate start = startsOn != null ? startsOn : billingService.nextStart(member, today);
+        if (start.isBefore(today)) {
+            throw new BusinessRuleException("El pase no puede arrancar antes de hoy. Si se cobró otro día, "
+                    + "poné esa fecha en «Fecha de cobro».");
+        }
+        if (start.isAfter(today.plusYears(1))) {
+            throw new BusinessRuleException("El pase tiene que arrancar dentro del próximo año.");
+        }
+        membershipRepository.findFirstByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(member.getId())
+                .filter(last -> !start.isAfter(last.getEndsOn()))
+                .ifPresent(last -> {
+                    throw new BusinessRuleException("Tiene pago hasta el " + DAY.format(last.getEndsOn())
+                            + ": el pase tiene que arrancar después.");
+                });
+        int owed = GymBillingService.owedMonths(billingService.status(member, today), today);
+        if (owed > 0 && !dropMonthlyDebt) {
+            throw new BusinessRuleException("Debe " + (owed == 1 ? "una cuota mensual" : owed + " cuotas mensuales")
+                    + ". Cobralas antes, o confirmá que dejan de cobrarse.");
+        }
+
+        BigDecimal unit = price != null ? price : tariffService.priceOf(PlanLength.FIFTEEN_DAYS, daysPerWeek);
+        if (unit == null) {
+            throw new BusinessRuleException("Fijá antes la cuota de 15 días para " + daysPerWeek
+                    + (daysPerWeek == 1 ? " día" : " días") + " por semana, o poné el monto a mano.");
+        }
+        Set<GymSede> sedes = loadSedes(sedeIds);
+        GymSede collectedSede = sedeRepository.findById(collectedSedeId)
+                .orElseThrow(() -> new BusinessRuleException("Elegí la sede donde se cobró."));
+
+        GymMembership pass = new GymMembership();
+        pass.setMember(member);
+        pass.setPlanLength(PlanLength.FIFTEEN_DAYS);
+        pass.setStartsOn(start);
+        pass.setEndsOn(start.plusDays(PlanLength.PASS_DAYS - 1));
+        pass.setDaysPerWeek(daysPerWeek);
+        pass.setPrice(unit.setScale(2, java.math.RoundingMode.HALF_UP));
+        pass.setPaidOn(collectedOn);
+        pass.setPayMethod(payMethod);
+        pass.setCollectedSede(collectedSede);
+        pass.setRegisteredBy(registeredBy);
+        pass.setSedes(sedes);
+        try {
+            return membershipRepository.saveAndFlush(pass).getId();
+        } catch (DataIntegrityViolationException ex) {
+            // La constraint de exclusion de la base es la que cierra la carrera entre dos cobros.
+            throw overlap();
+        }
     }
 
     /**
@@ -191,7 +291,7 @@ public class GymMembershipService {
      * dia (del club) en que se anulo, o null si sigue vigente.
      */
     public record Fee(UUID id, LocalDate startsOn, LocalDate endsOn, int daysPerWeek, BigDecimal price,
-                      PayMethod payMethod, LocalDate paidOn, LocalDate voidedOn) {
+                      PayMethod payMethod, LocalDate paidOn, LocalDate voidedOn, PlanLength planLength) {
 
         public boolean voided() {
             return voidedOn != null;
@@ -210,7 +310,8 @@ public class GymMembershipService {
                         .thenComparing(GymMembership::getCreatedAt).reversed())
                 .map(m -> new Fee(m.getId(), m.getStartsOn(), m.getEndsOn(), m.getDaysPerWeek(), m.getPrice(),
                         m.getPayMethod(), m.getPaidOn(),
-                        m.getVoidedAt() == null ? null : m.getVoidedAt().atZone(zone).toLocalDate()))
+                        m.getVoidedAt() == null ? null : m.getVoidedAt().atZone(zone).toLocalDate(),
+                        m.getPlanLength()))
                 .toList();
     }
 
@@ -235,9 +336,53 @@ public class GymMembershipService {
     }
 
     /**
+     * Que pasa si se anula esa cuota. {@code allowed} false: no se puede, y {@code message} dice
+     * por que. Si se puede, {@code message} es el aviso para el mostrador (null si no hay nada
+     * que avisar).
+     */
+    public record VoidEffect(boolean allowed, String message) {
+    }
+
+    /**
+     * Lo que provoca anular una cuota, para avisarlo antes. Solo los pases tienen algo que
+     * decir: anular uno que cerro el plan mensual devuelve al socio a ese plan, con sus cuotas
+     * impagas (anular es "nunca se cobro"). Si despues del pase se arranco otro ciclo mensual
+     * que tambien se anulo, el ciclo de antes ya no se puede reconstruir y no se deja anular.
+     */
+    @Transactional(readOnly = true)
+    public VoidEffect voidEffect(UUID membershipId) {
+        GymMembership membership = membershipRepository.findById(membershipId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe esa cuota."));
+        if (membership.getVoidedAt() != null || !membership.isPass()) {
+            return new VoidEffect(true, null);
+        }
+        GymMember member = membership.getMember();
+        GymMembership remaining = membershipRepository
+                .findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(member.getId()).stream()
+                .filter(m -> !m.getId().equals(membership.getId()))
+                .findFirst().orElse(null);
+        if (remaining == null || remaining.isPass()) {
+            return new VoidEffect(true, null);
+        }
+        LocalDate anchor = member.getBillingAnchor();
+        if (anchor != null && remaining.getStartsOn().isBefore(anchor)) {
+            return new VoidEffect(false, "Este pase no se puede anular: después se arrancó un plan mensual "
+                    + "y no queda registro de cómo seguía el anterior. Cobrale lo que corresponda con "
+                    + "«Nuevo inicio de mes».");
+        }
+        if (remaining.getEndsOn().isAfter(membership.getEndsOn())) {
+            // Hay un mensual despues del pase: su ciclo sigue igual.
+            return new VoidEffect(true, null);
+        }
+        return new VoidEffect(true, "Vuelve a su plan mensual: se le cuentan las cuotas impagas desde el "
+                + DAY.format(remaining.getEndsOn().plusDays(1)) + ".");
+    }
+
+    /**
      * Anula un cobro cargado por error: deja de valer y deja de contar en la caja y en la
      * liquidacion. Si era la unica cuota del socio, vuelve a estar como el que nunca pago:
-     * el proximo cobro arranca su ciclo de nuevo.
+     * el proximo cobro arranca su ciclo de nuevo. Un pase que cerro el plan mensual devuelve
+     * al socio a ese plan (ver {@link #voidEffect}).
      */
     @Transactional
     public void voidMembership(UUID membershipId) {
@@ -245,6 +390,10 @@ public class GymMembershipService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe esa cuota."));
         if (membership.getVoidedAt() != null) {
             return;
+        }
+        VoidEffect effect = voidEffect(membershipId);
+        if (!effect.allowed()) {
+            throw new BusinessRuleException(effect.message());
         }
         membership.setVoidedAt(clock.instant());
         membershipRepository.flush();

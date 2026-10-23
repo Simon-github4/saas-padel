@@ -4,6 +4,7 @@ import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
 import ar.com.padelnec.gym.domain.GymSede;
+import ar.com.padelnec.gym.domain.PlanLength;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
 import ar.com.padelnec.gym.repository.GymMemberRepository;
 import ar.com.padelnec.service.TenantService;
@@ -29,7 +30,8 @@ public class GymStatusService {
     private final TenantService tenantService;
     private final Clock clock;
 
-    public record MembershipView(LocalDate startsOn, LocalDate endsOn, int daysPerWeek, List<String> sedes) {
+    public record MembershipView(LocalDate startsOn, LocalDate endsOn, int daysPerWeek, List<String> sedes,
+                                 PlanLength planLength) {
     }
 
     public record RecentCheckin(LocalDate date, String sedeName) {
@@ -39,13 +41,14 @@ public class GymStatusService {
      * {@code membership} es la cuota que rige hoy (la que cubre hoy, o la ultima que ya empezo,
      * o la primera que va a empezar), o null si
      * nunca pago. {@code valid} y {@code canEnter} dicen si puede entrar hoy:
-     * con la corriente impaga entra (gracia); con dos o mas cuotas, no.
+     * con la corriente impaga entra (gracia); con dos o mas cuotas, no. {@code onPasses}: su
+     * ultima cuota es un pase de 15 dias, que vence sin deuda ni gracia.
      */
     public record Status(String fullName, MembershipView membership, boolean valid, int weekUsed,
                          int weekLimit, boolean checkedInToday, List<RecentCheckin> recent,
                          LocalDate cycleStart, LocalDate periodStart, LocalDate periodEnd,
                          LocalDate paidUntil, boolean paidCurrent, int monthsLate, boolean canEnter,
-                         BigDecimal owedTotal) {
+                         BigDecimal owedTotal, boolean onPasses) {
     }
 
     @Transactional(readOnly = true)
@@ -70,7 +73,7 @@ public class GymStatusService {
                 plan == null ? null : view(plan), canEnter, weekUsed,
                 plan == null ? 0 : plan.getDaysPerWeek(), checkedInToday, recent,
                 billing.anchor(), billing.periodStart(), billing.periodEnd(), billing.paidUntil(),
-                billing.paidCurrent(), billing.monthsLate(), canEnter, billing.owedTotal());
+                billing.paidCurrent(), billing.monthsLate(), canEnter, billing.owedTotal(), billing.onPasses());
     }
 
     private static MembershipView view(GymMembership membership) {
@@ -79,6 +82,6 @@ public class GymStatusService {
                 .sorted(Comparator.naturalOrder())
                 .toList();
         return new MembershipView(membership.getStartsOn(), membership.getEndsOn(),
-                membership.getDaysPerWeek(), sedes);
+                membership.getDaysPerWeek(), sedes, membership.getPlanLength());
     }
 }

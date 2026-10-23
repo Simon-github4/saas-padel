@@ -34,6 +34,8 @@ export interface Membership {
   endsOn: string;
   daysPerWeek: number;
   sedes: string[];
+  /** Mensual, o pase de 15 días (vence sin deuda). */
+  planLength: 'MONTH' | 'FIFTEEN_DAYS';
 }
 
 export interface RecentCheckin {
@@ -66,6 +68,8 @@ export interface Me {
   canEnter: boolean;
   /** Lo que debe, a valor de la tarifa de su plan. */
   owedTotal: number;
+  /** Su última cuota es un pase de 15 días: lo pago vence sin deuda ni gracia. */
+  onPasses: boolean;
 }
 
 export interface CheckInResult {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ApiError, gymApi, type Me } from '../api/gymClient';
 import { useGymAuth } from '../auth/GymAuthContext';
 import { Alert, Badge, Button, Card, Loading, WeekDots } from '../components/ui';
+import { passState } from '../billing';
 import { firstName, longDay, money, shortDay, weekUsage } from '../format';
 
 /** "Mi estado": si la cuota vale, hasta cuando, cuantos dias de la semana usó, y el boton de escanear. */
@@ -94,6 +95,19 @@ function BillingCard({ me }: { me: Me }) {
     );
   }
 
+  // El pase vencido no es deuda: va antes de "todavía no arranca", que es para el que espera su cuota.
+  const pass = passState(me);
+  if (pass === 'vencido') {
+    return (
+      <div className="space-y-2">
+        <Badge tone="warning">Tu pase venció</Badge>
+        <p className="text-sm text-ink-soft">
+          Venció el {longDay(me.periodEnd)}. Pasá por el mostrador para renovar.
+        </p>
+      </div>
+    );
+  }
+
   if (!me.membership) {
     return (
       <div className="space-y-2">
@@ -112,8 +126,8 @@ function BillingCard({ me }: { me: Me }) {
       <div className="space-y-2">
         <Badge tone="warning">Tu cuota todavía no arranca</Badge>
         <p className="text-sm text-ink-soft">
-          Tu mes va del {longDay(me.periodStart)} al {longDay(me.periodEnd)}. Cuando arranque, vas a poder
-          registrar tus ingresos.
+          {me.membership.planLength === 'FIFTEEN_DAYS' ? 'Tu pase va' : 'Tu mes va'} del {longDay(me.periodStart)} al{' '}
+          {longDay(me.periodEnd)}. Cuando arranque, vas a poder registrar tus ingresos.
         </p>
       </div>
     );
@@ -122,7 +136,13 @@ function BillingCard({ me }: { me: Me }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        {me.paidCurrent ? <Badge tone="success">Al día</Badge> : <Badge tone="warning">Te falta el mes</Badge>}
+        {me.membership.planLength === 'FIFTEEN_DAYS' ? (
+          <Badge tone="success">Pase de 15 días</Badge>
+        ) : me.paidCurrent ? (
+          <Badge tone="success">Al día</Badge>
+        ) : (
+          <Badge tone="warning">Te falta el mes</Badge>
+        )}
         {me.paidCurrent ? (
           <p className="text-sm text-ink-soft">tu cuota está paga hasta el {longDay(me.paidUntil ?? me.periodEnd)}</p>
         ) : (

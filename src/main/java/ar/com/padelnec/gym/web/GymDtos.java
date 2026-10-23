@@ -75,11 +75,14 @@ public final class GymDtos {
         }
     }
 
-    public record MembershipResponse(LocalDate startsOn, LocalDate endsOn, int daysPerWeek, List<String> sedes) {
+    /** {@code planLength}: {@code MONTH} o {@code FIFTEEN_DAYS} (pase de 15 dias). */
+    public record MembershipResponse(LocalDate startsOn, LocalDate endsOn, int daysPerWeek, List<String> sedes,
+                                     String planLength) {
 
         static MembershipResponse of(MembershipView view) {
             return view == null ? null
-                    : new MembershipResponse(view.startsOn(), view.endsOn(), view.daysPerWeek(), view.sedes());
+                    : new MembershipResponse(view.startsOn(), view.endsOn(), view.daysPerWeek(), view.sedes(),
+                            view.planLength().name());
         }
     }
 
@@ -94,14 +97,15 @@ public final class GymDtos {
                              int weekLimit, boolean checkedInToday, List<RecentCheckinResponse> recent,
                              LocalDate cycleStart, LocalDate periodStart, LocalDate periodEnd,
                              LocalDate paidUntil, boolean paidCurrent, int monthsLate, boolean canEnter,
-                             java.math.BigDecimal owedTotal) {
+                             java.math.BigDecimal owedTotal, boolean onPasses) {
 
         static MeResponse of(Status status) {
             return new MeResponse(status.fullName(), MembershipResponse.of(status.membership()), status.valid(),
                     status.weekUsed(), status.weekLimit(), status.checkedInToday(),
                     status.recent().stream().map(RecentCheckinResponse::of).toList(),
                     status.cycleStart(), status.periodStart(), status.periodEnd(), status.paidUntil(),
-                    status.paidCurrent(), status.monthsLate(), status.canEnter(), status.owedTotal());
+                    status.paidCurrent(), status.monthsLate(), status.canEnter(), status.owedTotal(),
+                    status.onPasses());
         }
     }
 }

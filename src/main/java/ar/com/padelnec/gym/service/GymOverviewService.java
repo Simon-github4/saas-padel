@@ -43,6 +43,48 @@ public class GymOverviewService {
     public record MemberRow(UUID id, String dni, String fullName, String phone, boolean enabled,
                             boolean mustChangePassword, int weekUsed,
                             GymBillingService.Status billing, List<String> sedes) {
+
+        /** En que situacion esta hoy, para los filtros del panel. Cada socio cae en una sola. */
+        public Standing standing() {
+            if (!enabled) {
+                return Standing.DISABLED;
+            }
+            if (billing.plan() == null) {
+                return Standing.NO_FEE;
+            }
+            if (billing.paidToday()) {
+                return Standing.ACTIVE;
+            }
+            if (!billing.started() && !billing.canEnter()) {
+                return Standing.UPCOMING;
+            }
+            // Un pase vencido no es deuda; lo que queda es el mensual que debe el mes o mas.
+            return billing.passRules() ? Standing.EXPIRED_PASS : Standing.OWING;
+        }
+    }
+
+    /**
+     * La situacion de un socio en la grilla. Activo: tiene la cuota de hoy paga (mensual o pase).
+     * Adeudan: el plan mensual le debe el mes o mas (con el mes corriente impago entra igual).
+     * Por empezar: su cuota todavia no arranco. Pase vencido: se le termino el pase y no debe nada.
+     */
+    public enum Standing {
+        ACTIVE("Activos"),
+        OWING("Adeudan"),
+        UPCOMING("Por empezar"),
+        EXPIRED_PASS("Pase vencido"),
+        NO_FEE("Sin cuota"),
+        DISABLED("Deshabilitados");
+
+        private final String label;
+
+        Standing(String label) {
+            this.label = label;
+        }
+
+        public String label() {
+            return label;
+        }
     }
 
     public record DayCheckin(Instant at, String memberName, String dni, String sedeName, boolean override,

@@ -62,7 +62,9 @@ de los tres es `gimnasio1234`. Suma además los casos del mostrador, aunque la b
 tuviera el gimnasio: socios sin DNI, el mismo socio cargado dos veces (Agustín Coupau),
 uno que adeuda meses (Facundo Molina), uno adelantado, uno con ingresos y una cuota
 anulada (Hernán Paz, `33444555`), uno deshabilitado, un cobro de ayer cargado hoy, una
-cuota que empieza en unos días y uno en el tope semanal.
+cuota que empieza en unos días y uno en el tope semanal. Y los del pase de 15 días: uno
+vigente (Tomás Paso, `39111222`), uno vencido, un mensual con el pase después, un pase con el
+mensual después y un mensual que debía y pasó a pase (Ramiro Sosa, para anularlo).
 
 ```bash
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
@@ -97,6 +99,29 @@ Para probar sin cámara, pegar el link o el código en el campo del escáner.
   una fecha, el mes arranca de nuevo ese día: sirve para cargar a un socio que ya venía
   con su mes real, o para el que vuelve después de meses (los meses sin pagar de antes
   dejan de contar como deuda). No puede pisar lo que el socio ya tiene pago.
+- **Pase de 15 días** (para el que viene de paso): se cobra en «Cobrar» → Plan "15 días", vale
+  15 días calendario contando el primero y el último, y tiene su propia tarifa en «Cuotas».
+  Arranca el día después de lo pago (o hoy), nunca para atrás. Cuando vence no genera deuda
+  ni tiene gracia: queda "Venció el …". Solo se guarda el tipo de cada cuota
+  (`gym_membership.plan_length`, migración `V18`); lo demás sale de las cuotas:
+  - El **régimen** lo define la última cuota paga: si es un pase, el socio está "con pases" y
+    solo cuenta la cobertura. Lo que vale hoy (tope, sedes, check-in) sale de la cuota que
+    cubre hoy, que puede ser un mes que todavía corre.
+  - **Mensual → pase**: el pase arranca después del mes pago y el ciclo mensual deja de
+    proyectarse. Si el socio debía cuotas, el mostrador tiene que confirmar que dejan de
+    cobrarse. Vender un pase no toca el ancla.
+  - **Pase → mensual**: arranca un ciclo nuevo, por defecto el día después de lo pago (es un
+    «Nuevo inicio de mes» precargado). Los días de pases no son deuda.
+  - **Anular un pase** es "nunca se cobró": si había cerrado un plan mensual, el socio vuelve a
+    ese plan con sus cuotas impagas (el diálogo lo avisa). Si después del pase se arrancó otro
+    ciclo mensual que también se anuló, el pase ya no se puede anular: el ciclo de antes no se
+    puede reconstruir.
+  - Un socio sin pases sigue exactamente las reglas mensuales de siempre.
+- En «Socios», "N activos" cuenta a los socios habilitados con la cuota de hoy paga (mensual o
+  pase): el que debe el mes no cuenta aunque entre por la gracia, ni el que todavía no empezó.
+  El filtro de al lado pone a cada socio en una sola situación (`GymOverviewService.Standing`):
+  Activos, Adeudan (el mensual que debe el mes o más), Por empezar, Pase vencido (no debe nada),
+  Sin cuota y Deshabilitados.
 - El QR es un secreto estático por sede: quien lo fotografíe lo tiene. Se puede
   regenerar desde el panel, lo que invalida el cartel impreso. Con la ubicación de la
   sede cargada, tenerlo no alcanza: hay que estar cerca.

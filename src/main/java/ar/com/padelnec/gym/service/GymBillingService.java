@@ -2,6 +2,7 @@ package ar.com.padelnec.gym.service;
 
 import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
+import ar.com.padelnec.gym.domain.PlanLength;
 import ar.com.padelnec.gym.repository.GymMemberRepository;
 import ar.com.padelnec.gym.repository.GymMembershipRepository;
 import ar.com.padelnec.web.UnauthorizedSessionException;
@@ -9,7 +10,9 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,6 +28,11 @@ import org.springframework.transaction.annotation.Transactional;
  * impago de antes deja de contar. Un
  * periodo esta pago si una cuota no anulada lo cubre; lo impago se acumula como
  * deuda, y se cobra la mas vieja primero.
+ *
+ * <p>El pase de 15 dias queda afuera del ciclo: si la ultima cuota paga es un pase, el
+ * socio esta en "regimen de pases" y solo cuenta la cobertura (lo que vence no genera
+ * deuda ni tiene gracia). Vender un pase no toca el ancla: si se anula, el socio vuelve
+ * solo a su ciclo mensual. Volver al mensual desde los pases arranca un ciclo nuevo.
  *
  * <p>De aca sale todo lo que habla de cuotas: la grilla del panel, el dialogo de
  * cobro, el check-in y la pantalla "mi estado" de la app.
@@ -57,12 +65,33 @@ public class GymBillingService {
      * la que cubre hoy, o si no la ultima que ya empezo (el mes impago con gracia), o si todavia
      * ninguna empezo la primera que va a empezar. Los dias por semana, las sedes y la cuota a la
      * que se asocia un ingreso salen siempre de {@code active}: un adelanto con otro plan no
-     * cambia lo que vale hoy.
+     * cambia lo que vale hoy. Un pase vencido nunca rige (no tiene gracia).
+     *
+     * <p>{@code onPasses}: la ultima cuota paga es un pase. No hay ciclo mensual abierto: no hay
+     * deuda ni gracia ({@code monthsLate} 0, {@code pending} vacio), {@code anchor} es null y
+     * {@code active} es la que cubre hoy, si no la proxima que empieza, si no la ultima (vencida).
      */
     public record Status(GymMember member, LocalDate anchor, boolean started, LocalDate periodStart,
                          LocalDate periodEnd, LocalDate paidUntil, boolean paidCurrent, int monthsLate,
                          BigDecimal owedTotal, List<Period> pending, GymMembership plan, int planDaysPerWeek,
-                         boolean canEnter, GymMembership active) {
+                         boolean canEnter, GymMembership active, boolean onPasses) {
+
+        /**
+         * Lo que vale hoy lo deciden las reglas del pase: solo la cobertura, sin ciclo ni gracia.
+         * Pasa en el regimen de pases y cuando un pase cubre hoy con el plan mensual por empezar.
+         * Para un socio sin pases es siempre false.
+         */
+        public boolean passRules() {
+            return onPasses || (active != null && active.isPass());
+        }
+
+        /**
+         * Tiene la cuota de hoy paga (mensual o pase): es el socio "activo" que cuenta el panel.
+         * El que debe el mes no cuenta aunque entre por la gracia, ni el que todavia no empezo.
+         */
+        public boolean paidToday() {
+            return passRules() ? canEnter : started && paidCurrent;
+        }
     }
 
     /** El periodo que arranca en ese mes, dado el ancla. */
@@ -111,6 +140,9 @@ public class GymBillingService {
         List<GymMembership> paid =
                 membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(member.getId());
         GymMembership plan = paid.isEmpty() ? null : paid.getFirst();
+        if (newStart == null && plan != null && plan.isPass()) {
+            return passStatus(member, paid, plan, today);
+        }
 
         LocalDate anchor = member.getBillingAnchor();
         if (newStart != null || (anchor == null && paid.isEmpty())) {
@@ -138,7 +170,7 @@ public class GymBillingService {
             }
             return new Status(member, null, false, shown.start(), shown.end(),
                     null, false, 0, BigDecimal.ZERO, pending, plan, plan != null ? plan.getDaysPerWeek() : 0, false,
-                    activeOf(paid, today));
+                    activeOf(paid, today), false);
         }
         if (anchor == null) {
             // Socios de antes de la migracion (o registros sin backfill): su primera cuota es el ancla.
@@ -183,7 +215,7 @@ public class GymBillingService {
                 pending.add(period);
             }
         }
-        BigDecimal unit = plan != null ? tariffService.priceOf(plan.getDaysPerWeek()) : null;
+        BigDecimal unit = plan != null ? tariffService.priceOf(PlanLength.MONTH, plan.getDaysPerWeek()) : null;
         BigDecimal owedTotal = unit == null ? BigDecimal.ZERO : unit.multiply(BigDecimal.valueOf(owed.size()));
 
         // Lo que el socio ya tiene pagado por adelantado: del periodo corriente hacia adelante,
@@ -202,21 +234,101 @@ public class GymBillingService {
         }
 
         boolean canEnter = started && plan != null && monthsLate <= 1;
+        GymMembership active = activeOf(paid, today);
+        if (active != null && active.isPass() && active.covers(today)) {
+            // Un pase que todavia corre con el plan mensual por empezar: entra por el pase, y lo
+            // pago llega hasta donde la cobertura siga pegada. Sin pases, esto no pasa nunca.
+            canEnter = true;
+            paidUntil = coveredUntil(paid, active);
+        }
         return new Status(member, anchor, started,
                 current == null ? periodStart(anchor, currentMonth) : current.start(),
                 current == null ? periodEnd(anchor, currentMonth) : current.end(),
                 paidUntil, isPaid(paid, current), monthsLate, owedTotal, pending, plan,
-                plan != null ? plan.getDaysPerWeek() : 0, canEnter, activeOf(paid, today));
+                plan != null ? plan.getDaysPerWeek() : 0, canEnter, active, false);
+    }
+
+    /**
+     * El estado del socio cuya ultima cuota paga es un pase: no hay ciclo mensual, solo
+     * cobertura. Rige la cuota que cubre hoy (puede ser un mes que todavia corre), si no la
+     * proxima que empieza, si no la ultima, ya vencida. Lo que vence no es deuda.
+     */
+    private static Status passStatus(GymMember member, List<GymMembership> paid, GymMembership plan,
+                                     LocalDate today) {
+        GymMembership covering = paid.stream().filter(m -> m.covers(today)).findFirst().orElse(null);
+        GymMembership active = covering != null ? covering : firstUpcoming(paid, today).orElse(plan);
+        boolean started = !active.getStartsOn().isAfter(today);
+        boolean expired = covering == null && started;
+        return new Status(member, null, started, active.getStartsOn(), active.getEndsOn(),
+                expired ? null : coveredUntil(paid, active), covering != null, 0, BigDecimal.ZERO, List.of(),
+                plan, plan.getDaysPerWeek(), covering != null, active, true);
+    }
+
+    /**
+     * Desde cuando se puede cobrar lo proximo sin pisar lo pago: el dia despues de la ultima
+     * cuota paga, o hoy si eso ya paso. Es el inicio por defecto del pase y del plan mensual
+     * que arranca despues de los pases.
+     */
+    @Transactional(readOnly = true)
+    public LocalDate nextStart(GymMember member, LocalDate today) {
+        return membershipRepository.findFirstByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(member.getId())
+                .map(last -> last.getEndsOn().plusDays(1))
+                .filter(next -> next.isAfter(today))
+                .orElse(today);
+    }
+
+    /**
+     * Cuantas cuotas mensuales ya empezadas debe el socio: la deuda que dejaria de cobrarse si
+     * pasa a un pase. Cero para el que nunca pago y para el que ya esta con pases.
+     */
+    public static int owedMonths(Status status, LocalDate today) {
+        if (status.onPasses() || status.plan() == null) {
+            return 0;
+        }
+        return (int) status.pending().stream().filter(period -> !period.start().isAfter(today)).count();
     }
 
     /**
      * La cuota que rige hoy, de las pagas ordenadas de la mas nueva a la mas vieja: la que cubre
-     * hoy; si no, la ultima que ya empezo; si no, la primera que va a empezar (null sin cuotas).
+     * hoy; si no, la ultima que ya empezo (el mes impago con gracia); si no, la primera que va a
+     * empezar (null sin cuotas). Un pase vencido no tiene gracia: en su lugar rige la proxima que
+     * empieza, y si no hay ninguna, el pase vencido.
      */
     private static GymMembership activeOf(List<GymMembership> paid, LocalDate today) {
-        return paid.stream().filter(m -> m.covers(today)).findFirst()
-                .or(() -> paid.stream().filter(m -> !m.getStartsOn().isAfter(today)).findFirst())
-                .orElse(paid.isEmpty() ? null : paid.getLast());
+        Optional<GymMembership> covering = paid.stream().filter(m -> m.covers(today)).findFirst();
+        if (covering.isPresent()) {
+            return covering.get();
+        }
+        Optional<GymMembership> lastStarted = paid.stream().filter(m -> !m.getStartsOn().isAfter(today)).findFirst();
+        if (lastStarted.isPresent() && !lastStarted.get().isPass()) {
+            return lastStarted.get();
+        }
+        return firstUpcoming(paid, today).orElse(lastStarted.orElse(null));
+    }
+
+    /** La primera cuota paga que todavia no empezo. */
+    private static Optional<GymMembership> firstUpcoming(List<GymMembership> paid, LocalDate today) {
+        return paid.stream().filter(m -> m.getStartsOn().isAfter(today))
+                .min(Comparator.comparing(GymMembership::getStartsOn));
+    }
+
+    /**
+     * Hasta donde llega lo pago sin cortes desde {@code from}: se encadenan las cuotas mientras
+     * la siguiente arranque el dia despues de la anterior. Un hueco corta la cadena.
+     */
+    private static LocalDate coveredUntil(List<GymMembership> paid, GymMembership from) {
+        LocalDate end = from.getEndsOn();
+        List<GymMembership> later = paid.stream()
+                .filter(m -> m.getStartsOn().isAfter(from.getStartsOn()))
+                .sorted(Comparator.comparing(GymMembership::getStartsOn))
+                .toList();
+        for (GymMembership next : later) {
+            if (!next.getStartsOn().equals(end.plusDays(1))) {
+                break;
+            }
+            end = next.getEndsOn();
+        }
+        return end;
     }
 
     private static Period periodOf(LocalDate anchor, YearMonth month) {
