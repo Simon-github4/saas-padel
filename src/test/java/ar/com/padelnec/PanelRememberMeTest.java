@@ -20,7 +20,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.Base64;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,11 +27,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -47,20 +43,11 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, PanelRememberMeTest.FixedClock.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, TestClockConfig.class})
 class PanelRememberMeTest {
 
     private static final String PASSWORD = "unaClaveLarga123";
     private static final Instant NOW = Instant.parse("2026-10-16T15:00:00Z");
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClock {
-        @Bean
-        @Primary
-        MutableClock testClock() {
-            return new MutableClock(NOW, ZoneId.of("UTC"));
-        }
-    }
 
     @LocalServerPort private int port;
     @Autowired private ClubFixture fixture;

@@ -7,6 +7,7 @@ import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.ClubUser;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.UserRole;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.ClubUserRepository;
 import ar.com.padelnec.service.ClubUserService;
 import ar.com.padelnec.web.BusinessRuleException;
@@ -24,7 +25,7 @@ import org.springframework.test.context.ActiveProfiles;
 /** Alta y manejo del usuario de mostrador: un solo rol mas, sin configuracion ni estadisticas. */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class})
 class ClubUserServiceTest {
 
     @Autowired private ClubUserService clubUserService;

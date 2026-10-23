@@ -27,11 +27,14 @@ import org.springframework.test.context.TestPropertySource;
  * viaje: antes de la subquery-y-fetch-join, el {@code ElementCollection}
  * EAGER de {@code days} disparaba una consulta aparte por cada regla
  * devuelta, en el camino mas caliente del sistema (la grilla publica).
+ *
+ * <p>No usa el reloj fijo: lo importa para compartir el contexto con
+ * {@link BookingStatsServiceTest}, que tambien cuenta consultas.
  */
 @SpringBootTest
 @ActiveProfiles("test")
 @TestPropertySource(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
-@Import({TestDatabaseConfig.class, ClubFixture.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, TestClockConfig.class})
 class PricingRuleRepositoryTest {
 
     @Autowired private PricingRuleRepository pricingRuleRepository;

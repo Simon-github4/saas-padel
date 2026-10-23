@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ar.com.padelnec.ClubFixture;
 import ar.com.padelnec.MutableClock;
+import ar.com.padelnec.TestClockConfig;
 import ar.com.padelnec.TestDatabaseConfig;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
@@ -58,12 +59,12 @@ import org.springframework.test.context.ActiveProfiles;
  * pasa al plan mensual, y convive con el ciclo mensual sin cambiarle nada al socio que no
  * tiene pases.
  *
- * <p>Usa el mismo reloj fijo que {@link GymCheckinServiceTest} (comparten el contexto): los
- * cobros reciben el dia a mano y el check-in sale del reloj.
+ * <p>Usa el reloj fijo compartido, {@link TestClockConfig}: los cobros reciben el dia a mano y
+ * el check-in sale del reloj.
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, GymCheckinServiceTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class GymPassTest {
 
     /** Miercoles 21 de octubre de 2026, 10:00 en Buenos Aires. */

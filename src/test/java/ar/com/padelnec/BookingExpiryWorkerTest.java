@@ -8,6 +8,7 @@ import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CancellationReason;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.scheduler.BookingExpiryWorker;
 import ar.com.padelnec.service.AvailabilityService;
@@ -28,10 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 
 /**
  * Liberacion de canchas retenidas por reservas que nunca se completaron.
@@ -42,21 +40,12 @@ import org.springframework.context.annotation.Primary;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, BookingExpiryWorkerTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class BookingExpiryWorkerTest {
 
     private static final String NOW = "2026-09-01T10:00:00Z";
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 1);
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at(NOW);
-        }
-    }
 
     @Autowired private BookingExpiryWorker worker;
     @Autowired private BookingService bookingService;

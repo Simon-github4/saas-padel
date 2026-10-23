@@ -10,6 +10,7 @@ import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.PushSubscription;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.UserRole;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.notification.push.PanelPushService;
 import ar.com.padelnec.notification.push.TestBrowser;
 import ar.com.padelnec.repository.ClubUserRepository;
@@ -49,17 +50,19 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>Los servicios de push (FCM, Apple...) los hace un servidor HTTP local que
  * guarda lo que recibe; los navegadores, {@link TestBrowser}, que lo descifra.
- * Mismo contexto que {@link BookingServiceTest}: martes 01/09/2026 a las 7.
+ * El reloj queda en el martes 01/09/2026 a las 7, como en {@link BookingServiceTest}.
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, BookingServiceTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class PanelPushTest {
 
+    private static final Instant NOW = Instant.parse("2026-09-01T10:00:00Z");
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 1);
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
     private static final String PASSWORD = "unaClaveLarga123";
 
+    @Autowired private MutableClock clock;
     @Autowired private ClubFixture fixture;
     @Autowired private BookingService bookingService;
     @Autowired private ClubUserService clubUserService;
@@ -83,8 +86,9 @@ class PanelPushTest {
 
     @BeforeEach
     void setUp() throws IOException {
+        clock.set(NOW);
         fixture.reset();
-        pushService = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        pushService =HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         pushService.createContext("/", exchange -> {
             String path = exchange.getRequestURI().getPath();
             Map<String, String> headers = new java.util.HashMap<>();

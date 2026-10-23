@@ -42,10 +42,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
@@ -57,7 +54,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, PaymentServiceTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, TestClockConfig.class})
 class PaymentServiceTest {
 
     private static final String NOW = "2026-09-01T10:00:00Z";
@@ -65,15 +62,6 @@ class PaymentServiceTest {
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
     private static final String MP_ORDER_ID = "ORDTST01ABCDEFGHIJKLMNOPQR";
     private static final String MP_PAYMENT_ID = "112233445";
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at(NOW);
-        }
-    }
 
     @MockitoBean private MercadoPagoGateway gateway;
 

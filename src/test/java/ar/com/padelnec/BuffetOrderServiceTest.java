@@ -10,6 +10,7 @@ import ar.com.padelnec.domain.Product;
 import ar.com.padelnec.domain.ProductSale;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.PaymentMethod;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.BuffetOrderRepository;
 import ar.com.padelnec.service.BuffetOrderService;
 import ar.com.padelnec.service.BuffetOrderService.Checkout;
@@ -39,7 +40,7 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class})
 class BuffetOrderServiceTest {
 
     @Autowired private BuffetOrderService buffetOrderService;

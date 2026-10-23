@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.RecurringBooking;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.RecurringBookingRepository;
 import ar.com.padelnec.repository.TenantRepository;
 import ar.com.padelnec.service.CustomerService;
@@ -34,7 +35,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class})
 class WallClockPersistenceTest {
 
     @Autowired private JdbcTemplate jdbc;

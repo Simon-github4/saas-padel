@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import ar.com.padelnec.domain.ClubUser;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.UserRole;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.ClubUserRepository;
 import ar.com.padelnec.security.RateLimitedAuthenticationProvider;
 import java.util.UUID;
@@ -32,7 +33,7 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class})
 class RateLimitedAuthenticationProviderTest {
 
     private static final String PASSWORD = "unaClaveLarga123";

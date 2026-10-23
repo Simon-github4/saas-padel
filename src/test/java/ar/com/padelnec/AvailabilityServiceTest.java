@@ -10,6 +10,7 @@ import ar.com.padelnec.domain.Customer;
 import ar.com.padelnec.domain.PricingRule;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.BookingStatus;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CourtRepository;
@@ -36,34 +37,18 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 
 /** Verifica que la grilla que ve el jugador refleje la realidad del club. */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, AvailabilityServiceTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class AvailabilityServiceTest {
 
     /** Martes 01/09/2026, 07:00 hora de Necochea (10:00 UTC): el club acaba de abrir. */
     private static final String NOW = "2026-09-01T10:00:00Z";
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 1);
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        /**
-         * Nombre distinto del bean de produccion a proposito: convive con el reloj
-         * real y gana por {@code @Primary}, en vez de pisar su definicion.
-         */
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at(NOW);
-        }
-    }
 
     @Autowired private AvailabilityService availabilityService;
     @Autowired private TenantRepository tenantRepository;
@@ -72,6 +57,7 @@ class AvailabilityServiceTest {
     @Autowired private PricingRuleRepository pricingRuleRepository;
     @Autowired private BookingRepository bookingRepository;
     @Autowired private BlackoutRepository blackoutRepository;
+    @Autowired private ClubFixture fixture;
     @Autowired private Clock clock;
 
     private Tenant club;
@@ -82,15 +68,9 @@ class AvailabilityServiceTest {
     @BeforeEach
     void setUp() {
         ((MutableClock) clock).set(Instant.parse(NOW));
-
-        TenantContext.set(TenantContext.ROOT);
-        bookingRepository.deleteAll();
-        blackoutRepository.deleteAll();
-        pricingRuleRepository.deleteAll();
-        customerRepository.deleteAll();
-        courtRepository.deleteAll();
-        tenantRepository.deleteAll();
-        TenantContext.clear();
+        // El contexto es compartido: lo que dejan las otras clases (cobros, avisos,
+        // socios del gimnasio) no lo borra una limpieza solo de las tablas de aca.
+        fixture.reset();
 
         club = new Tenant();
         club.setName("Club Necochea");

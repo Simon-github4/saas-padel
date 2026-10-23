@@ -7,6 +7,7 @@ import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.service.BookingClaimService;
@@ -38,7 +39,7 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class})
 class BookingClaimServiceTest {
 
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");

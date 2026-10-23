@@ -3,6 +3,7 @@ package ar.com.padelnec;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ar.com.padelnec.gym.GymFixture;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,11 +24,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(TestDatabaseConfig.class)
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class})
 class SchemaIntegrityTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private ClubFixture fixture;
 
     private UUID clubId;
     private UUID courtId;
@@ -35,11 +39,9 @@ class SchemaIntegrityTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.update("DELETE FROM club_amenity");
-        jdbc.update("DELETE FROM booking");
-        jdbc.update("DELETE FROM customer");
-        jdbc.update("DELETE FROM court");
-        jdbc.update("DELETE FROM tenant");
+        // El contexto es compartido: borrar solo las tablas de aca choca contra lo
+        // que dejan las otras clases (cobros, avisos) colgando de los turnos.
+        fixture.reset();
 
         clubId = jdbc.queryForObject(
                 "INSERT INTO tenant (name, slug, whatsapp_number) VALUES (?, ?, ?) RETURNING id",

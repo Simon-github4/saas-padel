@@ -19,7 +19,6 @@ import ar.com.padelnec.web.UnauthorizedSessionException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -38,21 +37,12 @@ import org.springframework.test.context.ActiveProfiles;
 @SpringBootTest
 @ActiveProfiles("test")
 @Import({TestDatabaseConfig.class, ClubFixture.class,
-        PlayerAuthServiceTest.FixedClockConfig.class, PlayerAuthServiceTest.FakesConfig.class})
+        TestClockConfig.class, PlayerAuthServiceTest.FakesConfig.class})
 class PlayerAuthServiceTest {
 
     private static final String NOW = "2026-09-01T10:00:00Z";
     private static final String EMAIL = "juana@example.com";
     private static final String PASSWORD = "unaClaveLarga123";
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return new MutableClock(Instant.parse(NOW), ZoneId.of("UTC"));
-        }
-    }
 
     @TestConfiguration(proxyBeanMethods = false)
     static class FakesConfig {

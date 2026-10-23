@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ar.com.padelnec.ClubFixture;
 import ar.com.padelnec.MutableClock;
+import ar.com.padelnec.TestClockConfig;
 import ar.com.padelnec.TestDatabaseConfig;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
@@ -33,10 +34,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
@@ -48,21 +46,12 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, GymCheckinServiceTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class GymCheckinServiceTest {
 
     /** Lunes 14 de septiembre de 2026, 10:00 en Buenos Aires. */
     private static final Instant MONDAY_10AM = Instant.parse("2026-09-14T13:00:00Z");
     private static final LocalDate MONDAY = LocalDate.of(2026, 9, 14);
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at("2026-09-14T13:00:00Z");
-        }
-    }
 
     @Autowired private GymCheckinService checkinService;
     @Autowired private GymCheckinRepository checkinRepository;

@@ -35,10 +35,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
@@ -51,22 +48,12 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class,
-        WaitlistNotificationWorkerTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, TestClockConfig.class})
 class WaitlistNotificationWorkerTest {
 
     private static final String NOW = "2026-09-01T10:00:00Z";
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 1);
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at(NOW);
-        }
-    }
 
     @Autowired private WaitlistNotificationWorker worker;
     @Autowired private WaitlistService waitlistService;
