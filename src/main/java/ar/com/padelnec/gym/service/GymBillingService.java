@@ -9,6 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -61,12 +62,21 @@ public class GymBillingService {
      *
      * <p>{@code started} dice si ya rige alguna cuota: empezo el ciclo, o todavia no pero hoy lo
      * cubre una cuota de antes (el mostrador arranco el mes de nuevo para cuando termine lo pago).
-     * En ese caso {@code paidUntil} es hasta donde llega lo pago desde hoy sin cortes.
+     * En ese caso {@code paidUntil} es hasta donde llega lo pago desde hoy sin cortes, y si el
+     * nuevo inicio deja un hueco, {@code paidAhead} es lo pago que vuelve despues: el hueco va del
+     * dia siguiente a {@code paidUntil} al dia antes de {@code paidAhead.start()}, y esos dias no
+     * entra. En cualquier otro caso {@code paidAhead} es null.
      */
     public record Status(GymMember member, LocalDate anchor, boolean started, LocalDate periodStart,
                          LocalDate periodEnd, LocalDate paidUntil, boolean paidCurrent, int monthsLate,
                          BigDecimal owedTotal, List<Period> pending, GymMembership plan, int planDaysPerWeek,
-                         boolean canEnter, GymMembership active) {
+                         boolean canEnter, GymMembership active, Period paidAhead) {
+
+        /** Los dias sin cuota entre lo pago hoy y {@code paidAhead}, o null si no hay hueco. */
+        public Period gap() {
+            return paidAhead == null ? null
+                    : new Period(paidUntil.plusDays(1), paidAhead.start().minusDays(1));
+        }
     }
 
     /** El periodo que arranca en ese mes, dado el ancla. */
@@ -89,6 +99,24 @@ public class GymBillingService {
             return month.plusMonths(1);
         }
         return month;
+    }
+
+    /**
+     * Los dias sin cuota que deja un nuevo inicio de mes: desde el dia siguiente a lo pago (o desde
+     * hoy, si eso ya paso) hasta el dia antes de {@code newStart}. Esos dias el socio no entra: si el
+     * mostrador corre el inicio es porque no vino. Null si no queda hueco, o si nunca pago (el que
+     * arranca no tiene un hueco, tiene una primera cuota que empieza mas adelante).
+     *
+     * @param lastPaid la cuota paga que termina mas lejos ({@link Status#plan()})
+     */
+    public static Period gapBefore(GymMembership lastPaid, LocalDate today, LocalDate newStart) {
+        if (lastPaid == null || newStart == null) {
+            return null;
+        }
+        LocalDate afterPaid = lastPaid.getEndsOn().plusDays(1);
+        LocalDate from = afterPaid.isAfter(today) ? afterPaid : today;
+        LocalDate to = newStart.minusDays(1);
+        return from.isAfter(to) ? null : new Period(from, to);
     }
 
     @Transactional(readOnly = true)
@@ -142,7 +170,7 @@ public class GymBillingService {
             }
             return new Status(member, null, false, shown.start(), shown.end(),
                     null, false, 0, BigDecimal.ZERO, pending, plan, plan != null ? plan.getDaysPerWeek() : 0, false,
-                    activeOf(paid, today));
+                    activeOf(paid, today), null);
         }
         if (anchor == null) {
             // Socios de antes de la migracion (o registros sin backfill): su primera cuota es el ancla.
@@ -208,8 +236,10 @@ public class GymBillingService {
         // El mostrador arranco el mes de nuevo para despues de lo que el socio ya tenia pago: hasta que
         // empiece el ciclo nuevo lo habilita la cuota de antes, y lo pago llega hasta el primer hueco.
         boolean coveredBefore = !cycleStarted && paid.stream().anyMatch(m -> m.covers(today));
+        Period paidAhead = null;
         if (coveredBefore) {
             paidUntil = coveredUntil(paid, today);
+            paidAhead = paidAfter(paid, paidUntil);
         }
         boolean started = cycleStarted || coveredBefore;
         boolean canEnter = started && plan != null && monthsLate <= 1;
@@ -217,7 +247,7 @@ public class GymBillingService {
                 current == null ? periodStart(anchor, currentMonth) : current.start(),
                 current == null ? periodEnd(anchor, currentMonth) : current.end(),
                 paidUntil, isPaid(paid, current) || coveredBefore, monthsLate, owedTotal, pending, plan,
-                plan != null ? plan.getDaysPerWeek() : 0, canEnter, activeOf(paid, today));
+                plan != null ? plan.getDaysPerWeek() : 0, canEnter, activeOf(paid, today), paidAhead);
     }
 
     /**
@@ -252,5 +282,13 @@ public class GymBillingService {
             until = covering.getEndsOn();
             next = until.plusDays(1);
         }
+    }
+
+    /** Lo pago que vuelve despues de un hueco: desde la primera cuota que arranca despues de {@code until}, sin cortes (null si no hay). */
+    private static Period paidAfter(List<GymMembership> paid, LocalDate until) {
+        return paid.stream().map(GymMembership::getStartsOn).filter(start -> start.isAfter(until))
+                .min(Comparator.naturalOrder())
+                .map(start -> new Period(start, coveredUntil(paid, start)))
+                .orElse(null);
     }
 }

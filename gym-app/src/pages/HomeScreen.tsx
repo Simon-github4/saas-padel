@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ApiError, gymApi, type Me } from '../api/gymClient';
+import { ApiError, gymApi, type DateRange, type Me } from '../api/gymClient';
 import { useGymAuth } from '../auth/GymAuthContext';
 import { Alert, Badge, Button, Card, Loading, WeekDots } from '../components/ui';
 import { firstName, longDay, money, shortDay, weekUsage } from '../format';
@@ -79,6 +79,19 @@ export function HomeScreen({ onScan }: { onScan: () => void }) {
   );
 }
 
+/** Un nuevo inicio de mes dejó días sin cuota entre lo que paga hoy y lo que ya tiene pago más adelante. */
+function GapNotice({ gap, paidAhead }: { gap: DateRange; paidAhead: DateRange }) {
+  const days =
+    gap.start === gap.end
+      ? `El ${longDay(gap.start)} no tenés cuota: ese día no vas a poder entrar.`
+      : `Del ${longDay(gap.start)} al ${longDay(gap.end)} no tenés cuota: esos días no vas a poder entrar.`;
+  return (
+    <Alert tone="info">
+      {days} Ya tenés pago del {longDay(paidAhead.start)} al {longDay(paidAhead.end)}.
+    </Alert>
+  );
+}
+
 /** La tarjeta de la cuota: al día, deber la corriente (con gracia) o estar bloqueado. */
 function BillingCard({ me }: { me: Me }) {
   if (me.membership && me.monthsLate >= 2) {
@@ -136,6 +149,7 @@ function BillingCard({ me }: { me: Me }) {
           Podés entrar igual, pero pasá por el mostrador a pagar la cuota de este mes.
         </p>
       )}
+      {me.gap && me.paidAhead && <GapNotice gap={me.gap} paidAhead={me.paidAhead} />}
       <div>
         <p className="eyebrow text-ink-soft">Esta semana</p>
         <div className="mt-2 flex items-center justify-between gap-3">

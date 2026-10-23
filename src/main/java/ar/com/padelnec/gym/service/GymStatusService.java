@@ -40,12 +40,17 @@ public class GymStatusService {
      * o la primera que va a empezar), o null si
      * nunca pago. {@code valid} y {@code canEnter} dicen si puede entrar hoy:
      * con la corriente impaga entra (gracia); con dos o mas cuotas, no.
+     *
+     * <p>{@code gap} son los dias sin cuota que dejo un nuevo inicio de mes despues de lo que
+     * paga hoy (esos dias no entra), y {@code paidAhead} lo que ya tiene pago despues del hueco;
+     * los dos null si no hay hueco.
      */
     public record Status(String fullName, MembershipView membership, boolean valid, int weekUsed,
                          int weekLimit, boolean checkedInToday, List<RecentCheckin> recent,
                          LocalDate cycleStart, LocalDate periodStart, LocalDate periodEnd,
                          LocalDate paidUntil, boolean paidCurrent, int monthsLate, boolean canEnter,
-                         BigDecimal owedTotal) {
+                         BigDecimal owedTotal, GymBillingService.Period gap,
+                         GymBillingService.Period paidAhead) {
     }
 
     @Transactional(readOnly = true)
@@ -70,7 +75,8 @@ public class GymStatusService {
                 plan == null ? null : view(plan), canEnter, weekUsed,
                 plan == null ? 0 : plan.getDaysPerWeek(), checkedInToday, recent,
                 billing.anchor(), billing.periodStart(), billing.periodEnd(), billing.paidUntil(),
-                billing.paidCurrent(), billing.monthsLate(), canEnter, billing.owedTotal());
+                billing.paidCurrent(), billing.monthsLate(), canEnter, billing.owedTotal(), billing.gap(),
+                billing.paidAhead());
     }
 
     private static MembershipView view(GymMembership membership) {

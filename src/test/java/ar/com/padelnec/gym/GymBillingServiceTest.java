@@ -489,6 +489,8 @@ class GymBillingServiceTest {
         assertThat(status.paidUntil()).isEqualTo(LocalDate.of(2026, 12, 14));
         assertThat(status.active().getStartsOn()).isEqualTo(LocalDate.of(2026, 10, 15));
         assertThat(status.pending().getFirst().start()).isEqualTo(LocalDate.of(2026, 12, 15));
+        assertThat(status.paidAhead()).isNull();
+        assertThat(status.gap()).isNull();
     }
 
     @Test
@@ -502,6 +504,11 @@ class GymBillingServiceTest {
         Status covered = billing.status(memberId, today);
         assertThat(covered.canEnter()).isTrue();
         assertThat(covered.paidUntil()).isEqualTo(LocalDate.of(2026, 11, 14));
+        // Lo que ya tiene pago despues del hueco, para avisarlo en el panel y en la app.
+        assertThat(covered.gap())
+                .isEqualTo(new GymBillingService.Period(LocalDate.of(2026, 11, 15), LocalDate.of(2026, 11, 19)));
+        assertThat(covered.paidAhead())
+                .isEqualTo(new GymBillingService.Period(LocalDate.of(2026, 11, 20), LocalDate.of(2026, 12, 19)));
 
         Status inTheGap = billing.status(memberId, LocalDate.of(2026, 11, 16));
         assertThat(inTheGap.started()).isFalse();
@@ -511,6 +518,42 @@ class GymBillingServiceTest {
         Status newCycle = billing.status(memberId, LocalDate.of(2026, 11, 20));
         assertThat(newCycle.canEnter()).isTrue();
         assertThat(newCycle.paidUntil()).isEqualTo(LocalDate.of(2026, 12, 19));
+    }
+
+    /** Una cuota paga hasta {@code endsOn}, para el calculo del hueco (no se guarda). */
+    private static GymMembership paidUntil(LocalDate endsOn) {
+        GymMembership fee = new GymMembership();
+        fee.setStartsOn(endsOn.minusMonths(1).plusDays(1));
+        fee.setEndsOn(endsOn);
+        return fee;
+    }
+
+    @Test
+    @DisplayName("El hueco de un nuevo inicio va del dia siguiente a lo pago al dia antes del inicio")
+    void theGapRunsFromTheEndOfThePaidMonthToTheNewStart() {
+        LocalDate today = LocalDate.of(2026, 10, 21);
+        GymMembership paid = paidUntil(LocalDate.of(2026, 11, 14));
+
+        assertThat(GymBillingService.gapBefore(paid, today, LocalDate.of(2026, 11, 15))).isNull();
+        assertThat(GymBillingService.gapBefore(paid, today, LocalDate.of(2026, 11, 20)))
+                .isEqualTo(new GymBillingService.Period(LocalDate.of(2026, 11, 15), LocalDate.of(2026, 11, 19)));
+        assertThat(GymBillingService.gapBefore(paid, today, LocalDate.of(2026, 11, 16)))
+                .isEqualTo(new GymBillingService.Period(LocalDate.of(2026, 11, 15), LocalDate.of(2026, 11, 15)));
+    }
+
+    @Test
+    @DisplayName("Con la cuota vencida, el hueco arranca hoy; sin hueco a futuro o sin cuotas no hay aviso")
+    void anExpiredFeeLeavesAGapFromToday() {
+        LocalDate today = LocalDate.of(2026, 10, 23);
+        GymMembership expired = paidUntil(LocalDate.of(2026, 10, 16));
+
+        assertThat(GymBillingService.gapBefore(expired, today, LocalDate.of(2026, 10, 28)))
+                .isEqualTo(new GymBillingService.Period(today, LocalDate.of(2026, 10, 27)));
+        // Los dias sin pagar de antes de hoy no son un hueco: el nuevo inicio los deja de cobrar.
+        assertThat(GymBillingService.gapBefore(expired, today, today)).isNull();
+        assertThat(GymBillingService.gapBefore(expired, today, LocalDate.of(2026, 10, 20))).isNull();
+        // El que nunca pago no tiene hueco: su primera cuota empieza mas adelante.
+        assertThat(GymBillingService.gapBefore(null, today, LocalDate.of(2026, 10, 28))).isNull();
     }
 
     @Test

@@ -66,6 +66,19 @@ export interface Me {
   canEnter: boolean;
   /** Lo que debe, a valor de la tarifa de su plan. */
   owedTotal: number;
+  /**
+   * Los días sin cuota que dejó un nuevo inicio de mes después de lo que paga hoy: esos días no
+   * entra. Null si no hay hueco.
+   */
+  gap: DateRange | null;
+  /** Lo que ya tiene pago después del hueco. Null si no hay hueco. */
+  paidAhead: DateRange | null;
+}
+
+/** Del día `start` al día `end`, inclusive. */
+export interface DateRange {
+  start: string;
+  end: string;
 }
 
 export interface CheckInResult {

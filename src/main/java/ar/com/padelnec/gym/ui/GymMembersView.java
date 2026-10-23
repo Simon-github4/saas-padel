@@ -198,9 +198,33 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         }
         if (billing.paidCurrent()) {
             LocalDate until = billing.paidUntil() != null ? billing.paidUntil() : billing.periodEnd();
-            return GymViewSupport.badge("Al día hasta " + SHORT_DAY.format(until), "success");
+            Span paid = GymViewSupport.badge("Al día hasta " + SHORT_DAY.format(until), "success");
+            return billing.gap() == null ? paid : withGapWarning(paid, billing);
         }
         return GymViewSupport.badge("Debe el mes", "contrast");
+    }
+
+    /**
+     * "Al día" con un aviso: un nuevo inicio de mes dejó días sin cuota antes de lo que ya tiene
+     * pago más adelante, y esos días no entra. El detalle va en el tooltip.
+     */
+    private static Component withGapWarning(Span paid, GymBillingService.Status billing) {
+        Period gap = billing.gap();
+        Period ahead = billing.paidAhead();
+        String detail = gapDays(gap) + " no tiene cuota: " + (oneDay(gap) ? "ese día" : "esos días")
+                + " no puede entrar. Ya tiene pago del " + SHORT_DAY.format(ahead.start()) + " al "
+                + SHORT_DAY.format(ahead.end()) + " por un nuevo inicio de mes.";
+        Span warning = new Span(VaadinIcon.WARNING.create());
+        warning.addClassNames(LumoUtility.TextColor.WARNING, LumoUtility.FontSize.SMALL);
+        warning.getElement().setAttribute("title", detail);
+        warning.getElement().setAttribute("aria-label", detail);
+        warning.getElement().setAttribute("role", "img");
+
+        HorizontalLayout cell = new HorizontalLayout(paid, warning);
+        cell.setPadding(false);
+        cell.setAlignItems(Alignment.CENTER);
+        cell.addClassNames(LumoUtility.Gap.XSMALL);
+        return cell;
     }
 
     private Component weekCell(MemberRow row) {
@@ -327,7 +351,11 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
 
         CheckboxGroup<Period> periods = new CheckboxGroup<>("Cuotas a cobrar");
         periods.setItemLabelGenerator(period -> {
-            LocalDate nextStart = cycleOf[0].periodEnd().plusDays(1);
+            // La próxima es la que sigue a la corriente; si el ciclo todavía no empezó (un nuevo
+            // inicio a futuro), es su primera cuota.
+            LocalDate nextStart = cycleOf[0].periodStart().isAfter(today)
+                    ? cycleOf[0].periodStart()
+                    : cycleOf[0].periodEnd().plusDays(1);
             String state = period.end().isBefore(today) ? "Vencida"
                     : !today.isBefore(period.start()) ? "Corriente"
                     : period.start().equals(nextStart) ? "Próxima" : "Adelanto";
@@ -345,6 +373,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         if (billing.plan() != null && billing.plan().getEndsOn().isAfter(earliest)) {
             earliest = billing.plan().getEndsOn().plusDays(1);
         }
+        newStart.setI18n(GymViewSupport.spanishDates());
         newStart.setMin(earliest);
         newStart.setMax(today.plusYears(1));
         newStart.setClearButtonVisible(true);
@@ -353,8 +382,17 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                 : "Vacío: sigue su ciclo como venía. Con una fecha, su mes arranca de nuevo ese día.");
         newStart.setWidthFull();
 
+        // Un nuevo inicio después del día siguiente a lo pago deja días sin cuota, y esos días no
+        // entra: se avisa antes de cobrar, por si el socio sí va a venir.
+        Span gapWarning = new Span();
+        gapWarning.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.Background.WARNING_10,
+                LumoUtility.Padding.SMALL, LumoUtility.BorderRadius.MEDIUM);
+        gapWarning.setWidthFull();
+        gapWarning.setVisible(false);
+
         // La fecha de cobro es aparte del período: un pago de otro día va a la caja de ese día.
         DatePicker paidOn = new DatePicker("Fecha de cobro");
+        paidOn.setI18n(GymViewSupport.spanishDates());
         paidOn.setValue(today);
         paidOn.setMax(today);
         paidOn.setWidthFull();
@@ -404,6 +442,11 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                 cycle.setText("Su mes arranca de nuevo el " + SHORT_DAY.format(start)
                         + ": los meses de antes sin pagar ya no se cobran.");
             }
+            Period gap = GymBillingService.gapBefore(billing.plan(), today, start);
+            gapWarning.setVisible(gap != null);
+            if (gap != null) {
+                gapWarning.setText(gapText(gap));
+            }
             showPeriods(periods, cycleOf[0].pending());
         });
         periods.addValueChangeListener(event -> updateTotal(total, price, periods, tariffFor(days)));
@@ -451,7 +494,8 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         plan.setPadding(false);
         plan.setFlexGrow(1, days, price);
 
-        VerticalLayout body = new VerticalLayout(cycle, newStart, periods, plan, total, sedeGroup, payment);
+        VerticalLayout body = new VerticalLayout(cycle, newStart, gapWarning, periods, plan, total, sedeGroup,
+                payment);
         body.setPadding(false);
         dialog.add(body);
 
@@ -491,6 +535,24 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         periods.setItems(pending);
         List<Period> owed = pending.stream().filter(period -> !period.start().isAfter(today)).toList();
         periods.select(owed.isEmpty() ? Set.of(pending.getFirst()) : Set.copyOf(owed));
+    }
+
+    /** El aviso de los días que quedan sin cuota entre lo pago y el nuevo inicio de mes. */
+    private static String gapText(Period gap) {
+        return gapDays(gap) + " queda sin cuota: " + (oneDay(gap) ? "ese día" : "esos días")
+                + " no va a poder entrar. Si va a venir, poné el " + SHORT_DAY.format(gap.start())
+                + " como inicio de mes.";
+    }
+
+    /** Los días de un hueco: "El 11/11" o "Del 11/11 al 14/11". */
+    private static String gapDays(Period gap) {
+        return oneDay(gap)
+                ? "El " + SHORT_DAY.format(gap.start())
+                : "Del " + SHORT_DAY.format(gap.start()) + " al " + SHORT_DAY.format(gap.end());
+    }
+
+    private static boolean oneDay(Period gap) {
+        return gap.start().equals(gap.end());
     }
 
     /** Los días por semana que definen la tarifa: los que muestra el campo. */
