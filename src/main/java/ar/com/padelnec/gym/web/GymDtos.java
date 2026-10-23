@@ -1,6 +1,7 @@
 package ar.com.padelnec.gym.web;
 
 import ar.com.padelnec.gym.service.GymAuthService.IssuedSession;
+import ar.com.padelnec.gym.service.GymBillingService.Period;
 import ar.com.padelnec.gym.service.GymCheckinService.CheckInResult;
 import ar.com.padelnec.gym.service.GymStatusService.MembershipView;
 import ar.com.padelnec.gym.service.GymStatusService.RecentCheckin;
@@ -97,7 +98,7 @@ public final class GymDtos {
                              int weekLimit, boolean checkedInToday, List<RecentCheckinResponse> recent,
                              LocalDate cycleStart, LocalDate periodStart, LocalDate periodEnd,
                              LocalDate paidUntil, boolean paidCurrent, int monthsLate, boolean canEnter,
-                             java.math.BigDecimal owedTotal, boolean onPasses) {
+                             java.math.BigDecimal owedTotal, boolean onPasses, Period gap, Period paidAhead) {
 
         static MeResponse of(Status status) {
             return new MeResponse(status.fullName(), MembershipResponse.of(status.membership()), status.valid(),
@@ -105,7 +106,7 @@ public final class GymDtos {
                     status.recent().stream().map(RecentCheckinResponse::of).toList(),
                     status.cycleStart(), status.periodStart(), status.periodEnd(), status.paidUntil(),
                     status.paidCurrent(), status.monthsLate(), status.canEnter(), status.owedTotal(),
-                    status.onPasses());
+                    status.onPasses(), status.gap(), status.paidAhead());
         }
     }
 }

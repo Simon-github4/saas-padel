@@ -70,6 +70,19 @@ export interface Me {
   owedTotal: number;
   /** Su última cuota es un pase de 15 días: lo pago vence sin deuda ni gracia. */
   onPasses: boolean;
+  /**
+   * Los días sin cuota que dejó un nuevo inicio de mes (o un pase que arranca más adelante)
+   * después de lo que paga hoy: esos días no entra. Null si no hay hueco.
+   */
+  gap: DateRange | null;
+  /** Lo que ya tiene pago después del hueco. Null si no hay hueco. */
+  paidAhead: DateRange | null;
+}
+
+/** Del día `start` al día `end`, inclusive. */
+export interface DateRange {
+  start: string;
+  end: string;
 }
 
 export interface CheckInResult {

@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,8 +79,9 @@ public class GymMembershipService {
         membership.setSedes(sedes);
         try {
             return membershipRepository.saveAndFlush(membership).getId();
-        } catch (DataIntegrityViolationException ex) {
-            // La constraint de exclusion de la base es la que cierra la carrera entre dos ventas.
+        } catch (DataIntegrityViolationException | ConcurrencyFailureException ex) {
+            // La constraint de exclusion de la base es la que cierra la carrera entre dos ventas. Si
+            // las dos se insertan a la vez, Postgres puede cortar una como deadlock en vez de violacion.
             throw overlap();
         }
     }
@@ -188,7 +190,7 @@ public class GymMembershipService {
             membership.setSedes(sedes);
             try {
                 ids.add(membershipRepository.saveAndFlush(membership).getId());
-            } catch (DataIntegrityViolationException ex) {
+            } catch (DataIntegrityViolationException | ConcurrencyFailureException ex) {
                 // Otro cobro del mismo socio entro al mismo tiempo: la constraint de la base lo frena.
                 throw overlap();
             }
@@ -280,7 +282,7 @@ public class GymMembershipService {
         pass.setSedes(sedes);
         try {
             return membershipRepository.saveAndFlush(pass).getId();
-        } catch (DataIntegrityViolationException ex) {
+        } catch (DataIntegrityViolationException | ConcurrencyFailureException ex) {
             // La constraint de exclusion de la base es la que cierra la carrera entre dos cobros.
             throw overlap();
         }

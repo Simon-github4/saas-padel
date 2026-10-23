@@ -411,7 +411,7 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         button.addClassName("agenda-card__button");
         button.setWidthFull();
         button.setEnabled(row.slot().startsAt().isAfter(clock.instant()));
-        button.getElement().setAttribute("title", "Podés cargar un turno manual como excepción");
+        button.setTooltipText("Podés cargar un turno manual como excepción");
         Div wrapper = card(button, "agenda-card--suspended");
         if (!button.isEnabled()) {
             wrapper.addClassName("agenda-card--disabled");
@@ -429,7 +429,7 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
                 event -> openDetail(booking));
         button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         button.addClassName("agenda-card__button");
-        button.getElement().setAttribute("title", otherName
+        button.setTooltipText(otherName
                 ? "Reservó como %s · el teléfono es de %s".formatted(
                         booking.displayName(), booking.getCustomer().getFullName())
                 : booking.displayName());
@@ -502,7 +502,7 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         button.setEnabled(enabled);
         suspension.map(Blackout::getReason)
                 .filter(reason -> reason != null && !reason.isBlank())
-                .ifPresent(reason -> button.getElement().setAttribute("title", reason));
+                .ifPresent(button::setTooltipText);
 
         Div wrapper = card(button, blocked ? "agenda-card--suspended" : "agenda-card--free");
         if (!enabled) {

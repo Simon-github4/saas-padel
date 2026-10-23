@@ -29,6 +29,8 @@ function me(overrides: Partial<Me>): Me {
     canEnter: true,
     owedTotal: 0,
     onPasses: false,
+    gap: null,
+    paidAhead: null,
     ...overrides,
   };
 }

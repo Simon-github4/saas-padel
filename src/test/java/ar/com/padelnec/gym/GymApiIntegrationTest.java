@@ -421,4 +421,25 @@ class GymApiIntegrationTest {
                             .doesNotContain("href=\"/apple-touch-icon.png\""));
         }
     }
+
+    @Test
+    @DisplayName("Con un nuevo inicio de mes que deja hueco, \"mi estado\" dice que dias no entra y que tiene pago despues")
+    void meExplainsTheGapBeforeANewStart() {
+        String token = readyToken(ana);
+        assertThat(get("los-troncos", "/me", token, 200).get("gap").isNull()).isTrue();
+
+        // Ana tiene pago hasta dentro de 29 dias; el mes nuevo arranca dentro de 35.
+        LocalDate today = LocalDate.now(ZONE);
+        LocalDate newStart = today.plusDays(35);
+        TenantContext.runAs(club.getId(), () -> membershipService.charge(ana.id(), 1, new BigDecimal("30000"), 3,
+                PayMethod.CASH, sede.getId(), Set.of(sede.getId()), null, today, newStart, null));
+
+        JsonNode me = get("los-troncos", "/me", token, 200);
+        assertThat(me.get("canEnter").asBoolean()).isTrue();
+        assertThat(me.get("paidUntil").asText()).isEqualTo(today.plusDays(29).toString());
+        assertThat(me.get("gap").get("start").asText()).isEqualTo(today.plusDays(30).toString());
+        assertThat(me.get("gap").get("end").asText()).isEqualTo(today.plusDays(34).toString());
+        assertThat(me.get("paidAhead").get("start").asText()).isEqualTo(newStart.toString());
+        assertThat(me.get("paidAhead").get("end").asText()).isEqualTo(newStart.plusMonths(1).minusDays(1).toString());
+    }
 }

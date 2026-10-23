@@ -2,6 +2,7 @@ package ar.com.padelnec.ui;
 
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.shared.Tooltip;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import java.util.List;
 
@@ -102,7 +103,7 @@ public class BarChart extends Div {
                 .set("display", "flex")
                 .set("align-items", "flex-end")
                 .set("justify-content", "center");
-        slot.getElement().setAttribute("title", bar.tooltip());
+        Tooltip.forComponent(slot).setText(bar.tooltip());
         return slot;
     }
 

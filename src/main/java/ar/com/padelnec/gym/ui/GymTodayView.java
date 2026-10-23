@@ -54,6 +54,7 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
         setSizeFull();
         addClassNames(LumoUtility.Gap.MEDIUM);
 
+        day.setI18n(GymViewSupport.spanishDates());
         day.setValue(overviewService.today());
         day.setAriaLabel("Día");
         day.addValueChangeListener(event -> refresh());

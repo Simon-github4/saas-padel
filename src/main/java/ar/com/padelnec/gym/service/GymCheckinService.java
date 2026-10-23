@@ -110,12 +110,12 @@ public class GymCheckinService {
         if (membership == null) {
             throw new BusinessRuleException("No tenés una cuota vigente. Consultá en el mostrador.");
         }
-        // Primero si puede entrar: un pase que corre con el plan mensual por empezar deja entrar
-        // aunque el ciclo no haya arrancado. Sin pases, no haber arrancado ya implica no poder.
+        if (!status.started()) {
+            // El inicio del ciclo, no el de la cuota activa: puede ser una vieja ya vencida.
+            throw new BusinessRuleException("Tu cuota empieza el " + DAY.format(status.periodStart()) + ".");
+        }
         if (!status.canEnter()) {
-            if (!status.started()) {
-                throw new BusinessRuleException("Tu cuota empieza el " + DAY.format(membership.getStartsOn()) + ".");
-            }
+            // Un pase vencido no es deuda: no tiene gracia, pero tampoco cuotas que regularizar.
             if (status.onPasses()) {
                 throw new BusinessRuleException("Tu pase de 15 días venció el " + DAY.format(membership.getEndsOn())
                         + ". Renová en el mostrador.");

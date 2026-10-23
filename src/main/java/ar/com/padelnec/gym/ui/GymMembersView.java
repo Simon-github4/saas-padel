@@ -40,6 +40,7 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
 import com.vaadin.flow.component.select.Select;
+import com.vaadin.flow.component.shared.Tooltip;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.component.textfield.TextField;
@@ -147,7 +148,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
 
         count.getElement().getThemeList().add("badge contrast");
         active.getElement().getThemeList().add("badge success");
-        active.getElement().setAttribute("title", "Socios con la cuota de hoy paga, mensual o pase de 15 días. "
+        Tooltip.forComponent(active).setText("Socios con la cuota de hoy paga, mensual o pase de 15 días. "
                 + "No cuenta a los que deben el mes, a los que todavía no empezaron ni a los deshabilitados.");
 
         Button newMember = new Button("Nuevo socio", VaadinIcon.PLUS.create(), event -> openNewMember());
@@ -199,7 +200,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         Span dni = new Span(row.dni() == null ? "Sin DNI" : "DNI " + row.dni());
         dni.addClassNames(LumoUtility.FontSize.XSMALL, LumoUtility.TextColor.SECONDARY);
         if (row.dni() == null) {
-            dni.getElement().setAttribute("title", "Sin DNI no puede entrar a la app. Cargáselo en «Editar datos».");
+            Tooltip.forComponent(dni).setText("Sin DNI no puede entrar a la app. Cargáselo en «Editar datos».");
         }
         VerticalLayout lines = new VerticalLayout(name, dni);
         lines.setPadding(false);
@@ -213,7 +214,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             cell.add(GymViewSupport.badge("Deshabilitado", "error small"));
         } else if (passwordRequired && row.mustChangePassword()) {
             Span temp = GymViewSupport.badge("Clave temporal", "contrast small");
-            temp.getElement().setAttribute("title", "Todavía no cambió la clave que le dieron en el mostrador");
+            Tooltip.forComponent(temp).setText("Todavía no cambió la clave que le dieron en el mostrador");
             cell.add(temp);
         }
         return cell;
@@ -228,35 +229,62 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             return passCell(billing);
         }
         if (!billing.started()) {
-            return GymViewSupport.badge("Empieza el " + SHORT_DAY.format(billing.active().getStartsOn()), "contrast");
+            // El inicio del ciclo, no el de la cuota activa: puede ser una vieja ya vencida.
+            return GymViewSupport.badge("Empieza el " + SHORT_DAY.format(billing.periodStart()), "contrast");
         }
         if (billing.monthsLate() >= 2) {
             return GymViewSupport.badge("Adeudás " + billing.monthsLate() + " cuotas", "error");
         }
         if (billing.paidCurrent()) {
             LocalDate until = billing.paidUntil() != null ? billing.paidUntil() : billing.periodEnd();
-            return GymViewSupport.badge("Al día hasta " + SHORT_DAY.format(until), "success");
+            Span paid = GymViewSupport.badge("Al día hasta " + SHORT_DAY.format(until), "success");
+            return billing.gap() == null ? paid : withGapWarning(paid, billing);
         }
         return GymViewSupport.badge("Debe el mes", "contrast");
     }
 
     /**
      * El que se rige por un pase: solo cuenta la cobertura. Al día, por empezar o vencido (en gris:
-     * un pase vencido no es deuda).
+     * un pase vencido no es deuda). Si lo pago de hoy deja un hueco antes de otra cuota, se avisa.
      */
     private static Component passCell(GymBillingService.Status billing) {
         // Una sola etiqueta, que entra en la columna. "Pase hasta" es el pase de hoy y nada despues;
         // si lo sigue otra cuota pegada, "Al día hasta" el fin de esa cobertura.
         if (billing.canEnter()) {
             boolean onlyThePass = billing.active().isPass() && billing.paidUntil().equals(billing.active().getEndsOn());
-            return GymViewSupport.badge((onlyThePass ? "Pase hasta " : "Al día hasta ")
+            Span paid = GymViewSupport.badge((onlyThePass ? "Pase hasta " : "Al día hasta ")
                     + SHORT_DAY.format(billing.paidUntil()), "success");
+            return billing.gap() == null ? paid : withGapWarning(paid, billing);
         }
         if (!billing.started()) {
             return GymViewSupport.badge((billing.active().isPass() ? "Pase desde " : "Empieza el ")
                     + SHORT_DAY.format(billing.active().getStartsOn()), "contrast");
         }
         return GymViewSupport.badge("Pase vencido el " + SHORT_DAY.format(billing.active().getEndsOn()), "contrast");
+    }
+
+    /**
+     * "Al día" con un aviso: quedan días sin cuota antes de lo que ya tiene pago más adelante (por
+     * un nuevo inicio de mes, o un pase que arranca después), y esos días no entra. El detalle va
+     * en el tooltip.
+     */
+    private static Component withGapWarning(Span paid, GymBillingService.Status billing) {
+        Period gap = billing.gap();
+        Period ahead = billing.paidAhead();
+        String detail = gapDays(gap) + " no tiene cuota: " + (oneDay(gap) ? "ese día" : "esos días")
+                + " no puede entrar. Ya tiene pago del " + SHORT_DAY.format(ahead.start()) + " al "
+                + SHORT_DAY.format(ahead.end()) + (billing.onPasses() ? "." : " por un nuevo inicio de mes.");
+        Span warning = new Span(VaadinIcon.WARNING.create());
+        warning.addClassNames("gap-warning", LumoUtility.TextColor.WARNING);
+        warning.getElement().setAttribute("aria-label", detail);
+        warning.getElement().setAttribute("role", "img");
+        Tooltip.forComponent(warning).setText(detail);
+
+        HorizontalLayout cell = new HorizontalLayout(paid, warning);
+        cell.setPadding(false);
+        cell.setAlignItems(Alignment.CENTER);
+        cell.addClassNames(LumoUtility.Gap.XSMALL);
+        return cell;
     }
 
     private Component weekCell(MemberRow row) {
@@ -398,12 +426,11 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
 
         CheckboxGroup<Period> periods = new CheckboxGroup<>("Cuotas a cobrar");
         periods.setItemLabelGenerator(period -> {
-            LocalDate nextStart = cycleOf[0].periodEnd().plusDays(1);
-            if (fromPasses && !cycleOf[0].pending().isEmpty()
-                    && cycleOf[0].pending().getFirst().start().isAfter(today)) {
-                // El que viene de pases: su primer mes es el proximo, aunque arranque en unos dias.
-                nextStart = cycleOf[0].pending().getFirst().start();
-            }
+            // La próxima es la que sigue a la corriente; si el ciclo todavía no empezó (un nuevo
+            // inicio a futuro), es su primera cuota.
+            LocalDate nextStart = cycleOf[0].periodStart().isAfter(today)
+                    ? cycleOf[0].periodStart()
+                    : cycleOf[0].periodEnd().plusDays(1);
             String state = period.end().isBefore(today) ? "Vencida"
                     : !today.isBefore(period.start()) ? "Corriente"
                     : period.start().equals(nextStart) ? "Próxima" : "Adelanto";
@@ -421,6 +448,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         if (billing.plan() != null && billing.plan().getEndsOn().isAfter(earliest)) {
             earliest = billing.plan().getEndsOn().plusDays(1);
         }
+        newStart.setI18n(GymViewSupport.spanishDates());
         newStart.setMin(earliest);
         newStart.setMax(today.plusYears(1));
         newStart.setClearButtonVisible(true);
@@ -437,6 +465,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         // El pase vale 15 dias desde que arranca, sin fechas para atras: lo cobrado otro dia va
         // en "Fecha de cobro". Por defecto arranca el dia despues de lo pago, o hoy.
         DatePicker passFrom = new DatePicker("Desde");
+        passFrom.setI18n(GymViewSupport.spanishDates());
         passFrom.setMin(nextFree);
         passFrom.setMax(today.plusYears(1));
         passFrom.setValue(nextFree);
@@ -454,8 +483,17 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                 ? "Dejar de cobrar la cuota mensual impaga"
                 : "Dejar de cobrar las " + owedMonths + " cuotas mensuales impagas");
 
+        // Un nuevo inicio después del día siguiente a lo pago deja días sin cuota, y esos días no
+        // entra: se avisa antes de cobrar, por si el socio sí va a venir.
+        Span gapWarning = new Span();
+        gapWarning.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.Background.WARNING_10,
+                LumoUtility.Padding.SMALL, LumoUtility.BorderRadius.MEDIUM);
+        gapWarning.setWidthFull();
+        gapWarning.setVisible(false);
+
         // La fecha de cobro es aparte del período: un pago de otro día va a la caja de ese día.
         DatePicker paidOn = new DatePicker("Fecha de cobro");
+        paidOn.setI18n(GymViewSupport.spanishDates());
         paidOn.setValue(today);
         paidOn.setMax(today);
         paidOn.setWidthFull();
@@ -509,6 +547,11 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                 cycle.setText("Su mes arranca de nuevo el " + SHORT_DAY.format(start)
                         + ": los meses de antes sin pagar ya no se cobran.");
             }
+            Period gap = GymBillingService.gapBefore(billing.plan(), today, start);
+            gapWarning.setVisible(gap != null);
+            if (gap != null) {
+                gapWarning.setText(gapText(gap));
+            }
             showPeriods(periods, cycleOf[0].pending());
         });
         periods.addValueChangeListener(event -> refresh.run());
@@ -560,6 +603,8 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             boolean pass = planType.getValue() == PlanLength.FIFTEEN_DAYS;
             cycle.setVisible(!pass);
             newStart.setVisible(!pass);
+            gapWarning.setVisible(!pass
+                    && GymBillingService.gapBefore(billing.plan(), today, newStart.getValue()) != null);
             periods.setVisible(!pass);
             passFrom.setVisible(pass);
             dropDebt.setVisible(pass && owedMonths > 0);
@@ -570,8 +615,8 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         planType.addValueChangeListener(event -> showPlan.run());
         showPlan.run();
 
-        VerticalLayout body = new VerticalLayout(planType, cycle, newStart, periods, passFrom, dropDebt, plan, total,
-                sedeGroup, payment);
+        VerticalLayout body = new VerticalLayout(planType, cycle, newStart, gapWarning, periods, passFrom, dropDebt,
+                plan, total, sedeGroup, payment);
         body.setPadding(false);
         dialog.add(body);
 
@@ -629,6 +674,24 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         }
         List<Period> owed = pending.stream().filter(period -> !period.start().isAfter(today)).toList();
         periods.select(owed.isEmpty() ? Set.of(pending.getFirst()) : Set.copyOf(owed));
+    }
+
+    /** El aviso de los días que quedan sin cuota entre lo pago y el nuevo inicio de mes. */
+    private static String gapText(Period gap) {
+        return gapDays(gap) + " queda sin cuota: " + (oneDay(gap) ? "ese día" : "esos días")
+                + " no va a poder entrar. Si va a venir, poné el " + SHORT_DAY.format(gap.start())
+                + " como inicio de mes.";
+    }
+
+    /** Los días de un hueco: "El 11/11" o "Del 11/11 al 14/11". */
+    private static String gapDays(Period gap) {
+        return oneDay(gap)
+                ? "El " + SHORT_DAY.format(gap.start())
+                : "Del " + SHORT_DAY.format(gap.start()) + " al " + SHORT_DAY.format(gap.end());
+    }
+
+    private static boolean oneDay(Period gap) {
+        return gap.start().equals(gap.end());
     }
 
     /** Los días por semana que definen la tarifa: los que muestra el campo. */

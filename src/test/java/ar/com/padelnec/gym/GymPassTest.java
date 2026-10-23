@@ -380,7 +380,8 @@ class GymPassTest {
 
         Status duringThePass = at(OCT_21);
         assertThat(duringThePass.onPasses()).isFalse();
-        assertThat(duringThePass.started()).isFalse();
+        // Ya rige una cuota (el pase), aunque el ciclo mensual todavia no empezo.
+        assertThat(duringThePass.started()).isTrue();
         assertThat(duringThePass.canEnter()).isTrue();
         assertThat(duringThePass.active().isPass()).isTrue();
         assertThat(duringThePass.passRules()).isTrue();
