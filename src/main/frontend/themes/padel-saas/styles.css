@@ -1296,3 +1296,41 @@ html {
   color: var(--caja-buffet-text-color);
   background: color-mix(in srgb, var(--caja-buffet-color) 12%, var(--lumo-base-color));
 }
+
+/* =====================================================================
+   Tooltips
+   ===================================================================== */
+
+/* Oscuros y con aire. El de Lumo es gris claro sobre el fondo claro del
+   panel, en letra chica y pegado al texto: se pierde. Este se lee de un
+   vistazo, con la tipografia y el radio del resto, y la franja naranja de
+   la seccion activa del menu como unico acento. Lumo pinta el overlay desde
+   adentro del Shadow DOM; ::part() desde afuera le gana. */
+vaadin-tooltip::part(overlay) {
+  max-width: 36ch;
+  background: #1c1917;
+  color: #fafaf9;
+  border-radius: var(--lumo-border-radius-l);
+  box-shadow:
+    inset 3px 0 0 var(--lumo-primary-color),
+    0 8px 24px -6px rgba(28, 25, 23, 0.45),
+    0 2px 6px -2px rgba(28, 25, 23, 0.25);
+  font-size: var(--lumo-font-size-s);
+  font-weight: 450;
+  line-height: 1.45;
+}
+
+vaadin-tooltip::part(content) {
+  padding: 0.5rem 0.75rem 0.5rem 0.875rem;
+}
+
+/* El aviso que dispara un tooltip: se nota que tiene algo para leer. */
+.gap-warning {
+  display: inline-flex;
+  cursor: help;
+}
+
+.gap-warning vaadin-icon {
+  width: var(--lumo-icon-size-s);
+  height: var(--lumo-icon-size-s);
+}

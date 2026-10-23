@@ -33,6 +33,7 @@ import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.shared.TooltipConfiguration;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
 import com.vaadin.flow.router.AfterNavigationEvent;
@@ -149,6 +150,11 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         this.clubId = club.getId();
         this.publicUrl = properties.getBaseUrl() + "/club/" + club.getSlug();
 
+        // Los tooltips aparecen antes que el medio segundo de Vaadin: son ayuda para leer al pasar,
+        // no algo que haya que esperar.
+        TooltipConfiguration.setDefaultHoverDelay(300);
+        TooltipConfiguration.setDefaultHideDelay(150);
+
         setPrimarySection(Section.DRAWER);
         // touchOptimized en false: con true, en pantallas chicas Vaadin manda la barra
         // (y con ella el boton del menu) abajo de todo.
@@ -201,7 +207,7 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         Button copy = new Button("Copiar link", VaadinIcon.COPY_O.create(), event -> copyPublicLink());
         copy.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         copy.setAriaLabel("Copiar link de la página del club");
-        copy.getElement().setAttribute("title", "Copiar link de la página de reservas: " + publicUrl);
+        copy.setTooltipText("Copiar link de la página de reservas: " + publicUrl);
         // Mismo color que el fondo tinte: sin esto el boton queda gris por
         // defecto, un detalle mas entre el resto de la barra.
         copy.getStyle().set("color", "var(--lumo-primary-text-color)");

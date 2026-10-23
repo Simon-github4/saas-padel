@@ -36,6 +36,7 @@ import com.vaadin.flow.component.orderedlayout.FlexComponent.JustifyContentMode;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.select.Select;
+import com.vaadin.flow.component.shared.Tooltip;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.component.textfield.TextField;
@@ -164,7 +165,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         Span dni = new Span(row.dni() == null ? "Sin DNI" : "DNI " + row.dni());
         dni.addClassNames(LumoUtility.FontSize.XSMALL, LumoUtility.TextColor.SECONDARY);
         if (row.dni() == null) {
-            dni.getElement().setAttribute("title", "Sin DNI no puede entrar a la app. Cargáselo en «Editar datos».");
+            Tooltip.forComponent(dni).setText("Sin DNI no puede entrar a la app. Cargáselo en «Editar datos».");
         }
         VerticalLayout lines = new VerticalLayout(name, dni);
         lines.setPadding(false);
@@ -178,7 +179,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             cell.add(GymViewSupport.badge("Deshabilitado", "error small"));
         } else if (passwordRequired && row.mustChangePassword()) {
             Span temp = GymViewSupport.badge("Clave temporal", "contrast small");
-            temp.getElement().setAttribute("title", "Todavía no cambió la clave que le dieron en el mostrador");
+            Tooltip.forComponent(temp).setText("Todavía no cambió la clave que le dieron en el mostrador");
             cell.add(temp);
         }
         return cell;
@@ -215,10 +216,10 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                 + " no puede entrar. Ya tiene pago del " + SHORT_DAY.format(ahead.start()) + " al "
                 + SHORT_DAY.format(ahead.end()) + " por un nuevo inicio de mes.";
         Span warning = new Span(VaadinIcon.WARNING.create());
-        warning.addClassNames(LumoUtility.TextColor.WARNING, LumoUtility.FontSize.SMALL);
-        warning.getElement().setAttribute("title", detail);
+        warning.addClassNames("gap-warning", LumoUtility.TextColor.WARNING);
         warning.getElement().setAttribute("aria-label", detail);
         warning.getElement().setAttribute("role", "img");
+        Tooltip.forComponent(warning).setText(detail);
 
         HorizontalLayout cell = new HorizontalLayout(paid, warning);
         cell.setPadding(false);

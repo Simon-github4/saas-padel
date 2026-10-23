@@ -185,7 +185,7 @@ public class CustomersView extends VerticalLayout {
         Button edit = new Button(VaadinIcon.PENCIL.create(), event -> openRename(customer));
         edit.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_SMALL);
         edit.setAriaLabel("Cambiar el nombre de " + customer.getFullName());
-        edit.getElement().setAttribute("title", "Cambiar nombre");
+        edit.setTooltipText("Cambiar nombre");
 
         HorizontalLayout cell = new HorizontalLayout(name, edit);
         cell.setPadding(false);
@@ -240,7 +240,7 @@ public class CustomersView extends VerticalLayout {
         }
         Span badge = new Span("Con cuenta");
         badge.getElement().getThemeList().add("badge success small");
-        badge.getElement().setAttribute("title",
+        Tooltip.forComponent(badge).setText(
                 "Su nombre solo lo cambia el jugador con su sesión o el club desde acá");
         return badge;
     }
