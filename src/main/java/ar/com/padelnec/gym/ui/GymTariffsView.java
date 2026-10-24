@@ -117,7 +117,7 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
         help.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
 
         // La cuenta de cada plan, a mano para decidir o para explicarsela a un socio.
-        Button showTable = new Button("Ver ingresos por plan y mes", VaadinIcon.TABLE.create());
+        Button showTable = new Button("Ver ingresos Por mes", VaadinIcon.TABLE.create());
         showTable.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_SMALL);
         Popover popover = new Popover(monthlyEntriesTable());
         popover.setTarget(showTable);
