@@ -18,6 +18,8 @@ import ar.com.padelnec.gym.service.GymCheckinService.CheckInResult;
 import ar.com.padelnec.gym.service.GymLocation.Point;
 import ar.com.padelnec.gym.service.GymMemberService;
 import ar.com.padelnec.gym.service.GymMembershipService;
+import ar.com.padelnec.gym.service.GymOverviewService;
+import ar.com.padelnec.gym.service.GymOverviewService.MemberRow;
 import ar.com.padelnec.service.ClubUserService;
 import ar.com.padelnec.web.BusinessRuleException;
 import java.math.BigDecimal;
@@ -26,8 +28,11 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -57,6 +62,7 @@ class GymCheckinServiceTest {
     @Autowired private GymCheckinRepository checkinRepository;
     @Autowired private GymMemberService memberService;
     @Autowired private GymMembershipService membershipService;
+    @Autowired private GymOverviewService overviewService;
     @Autowired private ClubUserService clubUserService;
     @Autowired private ClubFixture clubFixture;
     @Autowired private GymFixture gym;
@@ -281,6 +287,22 @@ class GymCheckinServiceTest {
         assertThat(saved.getRegisteredBy()).isEqualTo(staff);
         // Siempre es el ingreso de HOY: el servicio no admite otra fecha.
         assertThat(saved.getLocalDate()).isEqualTo(tuesday);
+    }
+
+    @Test
+    @DisplayName("La grilla del panel muestra el ultimo dia en que vino cada socio, en cualquier sede")
+    void panelShowsEachMembersLastCheckin() {
+        gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea, quequen);
+        UUID neverCame = gym.member(club, "40222333", "Beto Ruiz").id();
+        scan(necochea);
+        clock().set(MONDAY_10AM.plusSeconds(2 * 86_400));
+        scan(quequen);
+
+        Map<UUID, MemberRow> rows = overviewService.members().stream()
+                .collect(Collectors.toMap(MemberRow::id, Function.identity()));
+
+        assertThat(rows.get(memberId).lastCheckin()).isEqualTo(MONDAY.plusDays(2));
+        assertThat(rows.get(neverCame).lastCheckin()).isNull();
     }
 
     @Test

@@ -51,6 +51,13 @@ public interface GymCheckinRepository extends JpaRepository<GymCheckin, UUID> {
             """)
     List<MemberDay> findMemberDaysSince(@Param("from") LocalDate from);
 
+    /** El ultimo dia con ingreso de cada socio que vino alguna vez, para la grilla del panel. */
+    @Query("""
+            select c.member.id as memberId, max(c.localDate) as localDate from GymCheckin c
+            group by c.member.id
+            """)
+    List<MemberDay> findLastDayPerMember();
+
     interface MemberDay {
         UUID getMemberId();
 

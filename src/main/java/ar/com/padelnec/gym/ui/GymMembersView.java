@@ -200,6 +200,10 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         grid.addComponentColumn(this::membershipCell).setHeader("Cuota").setFlexGrow(2);
         usageColumn = grid.addComponentColumn(this::usageCell).setHeader("Esta semana").setAutoWidth(true)
                 .setFlexGrow(0);
+        grid.addColumn(row -> lastCheckinLabel(row.lastCheckin())).setHeader("Último ingreso")
+                .setAutoWidth(true).setFlexGrow(0)
+                .setComparator(Comparator.comparing(MemberRow::lastCheckin,
+                        Comparator.nullsFirst(Comparator.naturalOrder())));
         grid.addColumn(row -> String.join(", ", row.sedes())).setHeader("Vale en").setFlexGrow(2);
         grid.addComponentColumn(this::actionsCell).setHeader("").setAutoWidth(true).setFlexGrow(0);
         grid.setSizeFull();
@@ -317,6 +321,20 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                     + " al " + SHORT_DAY.format(allowance.to()));
         }
         return usage;
+    }
+
+    /** "Hoy", "Ayer", el día y el mes, o con el año si fue otro año; "—" si nunca vino. */
+    private String lastCheckinLabel(LocalDate day) {
+        if (day == null) {
+            return "—";
+        }
+        if (day.equals(today)) {
+            return "Hoy";
+        }
+        if (day.equals(today.minusDays(1))) {
+            return "Ayer";
+        }
+        return (day.getYear() == today.getYear() ? SHORT_DAY : GymViewSupport.DAY).format(day);
     }
 
     private static String windowName(GymAllowance.Window window) {

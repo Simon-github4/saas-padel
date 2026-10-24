@@ -48,10 +48,11 @@ public class GymOverviewService {
      * socio: el periodo corriente, la deuda, si puede entrar y que le falta pagar.
      * {@code sedes} son las sedes donde vale la cuota que rige hoy. {@code used} son los ingresos
      * en la ventana del tope ({@code allowance}): la semana, el mes de la cuota o el pase.
+     * {@code lastCheckin} es el ultimo dia en que vino, o null si nunca vino.
      */
     public record MemberRow(UUID id, String dni, String fullName, String phone, boolean enabled,
                             boolean mustChangePassword, int used, GymAllowance allowance,
-                            GymBillingService.Status billing, List<String> sedes) {
+                            GymBillingService.Status billing, List<String> sedes, LocalDate lastCheckin) {
 
         /** En que situacion esta hoy, para los filtros del panel. Cada socio cae en una sola. */
         public Standing standing() {
@@ -121,12 +122,15 @@ public class GymOverviewService {
         Map<UUID, List<LocalDate>> recentDays = new HashMap<>();
         checkinRepository.findMemberDaysSince(since).forEach(row ->
                 recentDays.computeIfAbsent(row.getMemberId(), id -> new ArrayList<>()).add(row.getLocalDate()));
+        Map<UUID, LocalDate> lastDays = new HashMap<>();
+        checkinRepository.findLastDayPerMember().forEach(row -> lastDays.put(row.getMemberId(), row.getLocalDate()));
 
         return memberRepository.findAllByOrderByFullNameAsc().stream()
                 .map(member -> {
                     GymBillingService.Status billing = billingService.status(member, today);
                     GymAllowance allowance = GymAllowance.of(billing, today);
-                    return row(member, billing, allowance, used(member, allowance, since, recentDays));
+                    return row(member, billing, allowance, used(member, allowance, since, recentDays),
+                            lastDays.get(member.getId()));
                 })
                 .toList();
     }
@@ -163,12 +167,12 @@ public class GymOverviewService {
     }
 
     private static MemberRow row(GymMember member, GymBillingService.Status billing, GymAllowance allowance,
-                                 int used) {
+                                 int used, LocalDate lastCheckin) {
         GymMembership plan = billing.active();
         List<String> sedes = plan == null ? List.of() : plan.getSedes().stream()
                 .map(GymSede::getName).sorted(Comparator.naturalOrder()).toList();
         return new MemberRow(member.getId(), member.getDni(), member.getFullName(), member.getPhone(),
-                member.isEnabled(), member.isMustChangePassword(), used, allowance, billing, sedes);
+                member.isEnabled(), member.isMustChangePassword(), used, allowance, billing, sedes, lastCheckin);
     }
 
     private static DayCheckin dayCheckin(GymCheckin checkin) {
