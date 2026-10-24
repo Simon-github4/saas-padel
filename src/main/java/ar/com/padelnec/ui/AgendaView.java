@@ -9,6 +9,7 @@ import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.ProductRepository;
 import ar.com.padelnec.security.ClubUserPrincipal;
+import ar.com.padelnec.service.BlackoutService;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.CustomerService;
 import ar.com.padelnec.service.PaymentService;
@@ -25,6 +26,7 @@ import com.vaadin.flow.spring.security.AuthenticationContext;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.details.Details;
 import com.vaadin.flow.component.html.Div;
@@ -92,6 +94,7 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
     private final NotificationService notificationService;
     private final CustomerService customerService;
     private final TournamentService tournamentService;
+    private final BlackoutService blackoutService;
     private final transient AuthenticationContext authenticationContext;
     private final Clock clock;
 
@@ -131,6 +134,7 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
                       ProductService productService, ProductRepository productRepository,
                       PhoneNumbers phoneNumbers, NotificationService notificationService,
                       CustomerService customerService, TournamentService tournamentService,
+                      BlackoutService blackoutService,
                       AuthenticationContext authenticationContext, Clock clock) {
         this.tenantService = tenantService;
         this.bookingService = bookingService;
@@ -144,6 +148,7 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         this.notificationService = notificationService;
         this.customerService = customerService;
         this.tournamentService = tournamentService;
+        this.blackoutService = blackoutService;
         this.authenticationContext = authenticationContext;
         this.clock = clock;
 
@@ -739,7 +744,13 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         // El torneo se nombra en la tarjeta: es lo que el mostrador busca con la
         // vista ("¿donde juega el torneo?"), no un aviso de que algo anda mal.
         String label = tournament ? suspension.get().getReason() : blocked ? "Suspendido" : "Libre";
-        Button button = new Button(label, event -> openManualBooking(row, court, exception));
+        Button button = new Button(label, event -> {
+            if (blocked) {
+                openSuspendedSlot(row, court, exception);
+            } else {
+                openManualBooking(row, court, null);
+            }
+        });
         button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         button.addClassName("agenda-card__button");
         button.setWidthFull();
@@ -784,6 +795,43 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
                 .orElse(null);
         new BookingDetailDialog(booking, club, bookingService, paymentService, productService,
                 productRepository, phoneNumbers, notificationService, userId, this::refresh).open();
+    }
+
+    /**
+     * Un turno suspendido o de torneo: se puede liberar (vuelve a estar a la venta,
+     * recortando la suspension) o cargar un turno igual, como excepcion. Antes el
+     * toque iba directo a la carga del turno, y la unica forma de abrir un horario
+     * era borrar la suspension entera y volver a cargarla sin ese turno.
+     */
+    private void openSuspendedSlot(AgendaRow row, Court court, String exception) {
+        ConfirmDialog dialog = new ConfirmDialog();
+        dialog.setHeader("%s · %s".formatted(court.getName(), row.start()));
+        dialog.setText(exception + " Podés liberar este horario para que se pueda reservar, "
+                + "o cargar un turno igual.");
+        dialog.setCancelable(true);
+        dialog.setCancelText("Volver");
+        dialog.setRejectable(true);
+        dialog.setRejectText("Cargar turno igual");
+        dialog.addRejectListener(event -> openManualBooking(row, court, exception));
+        dialog.setConfirmText("Liberar este horario");
+        dialog.addConfirmListener(event -> release(row, court));
+        dialog.open();
+    }
+
+    private void release(AgendaRow row, Court court) {
+        BlackoutService.Released released;
+        try {
+            released = blackoutService.release(club, court.getId(), row.slot().startsAt());
+        } catch (BusinessRuleException ex) {
+            Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+            refresh();
+            return;
+        }
+        refresh();
+        Notification.show("%s de %s a %s quedó libre para reservar.".formatted(court.getName(),
+                        HH_MM.format(released.startsAt().atZone(club.zoneId())),
+                        HH_MM.format(released.endsAt().atZone(club.zoneId()))))
+                .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
     }
 
     private void openManualBooking(AgendaRow row, Court court, String availabilityException) {

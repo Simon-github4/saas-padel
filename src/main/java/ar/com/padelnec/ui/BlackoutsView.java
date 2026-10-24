@@ -93,7 +93,8 @@ public class BlackoutsView extends VerticalLayout {
 
         Paragraph help = new Paragraph(
                 "La cancha suspendida desaparece de la grilla pública. Los turnos que ya estaban "
-                        + "reservados siguen vigentes y el panel te avisa para que los revises.");
+                        + "reservados siguen vigentes y el panel te avisa para que los revises. Para abrir "
+                        + "un horario puntual, tocalo en la Agenda y elegí «Liberar este horario».");
         help.addClassNames(LumoUtility.TextColor.SECONDARY, LumoUtility.FontSize.SMALL,
                 LumoUtility.Margin.NONE, LumoUtility.MaxWidth.SCREEN_SMALL);
 
