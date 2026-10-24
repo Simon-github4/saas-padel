@@ -128,7 +128,13 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
         popover.setPosition(PopoverPosition.BOTTOM_START);
         popover.addThemeVariants(PopoverVariant.LUMO_ARROW);
 
-        VerticalLayout box = new VerticalLayout(entryLimit, help, showTable, popover);
+        // Al lado de "Por mes", que es la ultima opcion del selector.
+        HorizontalLayout selector = new HorizontalLayout(entryLimit, showTable);
+        selector.setPadding(false);
+        selector.setWrap(true);
+        selector.setAlignItems(Alignment.END);
+
+        VerticalLayout box = new VerticalLayout(selector, help, popover);
         box.setPadding(false);
         box.setSpacing(false);
         return box;
