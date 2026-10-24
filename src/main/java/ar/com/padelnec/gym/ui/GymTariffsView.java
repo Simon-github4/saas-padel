@@ -13,12 +13,16 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.grid.Grid;
+import com.vaadin.flow.component.grid.GridVariant;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.popover.Popover;
+import com.vaadin.flow.component.popover.PopoverPosition;
+import com.vaadin.flow.component.popover.PopoverVariant;
 import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
 import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.component.textfield.BigDecimalField;
@@ -113,10 +117,54 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
                 + "redondeados. Con 2 días por semana, 9 en un mes de 30 o 31 días y 8 en uno de 28. "
                 + "El cambio le llega a cada socio con su próxima cuota.");
         help.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
-        VerticalLayout box = new VerticalLayout(entryLimit, help);
+
+        // La cuenta de cada plan, a mano para decidir o para explicarsela a un socio.
+        Button showTable = new Button("Ver ingresos por plan y mes", VaadinIcon.TABLE.create());
+        showTable.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_SMALL);
+        Popover popover = new Popover(monthlyEntriesTable());
+        popover.setTarget(showTable);
+        popover.setOpenOnClick(true);
+        popover.setOpenOnHover(true);
+        popover.setPosition(PopoverPosition.BOTTOM_START);
+        popover.addThemeVariants(PopoverVariant.LUMO_ARROW);
+
+        VerticalLayout box = new VerticalLayout(entryLimit, help, showTable, popover);
         box.setPadding(false);
         box.setSpacing(false);
         return box;
+    }
+
+    /**
+     * Cuantos ingresos da cada plan contado por mes, segun cuantos dias tenga el mes del socio, y
+     * en el pase de 15 dias. Sale de la misma cuenta que el tope, no de una tabla aparte.
+     */
+    private static Component monthlyEntriesTable() {
+        Span title = new Span("Ingresos en el mes de cada socio");
+        title.addClassNames(LumoUtility.FontWeight.SEMIBOLD);
+
+        Grid<Integer> table = new Grid<>();
+        table.addThemeVariants(GridVariant.LUMO_COMPACT, GridVariant.LUMO_ROW_STRIPES);
+        table.setSelectionMode(Grid.SelectionMode.NONE);
+        table.addColumn(days -> days == 1 ? "1 día por semana" : days + " días por semana")
+                .setHeader("Plan").setAutoWidth(true).setFlexGrow(0);
+        table.addColumn(days -> GymAllowance.proportional(days, 28)).setHeader("Febrero").setAutoWidth(true);
+        table.addColumn(days -> GymAllowance.proportional(days, 30)).setHeader("30 días").setAutoWidth(true);
+        table.addColumn(days -> GymAllowance.proportional(days, 31)).setHeader("31 días").setAutoWidth(true);
+        table.addColumn(days -> GymAllowance.proportional(days, PlanLength.PASS_DAYS)).setHeader("Pase 15 días")
+                .setAutoWidth(true);
+        table.setItems(1, 2, 3, 4, 5, 6, 7);
+        table.setAllRowsVisible(true);
+        table.setWidth("34em");
+
+        Span note = new Span("Cuenta el mes en que arranca el período: 30 días son abril, junio, septiembre y "
+                + "noviembre; 31, el resto. En febrero bisiesto, 2 días por semana siguen siendo 8.");
+        note.addClassNames(LumoUtility.FontSize.XSMALL, LumoUtility.TextColor.SECONDARY);
+        note.setMaxWidth("34em");
+
+        VerticalLayout content = new VerticalLayout(title, table, note);
+        content.setPadding(false);
+        content.addClassNames(LumoUtility.Gap.SMALL);
+        return content;
     }
 
     /**
