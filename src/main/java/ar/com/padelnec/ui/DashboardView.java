@@ -268,10 +268,18 @@ public class DashboardView extends VerticalLayout {
         return card.detail(desglose);
     }
 
-    /** "10/125" (turnos ocupados sobre turnos posibles) y el porcentaje debajo. */
+    /**
+     * "10/125" (turnos ocupados sobre turnos posibles) y el porcentaje debajo. Los
+     * turnos de torneo cuentan como ocupados, y se dice cuantos fueron: no son
+     * turnos vendidos, y sin la aclaracion el numero no coincide con Jugados.
+     */
     private KpiCard occupancyCard(PeriodStats summary) {
-        return new KpiCard("Turnos", summary.slotsOcupados() + "/" + summary.slotsPosibles())
+        KpiCard card = new KpiCard("Turnos", summary.slotsOcupados() + "/" + summary.slotsPosibles())
                 .emphasis(summary.ocupacionPromedio() + "% de ocupación");
+        if (summary.slotsTorneo() > 0) {
+            card.footnote("Incluye %d de torneo".formatted(summary.slotsTorneo()));
+        }
+        return card;
     }
 
     // ------------------------------------------------------------ tablas

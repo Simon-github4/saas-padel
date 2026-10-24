@@ -264,8 +264,8 @@ class BookingStatsServiceTest {
     }
 
     @Test
-    @DisplayName("Los turnos de un torneo no cuentan como capacidad; una suspension parcial comun si")
-    void tournamentSlotsAreNotCapacity() {
+    @DisplayName("Los turnos de un torneo cuentan como ocupados, sin contar dos veces uno con turno cargado")
+    void tournamentSlotsCountAsOccupied() {
         // Torneo de 17:00 a 21:30: tres turnos de la unica cancha.
         Blackout tournament = new Blackout();
         tournament.setCourt(court);
@@ -274,6 +274,7 @@ class BookingStatsServiceTest {
         tournament.setEndTime(TUESDAY.atTime(21, 30).atZone(ZONE).toInstant());
         tournament.setReason("Torneo Apertura");
         blackoutRepository.save(tournament);
+        // Una suspension comun de una franja sigue como antes: ni ocupa ni resta.
         Blackout repair = new Blackout();
         repair.setCourt(court);
         repair.setStartTime(TUESDAY.atTime(8, 0).atZone(ZONE).toInstant());
@@ -281,11 +282,34 @@ class BookingStatsServiceTest {
         repair.setReason("Arreglo de la red");
         blackoutRepository.save(repair);
         markCompleted(reserve(LocalTime.of(12, 30), "2262415000", "Cliente A"));
+        // El club cargo igual un turno en el torneo, como excepcion.
+        bookingService.createManual(club, court.getId(), TUESDAY.atTime(18, 30).atZone(ZONE).toInstant(),
+                "Cliente C", "2262415222", null, null, true);
 
         PeriodStats summary = statsService.summary(club, TUESDAY, TUESDAY);
 
-        assertThat(summary.slotsPosibles()).isEqualTo(7);
-        assertThat(summary.slotsOcupados()).isEqualTo(1);
+        // 2 turnos cargados + los 2 del torneo que quedaron sin turno.
+        assertThat(summary.slotsPosibles()).isEqualTo(10);
+        assertThat(summary.slotsOcupados()).isEqualTo(4);
+        assertThat(summary.slotsTorneo()).isEqualTo(2);
+        assertThat(summary.ocupacionPromedio()).isEqualByComparingTo("40.0");
+    }
+
+    @Test
+    @DisplayName("Un torneo de todo el club el dia entero es el dia lleno, no un dia cerrado")
+    void clubWideTournamentFillsTheDay() {
+        Blackout tournament = new Blackout();
+        tournament.setKind(BlackoutKind.TOURNAMENT);
+        tournament.setStartTime(slotGenerator.dayStart(club, TUESDAY));
+        tournament.setEndTime(slotGenerator.dayEnd(club, TUESDAY));
+        tournament.setReason("Torneo de la ciudad");
+        blackoutRepository.save(tournament);
+
+        PeriodStats summary = statsService.summary(club, TUESDAY, TUESDAY);
+
+        assertThat(summary.slotsPosibles()).isEqualTo(10);
+        assertThat(summary.slotsOcupados()).isEqualTo(10);
+        assertThat(summary.slotsTorneo()).isEqualTo(10);
     }
 
     @Test

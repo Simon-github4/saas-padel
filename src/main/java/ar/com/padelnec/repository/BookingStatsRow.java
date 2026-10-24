@@ -11,7 +11,8 @@ import java.util.UUID;
  * Lo que {@code BookingStatsService} necesita de cada turno para agregar
  * estadisticas, ni un campo mas.
  *
- * <p>La cancha no viaja: no se lee en ningun lado de las estadisticas. De
+ * <p>De la cancha viaja solo el id: la ocupacion lo necesita para no contar dos
+ * veces un turno de torneo en el que igual se cargo un turno. De
  * {@code Customer} solo van nombre y telefono (mas el id, como clave de
  * agrupacion), no {@code trusted}/{@code blocked}/{@code noShowCount}/{@code notes}.
  * Antes esto salia de traer la entidad {@code Booking} completa con
@@ -29,7 +30,7 @@ public record BookingStatsRow(UUID id, BookingStatus status, Instant startTime, 
                               BigDecimal totalPrice, BigDecimal paidAmount,
                               CancellationReason cancellationReason,
                               UUID customerId, String customerFullName, String customerPhoneNumber,
-                              UUID playerAccountId) {
+                              UUID playerAccountId, UUID courtId) {
 
     public Duration duration() {
         return Duration.between(startTime, endTime);
