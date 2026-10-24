@@ -3,9 +3,11 @@ package ar.com.padelnec.gym.ui;
 import static ar.com.padelnec.gym.ui.GymViewSupport.SHORT_DAY;
 
 import ar.com.padelnec.gym.GymModule;
+import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.domain.PayMethod;
 import ar.com.padelnec.gym.domain.PlanLength;
+import ar.com.padelnec.gym.service.GymAllowance;
 import ar.com.padelnec.gym.service.GymBillingService;
 import ar.com.padelnec.gym.service.GymBillingService.Period;
 import ar.com.padelnec.gym.service.GymCheckinService;
@@ -55,7 +57,9 @@ import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -102,6 +106,12 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
     private LocalDate today = LocalDate.now();
     /** El club pide clave ademas del DNI: recien ahi tienen sentido las claves temporales. */
     private boolean passwordRequired;
+    /**
+     * Hay socios contados por semana y otros por mes (el club cambio de modo y cada uno pasa con su
+     * proxima cuota): la columna de ingresos dice de cual es cada cuenta.
+     */
+    private boolean mixedLimits;
+    private Grid.Column<MemberRow> usageColumn;
 
     public GymMembersView(GymModule gymModule, GymMemberService memberService,
                           GymMembershipService membershipService, GymCheckinService checkinService,
@@ -188,7 +198,12 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         grid.addComponentColumn(this::nameCell).setHeader("Socio").setFlexGrow(3)
                 .setComparator(MemberRow::fullName);
         grid.addComponentColumn(this::membershipCell).setHeader("Cuota").setFlexGrow(2);
-        grid.addComponentColumn(this::weekCell).setHeader("Esta semana").setAutoWidth(true).setFlexGrow(0);
+        usageColumn = grid.addComponentColumn(this::usageCell).setHeader("Esta semana").setAutoWidth(true)
+                .setFlexGrow(0);
+        grid.addColumn(row -> lastCheckinLabel(row.lastCheckin())).setHeader("Último ingreso")
+                .setAutoWidth(true).setFlexGrow(0)
+                .setComparator(Comparator.comparing(MemberRow::lastCheckin,
+                        Comparator.nullsFirst(Comparator.naturalOrder())));
         grid.addColumn(row -> String.join(", ", row.sedes())).setHeader("Vale en").setFlexGrow(2);
         grid.addComponentColumn(this::actionsCell).setHeader("").setAutoWidth(true).setFlexGrow(0);
         grid.setSizeFull();
@@ -287,18 +302,47 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         return cell;
     }
 
-    private Component weekCell(MemberRow row) {
+    private Component usageCell(MemberRow row) {
         // Con un pase que corre y el plan mensual por empezar, el ciclo no arranco pero entra.
         if (row.billing().plan() == null || (!row.billing().started() && !row.billing().canEnter())) {
             return new Span("—");
         }
         // El tope de la cuota que rige hoy, no el de un adelanto con otros días.
-        int limit = row.billing().active().getDaysPerWeek();
-        Span usage = new Span(row.weekUsed() + " de " + limit);
-        if (row.weekUsed() >= limit) {
+        GymAllowance allowance = row.allowance();
+        Span usage = new Span(row.used() + " de " + allowance.limit()
+                + (mixedLimits ? " · " + windowName(allowance.window()) : ""));
+        if (row.used() >= allowance.limit()) {
             usage.getElement().getThemeList().add("badge contrast small");
         }
+        if (allowance.window() != GymAllowance.Window.WEEK) {
+            // Cada socio tiene su mes: se dice de qué días es la cuenta.
+            String window = allowance.window() == GymAllowance.Window.PASS ? "Su pase" : "Su mes";
+            Tooltip.forComponent(usage).setText(window + ": del " + SHORT_DAY.format(allowance.from())
+                    + " al " + SHORT_DAY.format(allowance.to()));
+        }
         return usage;
+    }
+
+    /** "Hoy", "Ayer", el día y el mes, o con el año si fue otro año; "—" si nunca vino. */
+    private String lastCheckinLabel(LocalDate day) {
+        if (day == null) {
+            return "—";
+        }
+        if (day.equals(today)) {
+            return "Hoy";
+        }
+        if (day.equals(today.minusDays(1))) {
+            return "Ayer";
+        }
+        return (day.getYear() == today.getYear() ? SHORT_DAY : GymViewSupport.DAY).format(day);
+    }
+
+    private static String windowName(GymAllowance.Window window) {
+        return switch (window) {
+            case WEEK -> "semana";
+            case MONTH -> "mes";
+            case PASS -> "pase";
+        };
     }
 
     private Component actionsCell(MemberRow row) {
@@ -522,6 +566,15 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                     + "menú ⋮ → «Cuotas cobradas».");
         }
 
+        // Con el tope por mes, cuántos ingresos le dan esos días por semana en lo que se cobra. Si
+        // hoy se le cuenta por semana, es el momento de avisarle que con esta cuota cambia.
+        boolean monthlyLimit = gymModule.entryLimit() == EntryLimit.MONTH;
+        boolean switchesToMonthly = monthlyLimit && billing.active() != null
+                && billing.active().getEntryLimit() == EntryLimit.WEEK;
+        Span entries = new Span();
+        entries.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
+        entries.setVisible(false);
+
         // La tarifa aparece como sugerencia (placeholder), no como monto cargado:
         // cambia solo si cambian los días por semana o el plan. El total usa la tarifa
         // cuando el mostrador no tipea el monto a mano.
@@ -529,6 +582,14 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
             BigDecimal tariff = tariffFor(planType.getValue(), days);
             price.setPlaceholder(tariff == null ? null : GymViewSupport.amount(tariff));
             updateTotal(total, price, planType.getValue(), periods, tariff);
+            if (monthlyLimit) {
+                String text = entriesText(planType.getValue(), effectiveDpw(days), periods.getSelectedItems());
+                if (switchesToMonthly && !text.isEmpty()) {
+                    text = "Desde esta cuota su tope se cuenta por mes. " + text;
+                }
+                entries.setText(text);
+                entries.setVisible(!text.isEmpty());
+            }
         };
         days.addValueChangeListener(event -> refresh.run());
         newStart.addValueChangeListener(event -> {
@@ -616,7 +677,7 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         showPlan.run();
 
         VerticalLayout body = new VerticalLayout(planType, cycle, newStart, gapWarning, periods, passFrom, dropDebt,
-                plan, total, sedeGroup, payment);
+                plan, entries, total, sedeGroup, payment);
         body.setPadding(false);
         dialog.add(body);
 
@@ -674,6 +735,37 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         }
         List<Period> owed = pending.stream().filter(period -> !period.start().isAfter(today)).toList();
         periods.select(owed.isEmpty() ? Set.of(pending.getFirst()) : Set.copyOf(owed));
+    }
+
+    /**
+     * Con el tope por mes: los ingresos que dan esos días por semana en el pase, o en cada cuota
+     * elegida (dependen de los días de cada período). Vacío si todavía no hay días o cuotas.
+     */
+    private static String entriesText(PlanLength length, int daysPerWeek, Set<Period> selected) {
+        if (daysPerWeek < 1) {
+            return "";
+        }
+        if (length == PlanLength.FIFTEEN_DAYS) {
+            return "Son " + GymAllowance.proportional(daysPerWeek, PlanLength.PASS_DAYS)
+                    + " ingresos en los 15 días del pase.";
+        }
+        List<Period> chosen = selected.stream().sorted(Comparator.comparing(Period::start)).toList();
+        if (chosen.isEmpty()) {
+            return "";
+        }
+        if (chosen.size() == 1) {
+            Period period = chosen.getFirst();
+            return "Son " + entriesIn(daysPerWeek, period) + " ingresos del " + SHORT_DAY.format(period.start())
+                    + " al " + SHORT_DAY.format(period.end()) + ".";
+        }
+        return "Ingresos de cada mes: " + chosen.stream()
+                .map(period -> entriesIn(daysPerWeek, period) + " del " + SHORT_DAY.format(period.start())
+                        + " al " + SHORT_DAY.format(period.end()))
+                .collect(Collectors.joining(" · ")) + ".";
+    }
+
+    private static int entriesIn(int daysPerWeek, Period period) {
+        return GymAllowance.proportional(daysPerWeek, ChronoUnit.DAYS.between(period.start(), period.end()) + 1);
     }
 
     /** El aviso de los días que quedan sin cuota entre lo pago y el nuevo inicio de mes. */
@@ -737,8 +829,13 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         sede.setValue(sedes.getFirst());
         sede.setWidthFull();
 
-        Paragraph note = new Paragraph("Sirve para cuando el socio no puede escanear. Si ya usó los días de esta "
-                + "semana, queda registrado como excepción.");
+        Paragraph note = new Paragraph("Sirve para cuando el socio no puede escanear. Si ya usó "
+                + switch (row.allowance().window()) {
+                    case WEEK -> "los días de esta semana";
+                    case MONTH -> "los ingresos de su mes";
+                    case PASS -> "los ingresos de su pase";
+                }
+                + ", queda registrado como excepción.");
         note.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
 
         VerticalLayout body = new VerticalLayout(sede, note);
@@ -753,8 +850,12 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                 refresh();
                 GymViewSupport.ok(result.alreadyRegistered()
                         ? "Ya tenía el ingreso de hoy (" + result.sedeName() + ")"
-                        : "Ingreso registrado en " + result.sedeName() + " · " + result.weekUsed() + " de "
-                                + result.weekLimit() + " esta semana");
+                        : "Ingreso registrado en " + result.sedeName() + " · " + result.used() + " de "
+                                + result.limit() + switch (result.window()) {
+                                    case WEEK -> " esta semana";
+                                    case MONTH -> " este mes";
+                                    case PASS -> " del pase";
+                                });
             } catch (BusinessRuleException ex) {
                 GymViewSupport.error(ex.getMessage());
             }
@@ -788,6 +889,8 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
                 .setHeader("Plan").setAutoWidth(true).setFlexGrow(0);
         fees.addComponentColumn(fee -> feeCell(fee, String.valueOf(fee.daysPerWeek())))
                 .setHeader("Días").setAutoWidth(true).setFlexGrow(0);
+        fees.addComponentColumn(fee -> feeCell(fee, fee.entryLimit().label()))
+                .setHeader("Tope").setAutoWidth(true).setFlexGrow(0);
         fees.addComponentColumn(fee -> feeCell(fee, GymViewSupport.money(fee.price())))
                 .setHeader("Monto").setAutoWidth(true);
         fees.addComponentColumn(fee -> feeCell(fee, SHORT_DAY.format(fee.paidOn()) + " · " + fee.payMethod().label()))
@@ -1039,6 +1142,12 @@ public class GymMembersView extends VerticalLayout implements BeforeEnterObserve
         passwordRequired = gymModule.isPasswordRequired();
         today = overviewService.today();
         all = overviewService.members();
+        // Todos por semana, todos por mes (o pase), o mezclados mientras el club cambia de modo.
+        Set<GymAllowance.Window> windows = all.stream().filter(row -> row.billing().plan() != null)
+                .map(row -> row.allowance().window()).collect(Collectors.toSet());
+        boolean anyWeek = windows.contains(GymAllowance.Window.WEEK);
+        mixedLimits = anyWeek && windows.size() > 1;
+        usageColumn.setHeader(mixedLimits ? "Ingresos" : anyWeek || windows.isEmpty() ? "Esta semana" : "Este mes");
         standingCounts.clear();
         all.forEach(row -> standingCounts.merge(row.standing(), 1L, Long::sum));
         long paid = standingCounts.getOrDefault(Standing.ACTIVE, 0L);

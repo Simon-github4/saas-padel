@@ -13,11 +13,14 @@ import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.domain.PayMethod;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
+import ar.com.padelnec.gym.service.GymBillingService;
 import ar.com.padelnec.gym.service.GymCheckinService;
 import ar.com.padelnec.gym.service.GymCheckinService.CheckInResult;
 import ar.com.padelnec.gym.service.GymLocation.Point;
 import ar.com.padelnec.gym.service.GymMemberService;
 import ar.com.padelnec.gym.service.GymMembershipService;
+import ar.com.padelnec.gym.service.GymOverviewService;
+import ar.com.padelnec.gym.service.GymOverviewService.MemberRow;
 import ar.com.padelnec.service.ClubUserService;
 import ar.com.padelnec.web.BusinessRuleException;
 import java.math.BigDecimal;
@@ -26,8 +29,11 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -57,6 +63,7 @@ class GymCheckinServiceTest {
     @Autowired private GymCheckinRepository checkinRepository;
     @Autowired private GymMemberService memberService;
     @Autowired private GymMembershipService membershipService;
+    @Autowired private GymOverviewService overviewService;
     @Autowired private ClubUserService clubUserService;
     @Autowired private ClubFixture clubFixture;
     @Autowired private GymFixture gym;
@@ -101,8 +108,8 @@ class GymCheckinServiceTest {
 
         assertThat(result.alreadyRegistered()).isFalse();
         assertThat(result.sedeName()).isEqualTo("Necochea");
-        assertThat(result.weekUsed()).isEqualTo(1);
-        assertThat(result.weekLimit()).isEqualTo(3);
+        assertThat(result.used()).isEqualTo(1);
+        assertThat(result.limit()).isEqualTo(3);
         assertThat(result.validUntil()).isEqualTo(MONDAY.plusDays(29));
     }
 
@@ -115,7 +122,7 @@ class GymCheckinServiceTest {
         CheckInResult second = scan(necochea);
 
         assertThat(second.alreadyRegistered()).isTrue();
-        assertThat(second.weekUsed()).isEqualTo(1);
+        assertThat(second.used()).isEqualTo(1);
         assertThat(checkinRepository.count()).isEqualTo(1);
     }
 
@@ -136,7 +143,7 @@ class GymCheckinServiceTest {
 
         assertThat(result.alreadyRegistered()).isFalse();
         // El plan (dias por semana) sigue siendo el de la ultima cuota paga.
-        assertThat(result.weekLimit()).isEqualTo(3);
+        assertThat(result.limit()).isEqualTo(3);
     }
 
     @Test
@@ -185,7 +192,7 @@ class GymCheckinServiceTest {
 
         clock().set(MONDAY_10AM.plusSeconds(7 * 86_400));  // lunes siguiente
         CheckInResult nextWeek = scan(necochea);
-        assertThat(nextWeek.weekUsed()).isEqualTo(1);
+        assertThat(nextWeek.used()).isEqualTo(1);
     }
 
     @Test
@@ -203,7 +210,7 @@ class GymCheckinServiceTest {
         CheckInResult monday = scan(necochea);
 
         assertThat(monday.alreadyRegistered()).isFalse();
-        assertThat(monday.weekUsed()).isEqualTo(1);
+        assertThat(monday.used()).isEqualTo(1);
     }
 
     @Test
@@ -275,12 +282,47 @@ class GymCheckinServiceTest {
         assertThatThrownBy(() -> scan(necochea)).isInstanceOf(BusinessRuleException.class);
         CheckInResult forced = checkinService.forceCheckIn(memberId, necochea.getId(), staff);
 
-        assertThat(forced.weekUsed()).isEqualTo(2);
+        assertThat(forced.used()).isEqualTo(2);
         GymCheckin saved = checkinRepository.findByMemberIdAndLocalDate(memberId, tuesday).orElseThrow();
         assertThat(saved.isOverride()).isTrue();
         assertThat(saved.getRegisteredBy()).isEqualTo(staff);
         // Siempre es el ingreso de HOY: el servicio no admite otra fecha.
         assertThat(saved.getLocalDate()).isEqualTo(tuesday);
+    }
+
+    @Test
+    @DisplayName("La grilla del panel muestra el ultimo dia en que vino cada socio, en cualquier sede")
+    void panelShowsEachMembersLastCheckin() {
+        gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea, quequen);
+        UUID neverCame = gym.member(club, "40222333", "Beto Ruiz").id();
+        scan(necochea);
+        clock().set(MONDAY_10AM.plusSeconds(2 * 86_400));
+        scan(quequen);
+
+        Map<UUID, MemberRow> rows = overviewService.members().stream()
+                .collect(Collectors.toMap(MemberRow::id, Function.identity()));
+
+        assertThat(rows.get(memberId).lastCheckin()).isEqualTo(MONDAY.plusDays(2));
+        assertThat(rows.get(neverCame).lastCheckin()).isNull();
+    }
+
+    @Test
+    @DisplayName("Los ingresos del dia dicen como esta hoy la cuota de cada socio: al dia o debe el mes")
+    void dayCheckinsShowTodaysFeeState() {
+        gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea);
+        UUID owing = gym.member(club, "40222333", "Beto Ruiz").id();
+        gym.sell(club, owing, MONDAY.minusDays(40), MONDAY.minusDays(10), 3, necochea);
+        scan(necochea);
+        checkinService.checkIn(owing, necochea.getQrToken(), null);
+
+        Map<String, GymBillingService.Status> byName = overviewService.checkinsOf(MONDAY).stream()
+                .collect(Collectors.toMap(GymOverviewService.DayCheckin::memberName,
+                        GymOverviewService.DayCheckin::billing));
+
+        assertThat(byName.get("Juan Pérez").paidToday()).isTrue();
+        // Entro por la gracia: debe el mes corriente, una sola cuota.
+        assertThat(byName.get("Beto Ruiz").paidToday()).isFalse();
+        assertThat(byName.get("Beto Ruiz").monthsLate()).isEqualTo(1);
     }
 
     @Test
@@ -437,7 +479,7 @@ class GymCheckinServiceTest {
                 .hasMessageContaining("Tu cuota no incluye Quequén");
         CheckInResult result = scan(necochea);
 
-        assertThat(result.weekLimit()).isEqualTo(3);
+        assertThat(result.limit()).isEqualTo(3);
         assertThat(checkinRepository.findByMemberIdAndLocalDate(memberId, MONDAY).orElseThrow()
                 .getMembership().getId()).isEqualTo(current);
     }
@@ -470,7 +512,7 @@ class GymCheckinServiceTest {
         assertThat(result.alreadyRegistered()).isFalse();
         // Vale hasta el fin de la de septiembre: el hueco hasta el 05/10 no se salta.
         assertThat(result.validUntil()).isEqualTo(LocalDate.of(2026, 9, 30));
-        assertThat(result.weekLimit()).isEqualTo(3);
+        assertThat(result.limit()).isEqualTo(3);
         assertThat(checkinRepository.findByMemberIdAndLocalDate(memberId, MONDAY).orElseThrow()
                 .getMembership().getId()).isEqualTo(september);
     }

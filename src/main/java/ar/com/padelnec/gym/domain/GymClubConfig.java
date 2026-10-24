@@ -3,6 +3,8 @@ package ar.com.padelnec.gym.domain;
 import ar.com.padelnec.domain.TenantScopedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
@@ -28,4 +30,13 @@ public class GymClubConfig extends TenantScopedEntity {
      */
     @Column(name = "password_required", nullable = false)
     private boolean passwordRequired = false;
+
+    /**
+     * Como se cuenta el tope de dias por semana en las cuotas que se cobren desde ahora: de lunes
+     * a domingo (lo normal) o en el mes de la cuota de cada socio. Cada cuota guarda el suyo, asi
+     * que el cambio le llega a cada socio con su proxima cuota.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "entry_limit", nullable = false, length = 10)
+    private EntryLimit entryLimit = EntryLimit.WEEK;
 }

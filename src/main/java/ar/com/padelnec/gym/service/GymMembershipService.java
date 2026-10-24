@@ -1,5 +1,7 @@
 package ar.com.padelnec.gym.service;
 
+import ar.com.padelnec.gym.GymModule;
+import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
 import ar.com.padelnec.gym.domain.GymSede;
@@ -39,6 +41,7 @@ public class GymMembershipService {
     private final GymBillingService billingService;
     private final GymTariffService tariffService;
     private final TenantService tenantService;
+    private final GymModule gymModule;
     private final Clock clock;
 
     /** Todo lo que carga el mostrador al cobrar una cuota. */
@@ -77,6 +80,7 @@ public class GymMembershipService {
         membership.setCollectedSede(collectedSede);
         membership.setRegisteredBy(sale.registeredBy());
         membership.setSedes(sedes);
+        membership.setEntryLimit(gymModule.entryLimit());
         try {
             return membershipRepository.saveAndFlush(membership).getId();
         } catch (DataIntegrityViolationException | ConcurrencyFailureException ex) {
@@ -173,6 +177,8 @@ public class GymMembershipService {
         GymSede collectedSede = sedeRepository.findById(collectedSedeId)
                 .orElseThrow(() -> new BusinessRuleException("Elegí la sede donde se cobró."));
 
+        // Las cuotas que se cobran toman el modo del tope que tiene hoy el club.
+        EntryLimit entryLimit = gymModule.entryLimit();
         List<UUID> ids = new ArrayList<>();
         for (int i = 0; i < months; i++) {
             GymBillingService.Period period = pending.get(i);
@@ -188,6 +194,7 @@ public class GymMembershipService {
             membership.setCollectedSede(collectedSede);
             membership.setRegisteredBy(registeredBy);
             membership.setSedes(sedes);
+            membership.setEntryLimit(entryLimit);
             try {
                 ids.add(membershipRepository.saveAndFlush(membership).getId());
             } catch (DataIntegrityViolationException | ConcurrencyFailureException ex) {
@@ -280,6 +287,7 @@ public class GymMembershipService {
         pass.setCollectedSede(collectedSede);
         pass.setRegisteredBy(registeredBy);
         pass.setSedes(sedes);
+        pass.setEntryLimit(gymModule.entryLimit());
         try {
             return membershipRepository.saveAndFlush(pass).getId();
         } catch (DataIntegrityViolationException | ConcurrencyFailureException ex) {
@@ -290,10 +298,12 @@ public class GymMembershipService {
 
     /**
      * Una cuota del socio, como la muestra el panel para corregirla. {@code voidedOn} es el
-     * dia (del club) en que se anulo, o null si sigue vigente.
+     * dia (del club) en que se anulo, o null si sigue vigente. {@code entryLimit}: como se cuenta
+     * su tope de dias.
      */
     public record Fee(UUID id, LocalDate startsOn, LocalDate endsOn, int daysPerWeek, BigDecimal price,
-                      PayMethod payMethod, LocalDate paidOn, LocalDate voidedOn, PlanLength planLength) {
+                      PayMethod payMethod, LocalDate paidOn, LocalDate voidedOn, PlanLength planLength,
+                      EntryLimit entryLimit) {
 
         public boolean voided() {
             return voidedOn != null;
@@ -313,7 +323,7 @@ public class GymMembershipService {
                 .map(m -> new Fee(m.getId(), m.getStartsOn(), m.getEndsOn(), m.getDaysPerWeek(), m.getPrice(),
                         m.getPayMethod(), m.getPaidOn(),
                         m.getVoidedAt() == null ? null : m.getVoidedAt().atZone(zone).toLocalDate(),
-                        m.getPlanLength()))
+                        m.getPlanLength(), m.getEntryLimit()))
                 .toList();
     }
 

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import type { LimitPeriod } from '../api/gymClient';
 
 /**
  * Piezas visuales de la app. Mismo lenguaje que la app del jugador (fondo casi
@@ -150,18 +151,33 @@ export function Badge({
   return <span className={`eyebrow inline-flex items-center rounded-full border px-2.5 py-1 ${styles}`}>{children}</span>;
 }
 
-/** Los dias de la semana como circulos: llenos los usados, vacios los que quedan. */
-export function WeekDots({ used, limit }: { used: number; limit: number }) {
+/**
+ * Los ingresos usados. En la semana, un circulo por dia (llenos los usados, vacios los que
+ * quedan); en el mes o el pase son demasiados para circulos (9, 13, hasta 31): una barra.
+ */
+export function UsageMeter({ used, limit, period }: { used: number; limit: number; period: LimitPeriod }) {
+  if (period === 'WEEK') {
+    return (
+      <div className="flex gap-2" role="img" aria-label={`${used} de ${limit} días usados esta semana`}>
+        {Array.from({ length: limit }, (_, index) => (
+          <span
+            key={index}
+            className={`size-4 rounded-full border-2 ${
+              index < used ? 'border-ladrillo bg-ladrillo' : 'border-cal/25'
+            }`}
+          />
+        ))}
+      </div>
+    );
+  }
+  const filled = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
   return (
-    <div className="flex gap-2" role="img" aria-label={`${used} de ${limit} días usados esta semana`}>
-      {Array.from({ length: limit }, (_, index) => (
-        <span
-          key={index}
-          className={`size-4 rounded-full border-2 ${
-            index < used ? 'border-ladrillo bg-ladrillo' : 'border-cal/25'
-          }`}
-        />
-      ))}
+    <div
+      className="h-2.5 min-w-0 flex-1 overflow-hidden rounded-full border border-cal/25"
+      role="img"
+      aria-label={`${used} de ${limit} ingresos usados ${period === 'MONTH' ? 'este mes' : 'en el pase'}`}
+    >
+      <div className="h-full rounded-full bg-ladrillo" style={{ width: `${filled}%` }} />
     </div>
   );
 }

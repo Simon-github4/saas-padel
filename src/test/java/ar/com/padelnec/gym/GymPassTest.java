@@ -689,7 +689,7 @@ class GymPassTest {
         month(OCT_21, 1, null);
 
         CheckInResult result = scanOn(LocalDate.of(2026, 10, 22));
-        assertThat(result.weekLimit()).isEqualTo(3);
+        assertThat(result.limit()).isEqualTo(3);
         assertThat(result.validUntil()).isEqualTo(LocalDate.of(2026, 12, 4));
     }
 

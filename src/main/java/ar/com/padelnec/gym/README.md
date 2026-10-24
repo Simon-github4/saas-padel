@@ -1,7 +1,7 @@
 # Módulo gimnasio
 
-Socios con DNI, cuotas por periodo con tope de días por semana, y check-in por
-QR, en una o varias sedes. Vive en este paquete, en la app `gym-app/` y en las
+Socios con DNI, cuotas por periodo con tope de días por semana (contado por semana
+o por mes, según el club), y check-in por QR, en una o varias sedes. Vive en este paquete, en la app `gym-app/` y en las
 tablas `gym_*` (migración `V4__gimnasio.sql`), y está aislado del resto de
 turnospadel a propósito: no se sabe si a futuro se integra o se separa.
 
@@ -64,7 +64,9 @@ uno que adeuda meses (Facundo Molina), uno adelantado, uno con ingresos y una cu
 anulada (Hernán Paz, `33444555`), uno deshabilitado, un cobro de ayer cargado hoy, una
 cuota que empieza en unos días y uno en el tope semanal. Y los del pase de 15 días: uno
 vigente (Tomás Paso, `39111222`), uno vencido, un mensual con el pase después, un pase con el
-mensual después y un mensual que debía y pasó a pase (Ramiro Sosa, para anularlo).
+mensual después y un mensual que debía y pasó a pase (Ramiro Sosa, para anularlo). Y una socia
+de 2 días que ya vino 9 veces en su mes (Valeria Sosa, `37999000`), con su cuota contada por mes:
+queda en el tope, y la grilla muestra socios por semana y por mes mezclados.
 
 ```bash
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
@@ -81,7 +83,24 @@ Para probar sin cámara, pegar el link o el código en el campo del escáner.
   gimnasio no vuelve a entrar. El mostrador la corta al instante deshabilitando al socio.
 - Un ingreso por socio por día calendario (en la zona horaria del club), sumando
   todas las sedes. La semana va de lunes a domingo.
-- Pasado el tope semanal se rechaza; el mostrador puede dejar pasar (queda marcado
+- **Tope de ingresos** (`entry_limit` en `gym_club_config` y en cada `gym_membership`, migración
+  `V19`): cada cuota guarda cómo se cuentan sus días por semana, y el tope de hoy sale de la cuota
+  que rige hoy (`GymAllowance`). El dueño elige en «Cuotas» el modo de lo que se cobre desde ahora.
+  - **Por semana** (lo normal): de lunes a domingo, tantos ingresos como días por semana.
+  - **Por mes**: en el período de la cuota del socio (del 15 al 14 si arrancó el 15), no en el
+    mes calendario. El tope es días por semana × días del período / 7, redondeado (nunca da
+    ,5): 2 días son 8 en un período de 28 días y 9 en uno de 30 o 31; 7 días, todos los días.
+    En la gracia (el mes impago) cuenta el período corriente; con un nuevo inicio de mes a
+    futuro, la cuota de antes que cubre hoy; un pase de 15 días se cuenta en sus 15 días (2 días
+    por semana son 4).
+  - Cambiar de modo rige desde la próxima cuota de cada socio: lo toman las cuotas que se cobren
+    desde ahora y las ya pagas que todavía no empezaron (un adelanto). La que corre hoy sigue con la
+    regla con la que se pagó hasta que vence, y el que debe el mes sigue con el modo de su última
+    cuota hasta que lo pague. Así nadie queda sin ingresos a mitad de lo que ya pagó. «Cobrar» avisa
+    cuando esa cuota pasa al socio a contarse por mes, y «Cuotas cobradas» muestra el modo de cada una.
+  - Mientras conviven los dos modos, la columna de «Socios» dice «Ingresos» y aclara en cada socio
+    si es de la semana, del mes o del pase.
+- Pasado el tope se rechaza; el mostrador puede dejar pasar (queda marcado
   como excepción). El mostrador solo registra ingresos de HOY.
 - El DNI es opcional en el alta: los socios anotados sin DNI se cargan con el nombre y
   el DNI se completa después en "Cargar DNI y datos". Sin DNI no entra a la app, pero el

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { ApiError, gymApi, type DateRange, type Me } from '../api/gymClient';
 import { useGymAuth } from '../auth/GymAuthContext';
-import { Alert, Badge, Button, Card, Loading, WeekDots } from '../components/ui';
+import { Alert, Badge, Button, Card, Loading, UsageMeter } from '../components/ui';
 import { passState } from '../billing';
-import { firstName, longDay, money, shortDay, weekUsage } from '../format';
+import { firstName, longDay, money, shortDay, usage, usageTitle, usageUntil } from '../format';
 
-/** "Mi estado": si la cuota vale, hasta cuando, cuantos dias de la semana usó, y el boton de escanear. */
+/** "Mi estado": si la cuota vale, hasta cuando, cuantos ingresos usó (de la semana o del mes), y el boton de escanear. */
 export function HomeScreen({ onScan }: { onScan: () => void }) {
   const { slug, session, expire, requirePasswordChange } = useGymAuth();
   const [me, setMe] = useState<Me | null>(null);
@@ -171,11 +171,14 @@ function BillingCard({ me }: { me: Me }) {
       )}
       {me.gap && me.paidAhead && <GapNotice gap={me.gap} paidAhead={me.paidAhead} />}
       <div>
-        <p className="eyebrow text-ink-soft">Esta semana</p>
+        <p className="eyebrow text-ink-soft">{usageTitle(me.limitPeriod)}</p>
         <div className="mt-2 flex items-center justify-between gap-3">
-          <WeekDots used={me.weekUsed} limit={me.weekLimit} />
-          <p className="text-sm font-semibold">{weekUsage(me.weekUsed, me.weekLimit)}</p>
+          <UsageMeter used={me.used} limit={me.limit} period={me.limitPeriod} />
+          <p className="shrink-0 text-sm font-semibold">{usage(me.used, me.limit, me.limitPeriod)}</p>
         </div>
+        {usageUntil(me.limitPeriod, me.windowEnd) && (
+          <p className="mt-1 text-xs text-ink-soft">{usageUntil(me.limitPeriod, me.windowEnd)}</p>
+        )}
       </div>
       {me.membership.sedes.length > 0 && (
         <p className="text-xs text-ink-soft">Vale en: {me.membership.sedes.join(', ')}</p>

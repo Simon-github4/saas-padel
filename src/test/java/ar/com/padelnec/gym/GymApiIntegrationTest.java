@@ -288,17 +288,21 @@ class GymApiIntegrationTest {
         assertThat(before.get("periodStart").asText()).isNotBlank();
         // Sin adelantos, la cobertura llega hasta el fin del mes corriente.
         assertThat(before.get("paidUntil").asText()).isEqualTo(before.get("periodEnd").asText());
-        assertThat(before.get("weekUsed").asInt()).isZero();
-        assertThat(before.get("weekLimit").asInt()).isEqualTo(3);
+        assertThat(before.get("used").asInt()).isZero();
+        assertThat(before.get("limit").asInt()).isEqualTo(3);
+        // El club cuenta por semana (lo normal): la ventana termina el domingo.
+        assertThat(before.get("limitPeriod").asText()).isEqualTo("WEEK");
+        assertThat(LocalDate.parse(before.get("windowEnd").asText()).getDayOfWeek())
+                .isEqualTo(java.time.DayOfWeek.SUNDAY);
         assertThat(before.get("checkedInToday").asBoolean()).isFalse();
         assertThat(before.get("membership").get("sedes").get(0).asText()).isEqualTo("Necochea");
 
         JsonNode entry = post("los-troncos", "/checkin", token, Map.of("qrToken", qr()), 200);
         assertThat(entry.get("sedeName").asText()).isEqualTo("Necochea");
-        assertThat(entry.get("weekUsed").asInt()).isEqualTo(1);
+        assertThat(entry.get("used").asInt()).isEqualTo(1);
 
         JsonNode after = get("los-troncos", "/me", token, 200);
-        assertThat(after.get("weekUsed").asInt()).isEqualTo(1);
+        assertThat(after.get("used").asInt()).isEqualTo(1);
         assertThat(after.get("checkedInToday").asBoolean()).isTrue();
         assertThat(after.get("recent")).hasSize(1);
     }

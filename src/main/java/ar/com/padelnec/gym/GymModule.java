@@ -1,5 +1,6 @@
 package ar.com.padelnec.gym;
 
+import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymClubConfig;
 import ar.com.padelnec.gym.repository.GymClubConfigRepository;
 import ar.com.padelnec.web.ResourceNotFoundException;
@@ -36,6 +37,12 @@ public class GymModule {
     @Transactional(readOnly = true)
     public boolean isPasswordRequired() {
         return configRepository.findFirstByEnabledTrue().map(GymClubConfig::isPasswordRequired).orElse(false);
+    }
+
+    /** Como cuenta el club el tope de dias por semana. Sin el modulo prendido, por semana. */
+    @Transactional(readOnly = true)
+    public EntryLimit entryLimit() {
+        return configRepository.findFirstByEnabledTrue().map(GymClubConfig::getEntryLimit).orElse(EntryLimit.WEEK);
     }
 
     /** Para la API: un club sin el modulo responde como si la ruta no existiera (404). */
