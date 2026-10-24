@@ -6,8 +6,8 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
 /**
- * Cuantos ingresos tiene el socio y en que dias se cuentan, segun como cuenta el club el tope
- * ({@link EntryLimit}). Los ingresos son uno por dia, sumando todas las sedes.
+ * Cuantos ingresos tiene el socio y en que dias se cuentan, segun como se cuenta el tope de su
+ * cuota ({@link EntryLimit}). Los ingresos son uno por dia, sumando todas las sedes.
  *
  * <p>Por semana: de lunes a domingo ({@link GymWeek}), tantos ingresos como dias por semana. Por
  * mes: en el periodo de la cuota que rige hoy (del 15 al 14 si el socio arranco el 15; en un pase,
@@ -15,8 +15,10 @@ import java.time.temporal.ChronoUnit;
  * del periodo / 7, redondeado. 2 dias por semana dan 8 en un periodo de 28 dias y 9 en uno de 31;
  * 7 dias por semana, todos los dias del periodo.
  *
- * <p>Los dias por semana son los de la cuota que rige hoy ({@link GymBillingService.Status#active()}):
- * un adelanto con otro plan no cambia el tope de hoy.
+ * <p>Los dias por semana y el modo son los de la cuota que rige hoy
+ * ({@link GymBillingService.Status#active()}): un adelanto con otro plan, o un cambio del modo del
+ * club, no cambian el tope de hoy. En la gracia rige la ultima cuota que empezo, asi que el que
+ * debe el mes sigue con el modo de antes hasta que lo pague.
  *
  * @param window donde se cuenta: la semana, el mes de la cuota o el pase
  * @param from   el primer dia que cuenta
@@ -32,10 +34,10 @@ public record GymAllowance(Window window, LocalDate from, LocalDate to, int limi
         PASS
     }
 
-    public static GymAllowance of(EntryLimit entryLimit, GymBillingService.Status status, LocalDate today) {
+    public static GymAllowance of(GymBillingService.Status status, LocalDate today) {
         GymMembership active = status.active();
         int daysPerWeek = active == null ? 0 : active.getDaysPerWeek();
-        if (entryLimit != EntryLimit.MONTH) {
+        if (active == null || active.getEntryLimit() != EntryLimit.MONTH) {
             GymWeek week = GymWeek.of(today);
             return new GymAllowance(Window.WEEK, week.monday(), week.sunday(), daysPerWeek);
         }

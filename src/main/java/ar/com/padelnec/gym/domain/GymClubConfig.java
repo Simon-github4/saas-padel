@@ -32,8 +32,9 @@ public class GymClubConfig extends TenantScopedEntity {
     private boolean passwordRequired = false;
 
     /**
-     * Como se cuenta el tope de dias por semana: de lunes a domingo (lo normal) o en el mes
-     * de la cuota de cada socio. Cambiarlo rige al instante y no toca ningun dato.
+     * Como se cuenta el tope de dias por semana en las cuotas que se cobren desde ahora: de lunes
+     * a domingo (lo normal) o en el mes de la cuota de cada socio. Cada cuota guarda el suyo, asi
+     * que el cambio le llega a cada socio con su proxima cuota.
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "entry_limit", nullable = false, length = 10)

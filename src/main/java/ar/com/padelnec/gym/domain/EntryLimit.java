@@ -1,9 +1,10 @@
 package ar.com.padelnec.gym.domain;
 
 /**
- * Como cuenta el club el tope de ingresos de los dias por semana. Por semana: de lunes a
+ * Como se cuenta el tope de ingresos de los dias por semana. Por semana: de lunes a
  * domingo, tantos ingresos como dias. Por mes: en el periodo de la cuota del socio, los
  * dias por semana proporcionales a lo que dura el periodo (ver {@code GymAllowance}).
+ * Lo guarda cada cuota; el del club es el de las cuotas que se cobren desde ahora.
  */
 public enum EntryLimit {
     WEEK("Por semana"),

@@ -3,10 +3,13 @@ package ar.com.padelnec.gym.service;
 import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymClubConfig;
 import ar.com.padelnec.gym.repository.GymClubConfigRepository;
+import ar.com.padelnec.gym.repository.GymMembershipRepository;
 import ar.com.padelnec.gym.repository.GymSedeRepository;
 import ar.com.padelnec.service.TenantService;
 import ar.com.padelnec.web.BusinessRuleException;
 import ar.com.padelnec.web.ResourceNotFoundException;
+import java.time.Clock;
+import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,7 +21,9 @@ public class GymSettingsService {
 
     private final GymClubConfigRepository configRepository;
     private final GymSedeRepository sedeRepository;
+    private final GymMembershipRepository membershipRepository;
     private final TenantService tenantService;
+    private final Clock clock;
 
     /**
      * Lo publico del gimnasio, antes de que el socio entre: el nombre para el encabezado, si
@@ -62,9 +67,10 @@ public class GymSettingsService {
     }
 
     /**
-     * Cuenta el tope de dias por semana de lunes a domingo o en el mes de la cuota de cada socio.
-     * Rige al instante para todos: en el mes cuentan tambien los ingresos que el socio ya hizo en
-     * su periodo, y al volver a semanal se cuenta otra vez de lunes a domingo.
+     * Cuenta el tope de dias por semana de lunes a domingo o en el mes de la cuota de cada socio,
+     * desde la proxima cuota de cada uno: lo toman las que se cobren desde ahora y las ya pagas que
+     * todavia no empezaron (un adelanto). La cuota que corre hoy sigue con la regla con la que se
+     * pago hasta que vence: no se le cambia el tope a mitad de lo que el socio ya pago.
      */
     @Transactional
     public void setEntryLimit(EntryLimit entryLimit) {
@@ -74,5 +80,8 @@ public class GymSettingsService {
         configRepository.findFirstByEnabledTrue()
                 .orElseThrow(() -> new ResourceNotFoundException("El gimnasio no está disponible."))
                 .setEntryLimit(entryLimit);
+        LocalDate today = clock.instant().atZone(tenantService.requireCurrent().zoneId()).toLocalDate();
+        membershipRepository.findAllByStartsOnAfterAndVoidedAtIsNull(today)
+                .forEach(membership -> membership.setEntryLimit(entryLimit));
     }
 }

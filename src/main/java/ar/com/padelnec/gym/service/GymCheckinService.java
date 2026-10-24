@@ -1,7 +1,6 @@
 package ar.com.padelnec.gym.service;
 
 import ar.com.padelnec.config.TenantContext;
-import ar.com.padelnec.gym.GymModule;
 import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
@@ -45,7 +44,6 @@ public class GymCheckinService {
     private final GymSedeRepository sedeRepository;
     private final GymBillingService billingService;
     private final TenantService tenantService;
-    private final GymModule gymModule;
     private final Clock clock;
 
     /**
@@ -133,7 +131,7 @@ public class GymCheckinService {
         // La cuota queda valida hasta fin de mes, o mas alla si el socio pago por adelantado.
         LocalDate validUntil = status.paidUntil() != null ? status.paidUntil() : status.periodEnd();
 
-        GymAllowance allowance = GymAllowance.of(gymModule.entryLimit(), status, today);
+        GymAllowance allowance = GymAllowance.of(status, today);
         Optional<GymCheckin> existing = checkinRepository.findByMemberIdAndLocalDate(member.getId(), today);
         long used = checkinRepository.countByMemberIdAndLocalDateBetween(
                 member.getId(), allowance.from(), allowance.to());

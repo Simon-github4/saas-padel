@@ -1,7 +1,5 @@
 package ar.com.padelnec.gym.service;
 
-import ar.com.padelnec.gym.GymModule;
-import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
@@ -43,7 +41,6 @@ public class GymOverviewService {
     private final GymCheckinRepository checkinRepository;
     private final GymBillingService billingService;
     private final TenantService tenantService;
-    private final GymModule gymModule;
     private final Clock clock;
 
     /**
@@ -120,7 +117,6 @@ public class GymOverviewService {
     @Transactional(readOnly = true)
     public List<MemberRow> members() {
         LocalDate today = today();
-        EntryLimit entryLimit = gymModule.entryLimit();
         LocalDate since = today.minusDays(RECENT_DAYS - 1);
         Map<UUID, List<LocalDate>> recentDays = new HashMap<>();
         checkinRepository.findMemberDaysSince(since).forEach(row ->
@@ -129,7 +125,7 @@ public class GymOverviewService {
         return memberRepository.findAllByOrderByFullNameAsc().stream()
                 .map(member -> {
                     GymBillingService.Status billing = billingService.status(member, today);
-                    GymAllowance allowance = GymAllowance.of(entryLimit, billing, today);
+                    GymAllowance allowance = GymAllowance.of(billing, today);
                     return row(member, billing, allowance, used(member, allowance, since, recentDays));
                 })
                 .toList();

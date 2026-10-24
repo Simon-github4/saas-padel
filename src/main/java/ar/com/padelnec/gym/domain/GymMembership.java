@@ -51,6 +51,14 @@ public class GymMembership extends TenantScopedEntity {
     @Column(name = "plan_length", nullable = false, length = 20)
     private PlanLength planLength = PlanLength.MONTH;
 
+    /**
+     * Como se cuenta su tope de dias: por semana o en su periodo. Lo toma del club al cobrarse,
+     * asi un cambio del club rige desde la proxima cuota y no a mitad de la que el socio ya pago.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "entry_limit", nullable = false, length = 10)
+    private EntryLimit entryLimit = EntryLimit.WEEK;
+
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
 

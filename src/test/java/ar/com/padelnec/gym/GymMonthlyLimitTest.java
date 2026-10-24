@@ -43,7 +43,8 @@ import org.springframework.test.context.ActiveProfiles;
 
 /**
  * El tope de ingresos por mes: el club lo elige en «Cuotas» y cada socio reparte sus ingresos como
- * quiera dentro del periodo de su cuota, con los dias por semana proporcionales a lo que dura.
+ * quiera dentro del periodo de su cuota, con los dias por semana proporcionales a lo que dura. Cada
+ * cuota guarda el modo con el que se cobro: un cambio del club le llega al socio con su proxima cuota.
  *
  * <p>Las cuotas se cobran como en el mostrador ({@code charge}): el primer cobro fija el ancla, el
  * dia de corte de todos los meses del socio. El 15/10/2026 es jueves.
@@ -252,25 +253,68 @@ class GymMonthlyLimitTest {
     }
 
     @Test
-    @DisplayName("Cambiar de modo a mitad del periodo cuenta lo que el socio ya uso, y volver a semanal tambien")
-    void switchingModeMidPeriodCountsWhatWasUsed() {
+    @DisplayName("Cambiar el modo no toca la cuota que corre: el socio pasa al mes con su proxima cuota")
+    void switchingModeAppliesFromTheNextFee() {
         gym.entryLimit(club, EntryLimit.WEEK);
         month(OCT_15, 1, 2);
-        // Dos por semana, tres semanas: jueves y viernes, lunes y martes, lunes y martes.
-        for (int day : new int[] {15, 16, 19, 20, 26, 27}) {
+        // Dos por semana: jueves y viernes, lunes y martes.
+        for (int day : new int[] {15, 16, 19, 20}) {
             scanOn(LocalDate.of(2026, 10, day));
         }
 
         gym.entryLimit(club, EntryLimit.MONTH);
-        CheckInResult monthly = scanOn(LocalDate.of(2026, 10, 28));
-        assertThat(monthly.used()).isEqualTo(7);
-        assertThat(monthly.limit()).isEqualTo(9);
-
-        // De vuelta a semanal: lunes, martes y miercoles de esta semana ya pasan el tope de 2.
-        gym.entryLimit(club, EntryLimit.WEEK);
-        assertThatThrownBy(() -> scanOn(LocalDate.of(2026, 10, 29)))
+        // Su cuota del 15/10 al 14/11 se pago por semana y sigue asi hasta que vence.
+        scanOn(LocalDate.of(2026, 10, 26));
+        assertThat(scanOn(LocalDate.of(2026, 10, 27)).window()).isEqualTo(Window.WEEK);
+        assertThatThrownBy(() -> scanOn(LocalDate.of(2026, 10, 28)))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Ya usaste tus 2 días de esta semana");
+
+        // La proxima se cobra con el modo nuevo: desde el 15/11 se cuenta por mes, desde cero.
+        month(LocalDate.of(2026, 11, 10), 1, 2);
+        CheckInResult newFee = scanOn(LocalDate.of(2026, 11, 15));
+        assertThat(newFee.window()).isEqualTo(Window.MONTH);
+        assertThat(newFee.used()).isEqualTo(1);
+        assertThat(newFee.limit()).isEqualTo(9);
+
+        // Volver a semanal tampoco toca la cuota que corre.
+        gym.entryLimit(club, EntryLimit.WEEK);
+        assertThat(scanOn(LocalDate.of(2026, 11, 16)).window()).isEqualTo(Window.MONTH);
+    }
+
+    @Test
+    @DisplayName("Al cambiar el modo, las cuotas ya pagas que todavia no empezaron toman el modo nuevo")
+    void upcomingPaidFeesTakeTheNewMode() {
+        gym.entryLimit(club, EntryLimit.WEEK);
+        // Pago dos meses: del 15/10 al 14/11 y, adelantado, del 15/11 al 14/12.
+        month(OCT_15, 2, 2);
+        at(LocalDate.of(2026, 10, 20));
+        gym.entryLimit(club, EntryLimit.MONTH);
+
+        assertThat(scanOn(LocalDate.of(2026, 10, 20)).window()).isEqualTo(Window.WEEK);
+        CheckInResult advance = scanOn(LocalDate.of(2026, 11, 15));
+        assertThat(advance.window()).isEqualTo(Window.MONTH);
+        assertThat(advance.windowEnd()).isEqualTo(LocalDate.of(2026, 12, 14));
+    }
+
+    @Test
+    @DisplayName("El que debe el mes sigue con el modo de su ultima cuota hasta que la paga")
+    void graceKeepsThePreviousModeUntilPaid() {
+        gym.entryLimit(club, EntryLimit.WEEK);
+        LocalDate sep15 = LocalDate.of(2026, 9, 15);
+        at(sep15);
+        month(sep15, 1, 2);
+        gym.entryLimit(club, EntryLimit.MONTH);
+
+        // Debe el mes del 15/10: entra por la gracia, y se le cuenta como a su ultima cuota.
+        assertThat(scanOn(LocalDate.of(2026, 10, 20)).window()).isEqualTo(Window.WEEK);
+
+        // Lo paga con el modo nuevo, y el ingreso de la gracia cuenta para ese mes.
+        month(LocalDate.of(2026, 10, 20), 1, 2);
+        CheckInResult paid = scanOn(LocalDate.of(2026, 10, 21));
+        assertThat(paid.window()).isEqualTo(Window.MONTH);
+        assertThat(paid.used()).isEqualTo(2);
+        assertThat(paid.limit()).isEqualTo(9);
     }
 
     @Test

@@ -1,6 +1,5 @@
 package ar.com.padelnec.gym.service;
 
-import ar.com.padelnec.gym.GymModule;
 import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
@@ -29,7 +28,6 @@ public class GymStatusService {
     private final GymCheckinRepository checkinRepository;
     private final GymBillingService billingService;
     private final TenantService tenantService;
-    private final GymModule gymModule;
     private final Clock clock;
 
     public record MembershipView(LocalDate startsOn, LocalDate endsOn, int daysPerWeek, List<String> sedes,
@@ -71,7 +69,7 @@ public class GymStatusService {
         // La que rige hoy, no la ultima cobrada: un adelanto con otro plan no cambia el tope de hoy.
         GymMembership plan = billing.active();
 
-        GymAllowance allowance = GymAllowance.of(gymModule.entryLimit(), billing, today);
+        GymAllowance allowance = GymAllowance.of(billing, today);
         int used = (int) checkinRepository.countByMemberIdAndLocalDateBetween(
                 memberId, allowance.from(), allowance.to());
         boolean checkedInToday = checkinRepository.findByMemberIdAndLocalDate(memberId, today).isPresent();

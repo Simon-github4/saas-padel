@@ -89,8 +89,8 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
     }
 
     /**
-     * Como se cuenta el tope de los dias por semana. Rige al instante para todos los socios: en el
-     * mes cuentan tambien los ingresos que ya hicieron en su periodo.
+     * Como se cuenta el tope de los dias por semana, desde la proxima cuota de cada socio: la que
+     * corre hoy sigue con la regla con la que se pago hasta que vence.
      */
     private Component limitSetting() {
         RadioButtonGroup<EntryLimit> entryLimit = new RadioButtonGroup<>("Tope de ingresos");
@@ -103,14 +103,15 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
             if (event.isFromClient()) {
                 settingsService.setEntryLimit(event.getValue());
                 refresh();
-                GymViewSupport.ok(event.getValue() == EntryLimit.MONTH
-                        ? "Ahora el tope se cuenta por mes. Cuentan también los ingresos que ya hicieron en su período."
-                        : "Ahora el tope se cuenta por semana, de lunes a domingo.");
+                GymViewSupport.ok("Desde la próxima cuota de cada socio, el tope se cuenta "
+                        + (event.getValue() == EntryLimit.MONTH ? "por mes." : "por semana.")
+                        + " La cuota que tiene hoy sigue como estaba hasta que vence.");
             }
         });
         Span help = new Span("Por mes, cada socio reparte sus ingresos como quiera dentro de su período (del 15 al "
                 + "14 si arrancó el 15): son los días por semana proporcionales a lo que dura ese período, "
-                + "redondeados. Con 2 días por semana, 9 en un mes de 30 o 31 días y 8 en uno de 28.");
+                + "redondeados. Con 2 días por semana, 9 en un mes de 30 o 31 días y 8 en uno de 28. "
+                + "El cambio le llega a cada socio con su próxima cuota.");
         help.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
         VerticalLayout box = new VerticalLayout(entryLimit, help);
         box.setPadding(false);

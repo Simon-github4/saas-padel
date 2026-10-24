@@ -2,6 +2,7 @@ package ar.com.padelnec.gym;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymClubConfig;
 import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
@@ -120,8 +121,9 @@ class GymDevSeeder {
 
     /**
      * El tope por mes: una socia de 2 dias por semana cuyo mes arranco hace 20 dias y que ya vino 9
-     * veces, dia por medio. Con el club por semana entra como siempre; al pasarlo a "Por mes" en
-     * «Cuotas» queda en el tope (9 de 9, u 8 en un periodo de 28 o 29 dias).
+     * veces, dia por medio, con su cuota ya contada por mes (como si el club la hubiera cobrado en
+     * ese modo): queda en el tope (9 de 9, u 8 en un periodo de 28 o 29 dias), y la grilla muestra
+     * socios por semana y por mes mezclados, como mientras un club cambia de modo.
      */
     private void seedMonthlyLimitCases() {
         List<GymSede> sedes = sedeService.active();
@@ -132,8 +134,10 @@ class GymDevSeeder {
         LocalDate today = overviewService.today();
         UUID valeria = memberService.create(MONTHLY_LIMIT_MARKER_DNI, "Valeria Sosa", null).id();
         charge(valeria, 1, 2, sede, today, today.minusDays(20), today.minusDays(20), PayMethod.CASH);
-        UUID fee = membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(valeria)
-                .getFirst().getId();
+        GymMembership monthly = membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(valeria)
+                .getFirst();
+        monthly.setEntryLimit(EntryLimit.MONTH);
+        UUID fee = membershipRepository.save(monthly).getId();
         for (int daysAgo = 20; daysAgo >= 4; daysAgo -= 2) {
             checkIn(valeria, fee, sede, today.minusDays(daysAgo));
         }
