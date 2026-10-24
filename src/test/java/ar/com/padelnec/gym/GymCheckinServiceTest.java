@@ -13,6 +13,7 @@ import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.domain.PayMethod;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
+import ar.com.padelnec.gym.service.GymBillingService;
 import ar.com.padelnec.gym.service.GymCheckinService;
 import ar.com.padelnec.gym.service.GymCheckinService.CheckInResult;
 import ar.com.padelnec.gym.service.GymLocation.Point;
@@ -303,6 +304,25 @@ class GymCheckinServiceTest {
 
         assertThat(rows.get(memberId).lastCheckin()).isEqualTo(MONDAY.plusDays(2));
         assertThat(rows.get(neverCame).lastCheckin()).isNull();
+    }
+
+    @Test
+    @DisplayName("Los ingresos del dia dicen como esta hoy la cuota de cada socio: al dia o debe el mes")
+    void dayCheckinsShowTodaysFeeState() {
+        gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea);
+        UUID owing = gym.member(club, "40222333", "Beto Ruiz").id();
+        gym.sell(club, owing, MONDAY.minusDays(40), MONDAY.minusDays(10), 3, necochea);
+        scan(necochea);
+        checkinService.checkIn(owing, necochea.getQrToken(), null);
+
+        Map<String, GymBillingService.Status> byName = overviewService.checkinsOf(MONDAY).stream()
+                .collect(Collectors.toMap(GymOverviewService.DayCheckin::memberName,
+                        GymOverviewService.DayCheckin::billing));
+
+        assertThat(byName.get("Juan Pérez").paidToday()).isTrue();
+        // Entro por la gracia: debe el mes corriente, una sola cuota.
+        assertThat(byName.get("Beto Ruiz").paidToday()).isFalse();
+        assertThat(byName.get("Beto Ruiz").monthsLate()).isEqualTo(1);
     }
 
     @Test

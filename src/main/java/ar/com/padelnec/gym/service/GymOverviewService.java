@@ -97,8 +97,12 @@ public class GymOverviewService {
         }
     }
 
+    /**
+     * Un ingreso del dia. {@code billing} es como esta HOY la cuota del socio (no el dia del
+     * ingreso): lo que le sirve al mostrador para saber a quien cobrarle.
+     */
     public record DayCheckin(Instant at, String memberName, String dni, String sedeName, boolean override,
-                             boolean manual) {
+                             boolean manual, GymBillingService.Status billing) {
     }
 
     /**
@@ -149,7 +153,10 @@ public class GymOverviewService {
 
     @Transactional(readOnly = true)
     public List<DayCheckin> checkinsOf(LocalDate day) {
-        return checkinRepository.findAllByDay(day).stream().map(GymOverviewService::dayCheckin).toList();
+        LocalDate today = today();
+        return checkinRepository.findAllByDay(day).stream()
+                .map(checkin -> dayCheckin(checkin, billingService.status(checkin.getMember(), today)))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -175,9 +182,9 @@ public class GymOverviewService {
                 member.isEnabled(), member.isMustChangePassword(), used, allowance, billing, sedes, lastCheckin);
     }
 
-    private static DayCheckin dayCheckin(GymCheckin checkin) {
+    private static DayCheckin dayCheckin(GymCheckin checkin, GymBillingService.Status billing) {
         return new DayCheckin(checkin.getCheckedInAt(), checkin.getMember().getFullName(),
                 checkin.getMember().getDni(), checkin.getSede().getName(), checkin.isOverride(),
-                checkin.getRegisteredBy() != null);
+                checkin.getRegisteredBy() != null, billing);
     }
 }

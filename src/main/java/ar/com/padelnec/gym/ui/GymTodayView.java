@@ -2,6 +2,7 @@ package ar.com.padelnec.gym.ui;
 
 import ar.com.padelnec.gym.GymModule;
 import ar.com.padelnec.gym.domain.PayMethod;
+import ar.com.padelnec.gym.service.GymBillingService;
 import ar.com.padelnec.gym.service.GymOverviewService;
 import ar.com.padelnec.gym.service.GymOverviewService.DayCheckin;
 import ar.com.padelnec.gym.service.GymOverviewService.DayPayment;
@@ -88,11 +89,36 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
         checkins.setSelectionMode(Grid.SelectionMode.NONE);
         checkins.addColumn(row -> hour.format(row.at())).setHeader("Hora").setAutoWidth(true).setFlexGrow(0);
         checkins.addColumn(DayCheckin::memberName).setHeader("Socio").setFlexGrow(3);
+        checkins.addComponentColumn(row -> feeCell(row.billing())).setHeader("Cuota").setAutoWidth(true)
+                .setFlexGrow(0);
         checkins.addColumn(row -> row.dni() == null ? "—" : row.dni()).setHeader("DNI").setAutoWidth(true).setFlexGrow(0);
         checkins.addColumn(DayCheckin::sedeName).setHeader("Sede").setFlexGrow(2);
         checkins.addComponentColumn(this::marks).setHeader("").setAutoWidth(true).setFlexGrow(0);
         checkins.setEmptyStateText("Nadie entró este día.");
         checkins.setSizeFull();
+    }
+
+    /**
+     * Como esta hoy la cuota del socio: al dia (mensual o pase) o debe el mes, que es lo que el
+     * mostrador tiene que cobrar. Los demas casos pasan poco entre los que entraron, pero se dicen.
+     */
+    private static Component feeCell(GymBillingService.Status billing) {
+        if (billing.plan() == null) {
+            return GymViewSupport.badge("Sin cuota", "contrast small");
+        }
+        if (billing.paidToday()) {
+            return GymViewSupport.badge("Al día", "success small");
+        }
+        if (billing.passRules()) {
+            return GymViewSupport.badge(billing.started() ? "Pase vencido" : "Por empezar", "contrast small");
+        }
+        if (!billing.started()) {
+            return GymViewSupport.badge("Por empezar", "contrast small");
+        }
+        if (billing.monthsLate() >= 2) {
+            return GymViewSupport.badge("Debe " + billing.monthsLate() + " cuotas", "error small");
+        }
+        return GymViewSupport.badge("Debe el mes", "contrast small");
     }
 
     private Component marks(DayCheckin row) {
