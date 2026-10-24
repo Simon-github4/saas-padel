@@ -81,6 +81,8 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
     private static final DateTimeFormatter DATE_HEADING =
             DateTimeFormatter.ofPattern("EEEE d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es-AR"));
     private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter WEEKDAY =
+            DateTimeFormatter.ofPattern("EEEE", Locale.forLanguageTag("es-AR"));
 
     private final TenantService tenantService;
     private final BookingService bookingService;
@@ -106,6 +108,7 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
     private final Div board = new Div();
 
     private final Button markTournament = new Button();
+    private final Button copyPreviousDay = new Button();
     private final HorizontalLayout tournamentBar = new HorizontalLayout();
     private final Span tournamentCount = new Span();
     private final TextField tournamentName = new TextField();
@@ -232,9 +235,18 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
             refresh();
         });
 
+        // Para un torneo de varios dias: se marca el primero y los demas se copian
+        // del anterior. Solo se muestra si el dia anterior tiene algo que copiar.
+        copyPreviousDay.setIcon(VaadinIcon.COPY_O.create());
+        copyPreviousDay.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        copyPreviousDay.setTooltipText("Copia a este día los torneos y suspensiones del día anterior");
+        copyPreviousDay.addClickListener(event -> openCopyPreviousDay());
+        copyPreviousDay.setVisible(false);
+
         // Sin label, el campo ya no tiene un renglon extra arriba: las flechas
         // se alinean al centro con el resto del control de un solo bloque.
-        HorizontalLayout dayPicker = new HorizontalLayout(previous, datePicker, next, today, markTournament);
+        HorizontalLayout dayPicker = new HorizontalLayout(previous, datePicker, next, today, markTournament,
+                copyPreviousDay);
         dayPicker.setAlignItems(Alignment.CENTER);
         dayPicker.setPadding(false);
         // En el celular "Marcar torneo" baja a otro renglon: en uno solo no
@@ -447,6 +459,10 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         summary.setText(summaryOf(rows));
         renderFixedList(bookings);
         dropWhatIsNoLongerFree();
+
+        BlackoutService.DayCopy copy = blackoutService.previewCopyFromPreviousDay(club, date);
+        copyPreviousDay.setText("Copiar del " + WEEKDAY.format(copy.source()));
+        copyPreviousDay.setVisible(!marking && !copy.isEmpty());
     }
 
     /**
@@ -835,6 +851,76 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
                         HH_MM.format(released.startsAt().atZone(club.zoneId())),
                         HH_MM.format(released.endsAt().atZone(club.zoneId()))))
                 .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+    }
+
+    /**
+     * Muestra que se va a copiar del dia anterior antes de copiarlo: una copia que
+     * no se ve hasta despues es la que se descubre cuando un jugador no encuentra
+     * turno.
+     */
+    private void openCopyPreviousDay() {
+        LocalDate date = datePicker.getValue();
+        BlackoutService.DayCopy copy = blackoutService.previewCopyFromPreviousDay(club, date);
+        String sourceDay = WEEKDAY.format(copy.source());
+        if (copy.isEmpty()) {
+            Notification.show("No queda nada del %s para copiar.".formatted(sourceDay));
+            refresh();
+            return;
+        }
+
+        VerticalLayout content = new VerticalLayout();
+        content.setPadding(false);
+        content.setSpacing(false);
+        content.addClassNames(LumoUtility.Gap.XSMALL);
+        content.add(new Span("Se copian a este día, con la misma cancha y el mismo horario:"));
+        copy.blackouts().forEach(blackout -> {
+            Span line = new Span("• " + describe(blackout));
+            line.addClassNames(LumoUtility.FontWeight.MEDIUM);
+            content.add(line);
+        });
+        if (copy.bookingsInside() > 0) {
+            Span warning = new Span(copy.bookingsInside() == 1
+                    ? "Hay un turno ya reservado en esos horarios: sigue vigente, revisalo."
+                    : "Hay %d turnos ya reservados en esos horarios: siguen vigentes, revisalos."
+                            .formatted(copy.bookingsInside()));
+            warning.addClassNames(LumoUtility.TextColor.ERROR, LumoUtility.FontSize.SMALL);
+            content.add(warning);
+        }
+
+        ConfirmDialog dialog = new ConfirmDialog();
+        dialog.setHeader("Copiar del " + sourceDay);
+        dialog.setText(content);
+        dialog.setCancelable(true);
+        dialog.setCancelText("Volver");
+        dialog.setConfirmText("Copiar");
+        dialog.addConfirmListener(event -> copyFromPreviousDay(date, sourceDay));
+        dialog.open();
+    }
+
+    private void copyFromPreviousDay(LocalDate date, String sourceDay) {
+        List<Blackout> copied;
+        try {
+            copied = blackoutService.copyFromPreviousDay(club, date);
+        } catch (BusinessRuleException ex) {
+            Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+        refresh();
+        Notification.show(copied.isEmpty()
+                        ? "No quedaba nada del %s para copiar.".formatted(sourceDay)
+                        : "Listo: se copió lo del %s.".formatted(sourceDay))
+                .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+    }
+
+    /** "Torneo «Apertura» · Cancha 1 · 17:00 a 21:30". */
+    private String describe(Blackout blackout) {
+        String what = blackout.getReason() == null || blackout.getReason().isBlank()
+                ? blackout.getKind().label()
+                : "%s «%s»".formatted(blackout.getKind().label(), blackout.getReason());
+        String where = blackout.getCourt() == null ? "Todas las canchas" : blackout.getCourt().getName();
+        return "%s · %s · %s a %s".formatted(what, where,
+                HH_MM.format(blackout.getStartTime().atZone(club.zoneId())),
+                HH_MM.format(blackout.getEndTime().atZone(club.zoneId())));
     }
 
     private void openManualBooking(AgendaRow row, Court court, String availabilityException) {

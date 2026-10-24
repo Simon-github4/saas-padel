@@ -13,6 +13,7 @@ import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.service.AvailabilityService;
 import ar.com.padelnec.service.BlackoutService;
+import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.web.BusinessRuleException;
 import java.time.Clock;
 import java.time.DayOfWeek;
@@ -39,9 +40,11 @@ class BlackoutServiceTest {
     /** Martes 01/09/2026, 07:00 hora de Necochea (10:00 UTC). */
     private static final String NOW = "2026-09-01T10:00:00Z";
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 1);
+    private static final LocalDate TOMORROW = TODAY.plusDays(1);
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
 
     @Autowired private BlackoutService blackoutService;
+    @Autowired private BookingService bookingService;
     @Autowired private AvailabilityService availabilityService;
     @Autowired private BlackoutRepository blackoutRepository;
     @Autowired private ClubFixture fixture;
@@ -155,6 +158,81 @@ class BlackoutServiceTest {
         assertThat(blackouts()).hasSize(1);
     }
 
+    // ---------------------------------------------------- copiar del dia anterior
+
+    @Test
+    @DisplayName("Copiar del dia anterior pasa torneos y suspensiones al dia siguiente, misma cancha y horario")
+    void copiesThePreviousDay() {
+        tournament(court1, at(17, 0), at(21, 30));
+        Blackout watering = new Blackout();
+        watering.setStartTime(at(8, 0));
+        watering.setEndTime(at(9, 30));
+        watering.setReason("Riego");
+        blackoutRepository.saveAndFlush(watering);
+
+        List<Blackout> copied = blackoutService.copyFromPreviousDay(club, TOMORROW);
+
+        assertThat(copied).hasSize(2);
+        assertThat(blackouts().stream().filter(blackout -> !blackout.getStartTime().isBefore(at(TOMORROW, 0, 0))))
+                .extracting(blackout -> blackout.getCourt() == null ? "Todas" : blackout.getCourt().getName(),
+                        Blackout::getStartTime, Blackout::getEndTime, Blackout::getKind, Blackout::getReason)
+                .containsExactly(
+                        tuple("Todas", at(TOMORROW, 8, 0), at(TOMORROW, 9, 30), BlackoutKind.SUSPENSION, "Riego"),
+                        tuple("Cancha 1", at(TOMORROW, 17, 0), at(TOMORROW, 21, 30), BlackoutKind.TOURNAMENT,
+                                "Torneo Apertura"));
+    }
+
+    @Test
+    @DisplayName("Copiar dos veces no duplica nada")
+    void copyingTwiceDoesNotDuplicate() {
+        tournament(court1, at(17, 0), at(21, 30));
+
+        blackoutService.copyFromPreviousDay(club, TOMORROW);
+
+        assertThat(blackoutService.previewCopyFromPreviousDay(club, TOMORROW).isEmpty()).isTrue();
+        assertThat(blackoutService.copyFromPreviousDay(club, TOMORROW)).isEmpty();
+        assertThat(blackouts()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("Una suspension que ya cubre los dos dias no se copia")
+    void multiDaySuspensionIsNotCopiedAgain() {
+        Blackout repair = new Blackout();
+        repair.setCourt(court2);
+        repair.setStartTime(at(8, 0));
+        repair.setEndTime(at(TOMORROW.plusDays(1), 23, 0));
+        repair.setReason("Cambio de cesped");
+        blackoutRepository.saveAndFlush(repair);
+
+        assertThat(blackoutService.previewCopyFromPreviousDay(club, TOMORROW).isEmpty()).isTrue();
+    }
+
+    @Test
+    @DisplayName("La vista previa cuenta los turnos ya reservados que quedan adentro")
+    void previewCountsBookingsInside() {
+        tournament(court1, at(17, 0), at(21, 30));
+        bookingService.createManual(club, court1.getId(), at(TOMORROW, 18, 30), "Jugador", "2262415000",
+                null, null, true);
+        bookingService.createManual(club, court2.getId(), at(TOMORROW, 18, 30), "Otro", "2262415111",
+                null, null, true);
+
+        BlackoutService.DayCopy preview = blackoutService.previewCopyFromPreviousDay(club, TOMORROW);
+
+        assertThat(preview.blackouts()).hasSize(1);
+        assertThat(preview.bookingsInside()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("No se copia a un dia que ya paso")
+    void pastDayIsRejected() {
+        tournament(court1, at(TODAY.minusDays(2), 17, 0), at(TODAY.minusDays(2), 21, 30));
+
+        assertThat(blackoutService.previewCopyFromPreviousDay(club, TODAY.minusDays(1)).isEmpty()).isTrue();
+        assertThatThrownBy(() -> blackoutService.copyFromPreviousDay(club, TODAY.minusDays(1)))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("ya pasó");
+    }
+
     // ------------------------------------------------------------ utilidades
 
     private void tournament(Court court, Instant from, Instant until) {
@@ -168,7 +246,11 @@ class BlackoutServiceTest {
     }
 
     private Instant at(int hour, int minute) {
-        return TODAY.atTime(hour, minute).atZone(ZONE).toInstant();
+        return at(TODAY, hour, minute);
+    }
+
+    private Instant at(LocalDate date, int hour, int minute) {
+        return date.atTime(hour, minute).atZone(ZONE).toInstant();
     }
 
     /** Con la cancha ya cargada, ordenadas por inicio. */
