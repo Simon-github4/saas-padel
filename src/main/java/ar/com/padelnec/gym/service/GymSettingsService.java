@@ -1,9 +1,11 @@
 package ar.com.padelnec.gym.service;
 
+import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymClubConfig;
 import ar.com.padelnec.gym.repository.GymClubConfigRepository;
 import ar.com.padelnec.gym.repository.GymSedeRepository;
 import ar.com.padelnec.service.TenantService;
+import ar.com.padelnec.web.BusinessRuleException;
 import ar.com.padelnec.web.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -57,5 +59,20 @@ public class GymSettingsService {
         configRepository.findFirstByEnabledTrue()
                 .orElseThrow(() -> new ResourceNotFoundException("El gimnasio no está disponible."))
                 .setPasswordRequired(passwordRequired);
+    }
+
+    /**
+     * Cuenta el tope de dias por semana de lunes a domingo o en el mes de la cuota de cada socio.
+     * Rige al instante para todos: en el mes cuentan tambien los ingresos que el socio ya hizo en
+     * su periodo, y al volver a semanal se cuenta otra vez de lunes a domingo.
+     */
+    @Transactional
+    public void setEntryLimit(EntryLimit entryLimit) {
+        if (entryLimit == null) {
+            throw new BusinessRuleException("Elegí cómo se cuenta el tope de ingresos.");
+        }
+        configRepository.findFirstByEnabledTrue()
+                .orElseThrow(() -> new ResourceNotFoundException("El gimnasio no está disponible."))
+                .setEntryLimit(entryLimit);
     }
 }

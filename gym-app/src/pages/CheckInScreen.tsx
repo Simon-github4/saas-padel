@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError, gymApi, type CheckInResult } from '../api/gymClient';
 import { useGymAuth } from '../auth/GymAuthContext';
-import { Alert, Button, Card, Loading, WeekDots } from '../components/ui';
-import { longDay, weekUsage } from '../format';
+import { Alert, Button, Card, Loading, UsageMeter } from '../components/ui';
+import { longDay, usage, usageTitle, usageUntil } from '../format';
 import { currentPosition, describeProblem, GeoError, type GeoProblem, type Position } from '../geolocation';
 
 /**
@@ -126,11 +126,14 @@ export function CheckInScreen({
       </div>
 
       <Card className="mt-8">
-        <p className="eyebrow text-ink-soft">Esta semana</p>
+        <p className="eyebrow text-ink-soft">{usageTitle(result.limitPeriod)}</p>
         <div className="mt-2 flex items-center justify-between gap-3">
-          <WeekDots used={result.weekUsed} limit={result.weekLimit} />
-          <p className="text-sm font-semibold">{weekUsage(result.weekUsed, result.weekLimit)}</p>
+          <UsageMeter used={result.used} limit={result.limit} period={result.limitPeriod} />
+          <p className="shrink-0 text-sm font-semibold">{usage(result.used, result.limit, result.limitPeriod)}</p>
         </div>
+        {usageUntil(result.limitPeriod, result.windowEnd) && (
+          <p className="mt-1 text-xs text-ink-soft">{usageUntil(result.limitPeriod, result.windowEnd)}</p>
+        )}
         <p className="mt-4 text-xs text-ink-soft">Tu cuota vale hasta el {longDay(result.validUntil)}.</p>
       </Card>
 

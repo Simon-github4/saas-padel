@@ -1,6 +1,7 @@
 package ar.com.padelnec.gym.service;
 
 import ar.com.padelnec.config.TenantContext;
+import ar.com.padelnec.gym.GymModule;
 import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
@@ -44,14 +45,17 @@ public class GymCheckinService {
     private final GymSedeRepository sedeRepository;
     private final GymBillingService billingService;
     private final TenantService tenantService;
+    private final GymModule gymModule;
     private final Clock clock;
 
     /**
      * Lo que ve el socio despues de escanear. {@code alreadyRegistered} es true
-     * cuando ya tenia el ingreso de hoy: escanear dos veces no es un error.
+     * cuando ya tenia el ingreso de hoy: escanear dos veces no es un error. {@code used} y
+     * {@code limit} son los ingresos de la semana, del mes de la cuota o del pase
+     * ({@code window}), que termina el {@code windowEnd}.
      */
-    public record CheckInResult(String sedeName, boolean alreadyRegistered, int weekUsed, int weekLimit,
-                                LocalDate validUntil) {
+    public record CheckInResult(String sedeName, boolean alreadyRegistered, int used, int limit,
+                                GymAllowance.Window window, LocalDate windowEnd, LocalDate validUntil) {
     }
 
     /**
@@ -78,7 +82,7 @@ public class GymCheckinService {
 
     /**
      * Ingreso cargado por el mostrador, siempre para HOY. Puede pasar por encima del
-     * tope semanal (queda marcado como excepcion), pero no exige menos que el
+     * tope de dias (queda marcado como excepcion), pero no exige menos que el
      * escaneo en lo demas: sin cuota vigente no hay ingreso, hay que cobrarla.
      *
      * <p>No admite fecha: un ingreso cargado despues de cerrado un periodo cambiaria
@@ -129,12 +133,12 @@ public class GymCheckinService {
         // La cuota queda valida hasta fin de mes, o mas alla si el socio pago por adelantado.
         LocalDate validUntil = status.paidUntil() != null ? status.paidUntil() : status.periodEnd();
 
-        GymWeek week = GymWeek.of(today);
+        GymAllowance allowance = GymAllowance.of(gymModule.entryLimit(), status, today);
         Optional<GymCheckin> existing = checkinRepository.findByMemberIdAndLocalDate(member.getId(), today);
         long used = checkinRepository.countByMemberIdAndLocalDateBetween(
-                member.getId(), week.monday(), week.sunday());
+                member.getId(), allowance.from(), allowance.to());
         if (existing.isPresent()) {
-            return result(existing.get().getSede().getName(), true, used, membership, validUntil);
+            return result(existing.get().getSede().getName(), true, used, allowance, validUntil);
         }
 
         // Recien aca, cuando el ingreso es nuevo: escanear de nuevo lo que ya estaba registrado
@@ -143,13 +147,9 @@ public class GymCheckinService {
                 ? verifyLocation(sede, location)
                 : GymCheckinRepository.NO_DISTANCE;
 
-        boolean overLimit = used >= membership.getDaysPerWeek();
+        boolean overLimit = used >= allowance.limit();
         if (overLimit && !allowOverride) {
-            String alreadyUsed = membership.getDaysPerWeek() == 1
-                    ? "Ya usaste tu día"
-                    : "Ya usaste tus " + membership.getDaysPerWeek() + " días";
-            throw new BusinessRuleException(alreadyUsed + " de esta semana. La semana se renueva el lunes; "
-                    + "si necesitás entrar hoy, hablá con el mostrador.");
+            throw new BusinessRuleException(limitReached(allowance));
         }
 
         UUID clubId = TenantContext.require();
@@ -161,7 +161,21 @@ public class GymCheckinService {
 
         // Si otro pedido se adelanto entre la lectura y el insert, el ingreso ya existe: es un
         // "ya registrado", no un error.
-        return result(sede.getName(), inserted == 0, used + inserted, membership, validUntil);
+        return result(sede.getName(), inserted == 0, used + inserted, allowance, validUntil);
+    }
+
+    /** Por que no entra con el tope alcanzado, segun donde se cuenta. */
+    private static String limitReached(GymAllowance allowance) {
+        int limit = allowance.limit();
+        return switch (allowance.window()) {
+            case WEEK -> (limit == 1 ? "Ya usaste tu día" : "Ya usaste tus " + limit + " días")
+                    + " de esta semana. La semana se renueva el lunes; si necesitás entrar hoy, hablá con el mostrador.";
+            // "Va hasta" y no "se renueva": con el mes impago, el que sigue no lo habilita.
+            case MONTH -> "Ya usaste tus " + limit + " ingresos de este mes. Tu mes va hasta el "
+                    + DAY.format(allowance.to()) + "; si necesitás entrar antes, hablá con el mostrador.";
+            case PASS -> "Ya usaste los " + limit + " ingresos de tu pase, que vale hasta el "
+                    + DAY.format(allowance.to()) + ". Si necesitás entrar igual, hablá con el mostrador.";
+        };
     }
 
     /**
@@ -192,9 +206,9 @@ public class GymCheckinService {
                 : "unos " + Math.round(meters / 10) * 10 + " m";
     }
 
-    private static CheckInResult result(String sedeName, boolean alreadyRegistered, long weekUsed,
-                                        GymMembership membership, LocalDate validUntil) {
-        return new CheckInResult(sedeName, alreadyRegistered, (int) weekUsed, membership.getDaysPerWeek(),
-                validUntil);
+    private static CheckInResult result(String sedeName, boolean alreadyRegistered, long used,
+                                        GymAllowance allowance, LocalDate validUntil) {
+        return new CheckInResult(sedeName, alreadyRegistered, (int) used, allowance.limit(), allowance.window(),
+                allowance.to(), validUntil);
     }
 }

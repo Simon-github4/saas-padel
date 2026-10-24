@@ -1,10 +1,14 @@
 package ar.com.padelnec.gym.ui;
 
 import ar.com.padelnec.gym.GymModule;
+import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.PlanLength;
+import ar.com.padelnec.gym.service.GymAllowance;
+import ar.com.padelnec.gym.service.GymSettingsService;
 import ar.com.padelnec.gym.service.GymTariffService;
 import ar.com.padelnec.gym.service.GymTariffService.TariffRow;
 import ar.com.padelnec.web.BusinessRuleException;
+import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.dialog.Dialog;
@@ -15,6 +19,7 @@ import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.radiobutton.RadioButtonGroup;
 import com.vaadin.flow.component.select.Select;
 import com.vaadin.flow.component.textfield.BigDecimalField;
 import com.vaadin.flow.router.BeforeEnterEvent;
@@ -26,7 +31,8 @@ import jakarta.annotation.security.RolesAllowed;
 import java.math.BigDecimal;
 
 /**
- * Las cuotas segun los dias por semana: la mensual y la del pase de 15 dias.
+ * Las cuotas segun los dias por semana: la mensual y la del pase de 15 dias, y como se cuenta
+ * el tope de esos dias (por semana o por mes).
  *
  * <p>Es lo que el mostrador usa para auto-completar el monto al cobrar: fijar aca
  * la tarifa "de 3 dias" hace que la cuota del trimestre salga sola, y de todos
@@ -40,12 +46,15 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
 
     private final GymModule gymModule;
     private final GymTariffService tariffService;
+    private final GymSettingsService settingsService;
 
     private final Grid<TariffRow> grid = new Grid<>();
+    private Grid.Column<TariffRow> entriesColumn;
 
-    public GymTariffsView(GymModule gymModule, GymTariffService tariffService) {
+    public GymTariffsView(GymModule gymModule, GymTariffService tariffService, GymSettingsService settingsService) {
         this.gymModule = gymModule;
         this.tariffService = tariffService;
+        this.settingsService = settingsService;
 
         setSizeFull();
         addClassNames(LumoUtility.Gap.MEDIUM);
@@ -64,6 +73,8 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
         toolbar.setPadding(false);
 
         grid.addColumn(this::daysLabel).setHeader("Plan").setFlexGrow(2);
+        entriesColumn = grid.addColumn(GymTariffsView::entriesLabel).setHeader("Ingresos").setAutoWidth(true)
+                .setFlexGrow(0);
         grid.addComponentColumn(row -> priceCell(row.monthPrice()))
                 .setHeader("Cuota mensual").setAutoWidth(true).setFlexGrow(0);
         grid.addComponentColumn(row -> priceCell(row.fifteenDaysPrice()))
@@ -72,9 +83,56 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
         grid.setEmptyStateText("Todavía no hay tarifas. Tocá «Fijar tarifa» para fijar la primera.");
         grid.setSizeFull();
 
-        add(toolbar, grid);
+        add(toolbar, limitSetting(), grid);
         setFlexGrow(1, grid);
         refresh();
+    }
+
+    /**
+     * Como se cuenta el tope de los dias por semana. Rige al instante para todos los socios: en el
+     * mes cuentan tambien los ingresos que ya hicieron en su periodo.
+     */
+    private Component limitSetting() {
+        RadioButtonGroup<EntryLimit> entryLimit = new RadioButtonGroup<>("Tope de ingresos");
+        entryLimit.setItems(EntryLimit.values());
+        entryLimit.setItemLabelGenerator(option -> option.label() + (option == EntryLimit.WEEK
+                ? " (de lunes a domingo)"
+                : " (en el período de la cuota de cada socio)"));
+        entryLimit.setValue(gymModule.entryLimit());
+        entryLimit.addValueChangeListener(event -> {
+            if (event.isFromClient()) {
+                settingsService.setEntryLimit(event.getValue());
+                refresh();
+                GymViewSupport.ok(event.getValue() == EntryLimit.MONTH
+                        ? "Ahora el tope se cuenta por mes. Cuentan también los ingresos que ya hicieron en su período."
+                        : "Ahora el tope se cuenta por semana, de lunes a domingo.");
+            }
+        });
+        Span help = new Span("Por mes, cada socio reparte sus ingresos como quiera dentro de su período (del 15 al "
+                + "14 si arrancó el 15): son los días por semana proporcionales a lo que dura ese período, "
+                + "redondeados. Con 2 días por semana, 9 en un mes de 30 o 31 días y 8 en uno de 28.");
+        help.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
+        VerticalLayout box = new VerticalLayout(entryLimit, help);
+        box.setPadding(false);
+        box.setSpacing(false);
+        return box;
+    }
+
+    /**
+     * Con el tope por mes: cuantos ingresos da el plan en un mes (segun dure de 28 a 31 dias) y en
+     * el pase de 15 dias, de los que ofrece.
+     */
+    private static String entriesLabel(TariffRow row) {
+        int days = row.daysPerWeek();
+        String month = null;
+        if (row.monthPrice() != null) {
+            int least = GymAllowance.proportional(days, 28);
+            int most = GymAllowance.proportional(days, 31);
+            month = (least == most ? String.valueOf(least) : least + " a " + most) + " por mes";
+        }
+        String pass = row.fifteenDaysPrice() == null ? null
+                : GymAllowance.proportional(days, PlanLength.PASS_DAYS) + " en el pase";
+        return month == null ? pass : pass == null ? month : month + " · " + pass;
     }
 
     @Override
@@ -168,6 +226,9 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
     }
 
     private void refresh() {
+        entriesColumn.setVisible(gymModule.entryLimit() == EntryLimit.MONTH);
         grid.setItems(tariffService.tariffs());
+        // La columna que aparece al pasar a "Por mes" se mide recien ahora; si no, queda cortada.
+        grid.recalculateColumnWidths();
     }
 }

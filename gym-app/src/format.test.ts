@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { digitsOnly, firstName, longDay, shortDay, weekUsage } from './format';
+import { digitsOnly, firstName, longDay, shortDay, usage, usageTitle, usageUntil } from './format';
 
 describe('format', () => {
   it('muestra los dias de calendario sin correrlos por la zona horaria', () => {
@@ -19,7 +19,18 @@ describe('format', () => {
   });
 
   it('dice cuantos dias de la semana uso, en singular cuando corresponde', () => {
-    expect(weekUsage(2, 3)).toBe('2 de 3 días');
-    expect(weekUsage(0, 1)).toBe('0 de 1 día');
+    expect(usage(2, 3, 'WEEK')).toBe('2 de 3 días');
+    expect(usage(0, 1, 'WEEK')).toBe('0 de 1 día');
+    expect(usageTitle('WEEK')).toBe('Esta semana');
+    expect(usageUntil('WEEK', '2026-10-25')).toBeNull();
+  });
+
+  it('en el mes y en el pase cuenta ingresos y dice hasta cuando', () => {
+    expect(usage(3, 9, 'MONTH')).toBe('3 de 9 ingresos');
+    expect(usageTitle('MONTH')).toBe('Este mes');
+    expect(usageUntil('MONTH', '2026-11-14')).toBe('Tu mes va hasta el 14/11');
+    expect(usage(4, 4, 'PASS')).toBe('4 de 4 ingresos');
+    expect(usageTitle('PASS')).toBe('Este pase');
+    expect(usageUntil('PASS', '2026-11-04')).toBe('Tu pase vale hasta el 04/11');
   });
 });

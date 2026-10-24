@@ -22,7 +22,7 @@ public interface GymCheckinRepository extends JpaRepository<GymCheckin, UUID> {
      */
     int NO_DISTANCE = -1;
 
-    /** Cuantos dias de la semana uso el socio (los dias se cuentan por fecha local del club). */
+    /** Cuantos dias con ingreso tiene el socio en un rango (por fecha local del club). */
     long countByMemberIdAndLocalDateBetween(UUID memberId, LocalDate from, LocalDate to);
 
     /** Si el socio registro algun ingreso alguna vez: con historia, no se lo puede eliminar. */
@@ -41,18 +41,20 @@ public interface GymCheckinRepository extends JpaRepository<GymCheckin, UUID> {
             """)
     List<GymCheckin> findAllByDay(@Param("day") LocalDate day);
 
-    /** Dias usados por cada socio en un rango, para la grilla del panel. */
+    /**
+     * Los dias con ingreso de cada socio desde {@code from}, para la grilla del panel: cada socio
+     * cuenta su tope en su propia ventana (la semana es la de todos, el mes de cada cuota no).
+     */
     @Query("""
-            select c.member.id as memberId, count(c) as total from GymCheckin c
-            where c.localDate between :from and :to
-            group by c.member.id
+            select c.member.id as memberId, c.localDate as localDate from GymCheckin c
+            where c.localDate >= :from
             """)
-    List<MemberCount> countByMemberBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
+    List<MemberDay> findMemberDaysSince(@Param("from") LocalDate from);
 
-    interface MemberCount {
+    interface MemberDay {
         UUID getMemberId();
 
-        long getTotal();
+        LocalDate getLocalDate();
     }
 
     /**

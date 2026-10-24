@@ -38,6 +38,12 @@ export interface Membership {
   planLength: 'MONTH' | 'FIFTEEN_DAYS';
 }
 
+/**
+ * Donde se cuenta el tope de ingresos: de lunes a domingo, en el mes de su cuota (del 15 al 14 si
+ * arrancó el 15) o en su pase de 15 días. El club elige semana o mes.
+ */
+export type LimitPeriod = 'WEEK' | 'MONTH' | 'PASS';
+
 export interface RecentCheckin {
   date: string;
   sedeName: string;
@@ -49,8 +55,11 @@ export interface Me {
   membership: Membership | null;
   /** Si la cuota vale hoy. */
   valid: boolean;
-  weekUsed: number;
-  weekLimit: number;
+  /** Los ingresos que usó y los que tiene en `limitPeriod`, que termina el `windowEnd`. */
+  used: number;
+  limit: number;
+  limitPeriod: LimitPeriod;
+  windowEnd: string;
   checkedInToday: boolean;
   recent: RecentCheckin[];
   /** El día del mes en que arrancó su ciclo. Null si todavía no pagó ninguna cuota. */
@@ -89,8 +98,11 @@ export interface CheckInResult {
   sedeName: string;
   /** Ya tenia el ingreso de hoy: escanear dos veces no es un error. */
   alreadyRegistered: boolean;
-  weekUsed: number;
-  weekLimit: number;
+  /** Como en `Me`. */
+  used: number;
+  limit: number;
+  limitPeriod: LimitPeriod;
+  windowEnd: string;
   validUntil: string;
 }
 

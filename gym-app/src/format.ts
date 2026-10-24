@@ -1,3 +1,5 @@
+import type { LimitPeriod } from './api/gymClient';
+
 /**
  * Fechas y textos de la app.
  *
@@ -26,9 +28,23 @@ export function firstName(fullName: string): string {
   return fullName.trim().split(/\s+/)[0] ?? '';
 }
 
-/** "2 de 3 días" / "1 de 1 día". */
-export function weekUsage(used: number, limit: number): string {
-  return `${used} de ${limit} ${limit === 1 ? 'día' : 'días'}`;
+/** "2 de 3 días" en la semana; "3 de 9 ingresos" en el mes o el pase. En singular cuando corresponde. */
+export function usage(used: number, limit: number, period: LimitPeriod): string {
+  const unit = period === 'WEEK' ? ['día', 'días'] : ['ingreso', 'ingresos'];
+  return `${used} de ${limit} ${limit === 1 ? unit[0] : unit[1]}`;
+}
+
+/** El título del bloque de ingresos. */
+export function usageTitle(period: LimitPeriod): string {
+  return period === 'WEEK' ? 'Esta semana' : period === 'MONTH' ? 'Este mes' : 'Este pase';
+}
+
+/** Hasta cuándo se cuentan, salvo en la semana (que todos saben que termina el domingo). */
+export function usageUntil(period: LimitPeriod, windowEnd: string): string | null {
+  if (period === 'WEEK') {
+    return null;
+  }
+  return `${period === 'MONTH' ? 'Tu mes va' : 'Tu pase vale'} hasta el ${shortDay(windowEnd)}`;
 }
 
 /** 150000 -> "$ 150.000". Los montos del backend vienen como decimales numericos. */

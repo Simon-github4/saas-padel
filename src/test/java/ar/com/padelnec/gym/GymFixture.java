@@ -2,6 +2,7 @@ package ar.com.padelnec.gym;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymClubConfig;
 import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.domain.PayMethod;
@@ -48,6 +49,14 @@ public class GymFixture {
             config.setPasswordRequired(passwordRequired);
             configRepository.save(config);
         });
+    }
+
+    /** Cambia como cuenta el club el tope de dias por semana, como lo hace el dueño en «Cuotas». */
+    public void entryLimit(Tenant club, EntryLimit entryLimit) {
+        TenantContext.runAs(club.getId(), () -> configRepository.findFirstByEnabledTrue().ifPresent(config -> {
+            config.setEntryLimit(entryLimit);
+            configRepository.save(config);
+        }));
     }
 
     public GymSede sede(Tenant club, String name) {

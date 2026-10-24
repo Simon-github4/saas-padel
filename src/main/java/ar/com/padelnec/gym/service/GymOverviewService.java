@@ -1,5 +1,7 @@
 package ar.com.padelnec.gym.service;
 
+import ar.com.padelnec.gym.GymModule;
+import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
@@ -14,6 +16,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -28,20 +31,29 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class GymOverviewService {
 
+    /**
+     * Cuantos dias para atras se traen de una vez los ingresos de todos los socios. Alcanza para la
+     * semana y para el mes de cualquiera que hoy pueda entrar: un periodo dura 31 dias como mucho y
+     * hoy esta adentro. Una ventana que arranca antes (un pase ya vencido) se cuenta aparte.
+     */
+    private static final int RECENT_DAYS = 31;
+
     private final GymMemberRepository memberRepository;
     private final GymMembershipRepository membershipRepository;
     private final GymCheckinRepository checkinRepository;
     private final GymBillingService billingService;
     private final TenantService tenantService;
+    private final GymModule gymModule;
     private final Clock clock;
 
     /**
      * Un socio con su estado de cuotas. {@code billing} es el ciclo completo del
      * socio: el periodo corriente, la deuda, si puede entrar y que le falta pagar.
-     * {@code sedes} son las sedes donde vale la cuota que rige hoy.
+     * {@code sedes} son las sedes donde vale la cuota que rige hoy. {@code used} son los ingresos
+     * en la ventana del tope ({@code allowance}): la semana, el mes de la cuota o el pase.
      */
     public record MemberRow(UUID id, String dni, String fullName, String phone, boolean enabled,
-                            boolean mustChangePassword, int weekUsed,
+                            boolean mustChangePassword, int used, GymAllowance allowance,
                             GymBillingService.Status billing, List<String> sedes) {
 
         /** En que situacion esta hoy, para los filtros del panel. Cada socio cae en una sola. */
@@ -108,15 +120,31 @@ public class GymOverviewService {
     @Transactional(readOnly = true)
     public List<MemberRow> members() {
         LocalDate today = today();
-        GymWeek week = GymWeek.of(today);
-        Map<UUID, Integer> weekUsed = new HashMap<>();
-        checkinRepository.countByMemberBetween(week.monday(), week.sunday())
-                .forEach(row -> weekUsed.put(row.getMemberId(), (int) row.getTotal()));
+        EntryLimit entryLimit = gymModule.entryLimit();
+        LocalDate since = today.minusDays(RECENT_DAYS - 1);
+        Map<UUID, List<LocalDate>> recentDays = new HashMap<>();
+        checkinRepository.findMemberDaysSince(since).forEach(row ->
+                recentDays.computeIfAbsent(row.getMemberId(), id -> new ArrayList<>()).add(row.getLocalDate()));
 
         return memberRepository.findAllByOrderByFullNameAsc().stream()
-                .map(member -> row(member, billingService.status(member, today),
-                        weekUsed.getOrDefault(member.getId(), 0)))
+                .map(member -> {
+                    GymBillingService.Status billing = billingService.status(member, today);
+                    GymAllowance allowance = GymAllowance.of(entryLimit, billing, today);
+                    return row(member, billing, allowance, used(member, allowance, since, recentDays));
+                })
                 .toList();
+    }
+
+    /** Los ingresos del socio en su ventana; los dias recientes ya vienen traidos de una vez. */
+    private int used(GymMember member, GymAllowance allowance, LocalDate since,
+                     Map<UUID, List<LocalDate>> recentDays) {
+        if (allowance.from().isBefore(since)) {
+            return (int) checkinRepository.countByMemberIdAndLocalDateBetween(
+                    member.getId(), allowance.from(), allowance.to());
+        }
+        return (int) recentDays.getOrDefault(member.getId(), List.of()).stream()
+                .filter(day -> !day.isBefore(allowance.from()) && !day.isAfter(allowance.to()))
+                .count();
     }
 
     @Transactional(readOnly = true)
@@ -138,12 +166,13 @@ public class GymOverviewService {
         return tenantService.requireCurrent().zoneId();
     }
 
-    private static MemberRow row(GymMember member, GymBillingService.Status billing, int weekUsed) {
+    private static MemberRow row(GymMember member, GymBillingService.Status billing, GymAllowance allowance,
+                                 int used) {
         GymMembership plan = billing.active();
         List<String> sedes = plan == null ? List.of() : plan.getSedes().stream()
                 .map(GymSede::getName).sorted(Comparator.naturalOrder()).toList();
         return new MemberRow(member.getId(), member.getDni(), member.getFullName(), member.getPhone(),
-                member.isEnabled(), member.isMustChangePassword(), weekUsed, billing, sedes);
+                member.isEnabled(), member.isMustChangePassword(), used, allowance, billing, sedes);
     }
 
     private static DayCheckin dayCheckin(GymCheckin checkin) {
