@@ -490,6 +490,33 @@ vaadin-side-nav-item[current]::part(item) {
   outline-offset: -1px;
 }
 
+/* «Marcar torneo»: lleno, con el violeta de los torneos, para que se encuentre
+   entre los controles del dia (terciario, como "Hoy", pasaba de largo). Con el
+   modo prendido baja a un violeta suave con borde: ahi ya avisan la barra de
+   abajo y el tablero atenuado, y "Salir" no tiene por que gritar. El borde va
+   como sombra interna para no cambiarle el alto respecto de las flechas. */
+vaadin-button.agenda-tournament-toggle {
+  margin-inline-start: var(--lumo-space-s);
+  padding-inline: var(--lumo-space-m);
+  background-color: #7c3aed;
+  color: #fff;
+  font-weight: 600;
+}
+
+vaadin-button.agenda-tournament-toggle:hover {
+  background-color: #6d28d9;
+}
+
+vaadin-button.agenda-tournament-toggle--on {
+  background-color: rgba(124, 58, 237, 0.1);
+  color: #5b21b6;
+  box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.45);
+}
+
+vaadin-button.agenda-tournament-toggle--on:hover {
+  background-color: rgba(124, 58, 237, 0.18);
+}
+
 /* Barra del modo torneo, pegada al pie como la de Guardar de Configuracion. */
 .agenda-tournament-bar {
   position: sticky;

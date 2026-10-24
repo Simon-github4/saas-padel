@@ -224,7 +224,9 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
                 event -> datePicker.setValue(LocalDate.now(club.zoneId())));
         today.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
 
-        markTournament.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        // Lleno y con el violeta de los torneos, no terciario como "Hoy": al lado
+        // de las flechas del dia pasaba por un control mas y no se encontraba.
+        markTournament.addClassName("agenda-tournament-toggle");
         markTournament.addClickListener(event -> {
             setMarking(!marking);
             refresh();
@@ -306,6 +308,7 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         tournamentName.setInvalid(false);
         markTournament.setText(on ? "Salir del modo torneo" : "Marcar torneo");
         markTournament.setIcon((on ? VaadinIcon.CLOSE_SMALL : VaadinIcon.TROPHY).create());
+        markTournament.getClassNames().set("agenda-tournament-toggle--on", on);
         board.getElement().getClassList().set("agenda-board--marking", on);
         tournamentBar.setVisible(on);
         updateTournamentCount();
