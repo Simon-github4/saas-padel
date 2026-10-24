@@ -46,6 +46,17 @@
       "port": 8080
     },
     {
+      "name": "backend-torneos",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--server.port=8090 --app.base-url=http://localhost:8090"
+      ],
+      "env": { "DEV_DB_PORT": "54450", "DEV_DB_DIR": "target/devdb-torneos" },
+      "port": 8090
+    },
+    {
       "name": "backend",
       "runtimeExecutable": "mvn",
       "runtimeArgs": [
