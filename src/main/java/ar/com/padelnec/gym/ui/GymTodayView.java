@@ -75,7 +75,11 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
         paymentsHeader.setPadding(false);
 
         add(toolbar, checkins, paymentsHeader, payments);
+        // Los cobros se ven todos, sin barra propia (para cuadrar la caja de un vistazo); los
+        // ingresos ocupan el resto, sin bajar de unas filas legibles. Si no entra, se desplaza la
+        // pagina. Sin el flex-basis, la grilla de ingresos parte de su alto por defecto.
         setFlexGrow(1, checkins);
+        checkins.getStyle().set("flex-basis", "0");
         refresh();
     }
 
@@ -95,7 +99,8 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
         checkins.addColumn(DayCheckin::sedeName).setHeader("Sede").setFlexGrow(2);
         checkins.addComponentColumn(this::marks).setHeader("").setAutoWidth(true).setFlexGrow(0);
         checkins.setEmptyStateText("Nadie entró este día.");
-        checkins.setSizeFull();
+        checkins.setWidthFull();
+        checkins.setMinHeight("16em");
     }
 
     /**
@@ -135,7 +140,7 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
     }
 
     private void buildPaymentColumns() {
-        payments.addThemeVariants(GridVariant.LUMO_ROW_STRIPES, GridVariant.LUMO_COMPACT);
+        payments.addThemeVariants(GridVariant.LUMO_ROW_STRIPES);
         payments.setSelectionMode(Grid.SelectionMode.NONE);
         payments.addColumn(this::loadedAt).setHeader("Hora").setAutoWidth(true).setFlexGrow(0);
         payments.addColumn(DayPayment::memberName).setHeader("Socio").setFlexGrow(3);
@@ -144,7 +149,9 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
         payments.addColumn(row -> row.method().label()).setHeader("Método").setAutoWidth(true).setFlexGrow(0);
         payments.addColumn(DayPayment::collectedAt).setHeader("Cobrado en").setFlexGrow(2);
         payments.setEmptyStateText("No se cobró ninguna cuota este día.");
-        payments.setHeight("14em");
+        payments.setWidthFull();
+        payments.setAllRowsVisible(true);
+        payments.getStyle().set("flex-shrink", "0");
     }
 
     /** La hora de carga; si se cargo otro dia que el del cobro, tambien la fecha. */
