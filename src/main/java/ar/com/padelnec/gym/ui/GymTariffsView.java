@@ -113,9 +113,7 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
             }
         });
         Span help = new Span("Por mes, cada socio reparte sus ingresos como quiera dentro de su período (del 15 al "
-                + "14 si arrancó el 15): son los días por semana proporcionales a lo que dura ese período, "
-                + "redondeados. Con 2 días por semana, 9 en un mes de 30 o 31 días y 8 en uno de 28. "
-                + "El cambio le llega a cada socio con su próxima cuota.");
+                + "14 si arrancó el 15). El cambio le llega a cada socio con su próxima cuota.");
         help.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
 
         // La cuenta de cada plan, a mano para decidir o para explicarsela a un socio.
@@ -162,8 +160,8 @@ public class GymTariffsView extends VerticalLayout implements BeforeEnterObserve
         table.setAllRowsVisible(true);
         table.setWidth("34em");
 
-        Span note = new Span("Cuenta el mes en que arranca el período: 30 días son abril, junio, septiembre y "
-                + "noviembre; 31, el resto. En febrero bisiesto, 2 días por semana siguen siendo 8.");
+        Span note = new Span("Son los días por semana proporcionales a los días del mes, redondeados. Cuenta el "
+                + "mes en que arranca el período: 30 días son abril, junio, septiembre y noviembre; 31, el resto.");
         note.addClassNames(LumoUtility.FontSize.XSMALL, LumoUtility.TextColor.SECONDARY);
         note.setMaxWidth("34em");
 
