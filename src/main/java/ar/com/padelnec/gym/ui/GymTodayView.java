@@ -75,11 +75,8 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
         paymentsHeader.setPadding(false);
 
         add(toolbar, checkins, paymentsHeader, payments);
-        // Los cobros se ven todos, sin barra propia (para cuadrar la caja de un vistazo); los
-        // ingresos ocupan el resto, sin bajar de unas filas legibles. Si no entra, se desplaza la
-        // pagina. Sin el flex-basis, la grilla de ingresos parte de su alto por defecto.
-        setFlexGrow(1, checkins);
-        checkins.getStyle().set("flex-basis", "0");
+        // Los ingresos son lo principal: arriba y con buena parte de la pantalla. Los cobros van
+        // debajo, todos a la vista (para cuadrar la caja); la pagina se desplaza hasta ellos.
         refresh();
     }
 
@@ -100,7 +97,9 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
         checkins.addComponentColumn(this::marks).setHeader("").setAutoWidth(true).setFlexGrow(0);
         checkins.setEmptyStateText("Nadie entró este día.");
         checkins.setWidthFull();
-        checkins.setMinHeight("16em");
+        checkins.setHeight("60vh");
+        checkins.setMinHeight("18em");
+        checkins.getStyle().set("flex-shrink", "0");
     }
 
     /**
