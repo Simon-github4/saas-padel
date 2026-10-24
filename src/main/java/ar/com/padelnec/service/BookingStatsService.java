@@ -486,8 +486,11 @@ public class BookingStatsService {
             // proposito: separar la capacidad por suspension es un cambio mas
             // grande que lo que esta cuenta necesita. El horario propio de cada
             // cancha si cuenta: un turno en que la cancha no abre no es posible.
+            // Los turnos de un torneo tampoco: la cancha se uso, pero no estaba a la
+            // venta, y contarlos bajaba la ocupacion como si hubieran quedado vacios.
             if (!dayFullyBlocked(plan, blackouts)) {
-                totalCapacity += (int) courts.active().stream().mapToLong(plan::slotsOpenIn).sum();
+                totalCapacity += (int) (courts.active().stream().mapToLong(plan::slotsOpenIn).sum()
+                        - tournamentSlots(plan, courts.active(), blackouts));
             }
             totalOccupied += occupiedByDay.getOrDefault(day, 0);
         }
@@ -498,6 +501,21 @@ public class BookingStatsService {
                         .multiply(BigDecimal.valueOf(100))
                         .setScale(1, RoundingMode.HALF_UP);
         return new Occupancy(totalOccupied, totalCapacity, percentage);
+    }
+
+    /** Cuantos turnos del dia, cancha por cancha, caen en un torneo. */
+    private static long tournamentSlots(SlotGenerator.DayPlan plan, List<Court> courts, List<Blackout> blackouts) {
+        List<Blackout> tournaments = blackouts.stream().filter(Blackout::isTournament).toList();
+        if (tournaments.isEmpty()) {
+            return 0;
+        }
+        return courts.stream()
+                .mapToLong(court -> plan.slots().stream()
+                        .filter(slot -> plan.opens(court, slot) && tournaments.stream()
+                                .anyMatch(blackout -> blackout.appliesTo(court)
+                                        && blackout.overlaps(slot.startsAt(), slot.endsAt())))
+                        .count())
+                .sum();
     }
 
     /** Si hay un blackout de club entero que cubre todo el dia operativo. */

@@ -4,6 +4,7 @@ import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.domain.enums.BlackoutKind;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
@@ -119,11 +120,28 @@ public class BlackoutsView extends VerticalLayout {
         grid.addColumn(blackout -> blackout.getCourt() == null ? "Todas las canchas"
                         : blackout.getCourt().getName())
                 .setHeader("Cancha").setAutoWidth(true);
-        grid.addColumn(Blackout::getReason).setHeader("Motivo").setAutoWidth(true).setFlexGrow(1);
+        grid.addComponentColumn(this::reasonWithKind).setHeader("Motivo").setAutoWidth(true).setFlexGrow(1);
 
         grid.addComponentColumn(this::actions).setAutoWidth(true).setFlexGrow(0)
                 .setTextAlign(ColumnTextAlign.END);
         grid.setSizeFull();
+    }
+
+    /** Un torneo lleva su insignia: el motivo es el nombre del torneo y solo no lo dice. */
+    private HorizontalLayout reasonWithKind(Blackout blackout) {
+        HorizontalLayout cell = new HorizontalLayout();
+        cell.setPadding(false);
+        cell.setSpacing(false);
+        cell.setAlignItems(Alignment.CENTER);
+        cell.addClassNames(LumoUtility.Gap.SMALL);
+        if (blackout.isTournament()) {
+            Span badge = new Span(BlackoutKind.TOURNAMENT.label());
+            badge.addClassName("blackout-kind--tournament");
+            badge.getElement().getThemeList().add("badge pill small");
+            cell.add(badge);
+        }
+        cell.add(new Span(blackout.getReason() == null ? "" : blackout.getReason()));
+        return cell;
     }
 
     private HorizontalLayout actions(Blackout blackout) {
@@ -197,12 +215,26 @@ public class BlackoutsView extends VerticalLayout {
         // generador de etiquetas con null para rotular esa opcion.
         court.setItemLabelGenerator(item -> item == null ? "Todas las canchas" : item.getName());
 
+        // Un torneo de dias enteros se carga aca; el de turnos sueltos, desde la agenda.
+        Select<BlackoutKind> kind = new Select<>();
+        kind.setLabel("Tipo");
+        kind.setItems(BlackoutKind.values());
+        kind.setItemLabelGenerator(BlackoutKind::label);
+        kind.setValue(BlackoutKind.SUSPENSION);
+
         TextField reason = new TextField("Motivo");
-        reason.setPlaceholder("Feriado, torneo, refacción...");
+        reason.setPlaceholder("Feriado, lluvia, refacción...");
+        kind.addValueChangeListener(event -> {
+            boolean tournament = event.getValue() == BlackoutKind.TOURNAMENT;
+            reason.setLabel(tournament ? "Nombre del torneo" : "Motivo");
+            reason.setPlaceholder(tournament ? "Torneo Apertura" : "Feriado, lluvia, refacción...");
+        });
 
         Button confirm = new Button("Suspender", event -> {
+            boolean tournament = kind.getValue() == BlackoutKind.TOURNAMENT;
             if (reason.getValue() == null || reason.getValue().isBlank()) {
-                Notification.show("El motivo es obligatorio").addThemeVariants(NotificationVariant.LUMO_ERROR);
+                Notification.show(tournament ? "Falta el nombre del torneo" : "El motivo es obligatorio")
+                        .addThemeVariants(NotificationVariant.LUMO_ERROR);
                 return;
             }
 
@@ -231,10 +263,13 @@ public class BlackoutsView extends VerticalLayout {
                 blackout.setCourt(court.getValue());
                 blackout.setStartTime(start);
                 blackout.setEndTime(end);
-                blackout.setReason(reason.getValue());
+                blackout.setReason(reason.getValue().strip());
+                blackout.setKind(kind.getValue());
                 blackoutRepository.save(blackout);
 
-                Notification.show("Día suspendido. Los turnos existentes siguen vigentes.");
+                Notification.show(tournament
+                        ? "Torneo cargado. Los turnos existentes siguen vigentes."
+                        : "Día suspendido. Los turnos existentes siguen vigentes.");
                 dialog.close();
                 refresh();
             };
@@ -248,7 +283,7 @@ public class BlackoutsView extends VerticalLayout {
         });
         confirm.addThemeVariants(ButtonVariant.LUMO_ERROR);
 
-        FormLayout form = new FormLayout(date, allDay, startTime, endTime, court, reason);
+        FormLayout form = new FormLayout(date, allDay, startTime, endTime, court, kind, reason);
         form.setResponsiveSteps(new FormLayout.ResponsiveStep("0", 1),
                 new FormLayout.ResponsiveStep("26em", 2));
         form.setColspan(reason, 2);

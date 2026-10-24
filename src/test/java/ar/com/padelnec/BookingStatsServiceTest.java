@@ -13,6 +13,7 @@ import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Product;
 import ar.com.padelnec.domain.ProductSale;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.domain.enums.BlackoutKind;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.repository.BlackoutRepository;
@@ -260,6 +261,31 @@ class BookingStatsServiceTest {
         assertThat(summary.slotsPosibles()).isZero();
         assertThat(summary.slotsOcupados()).isZero();
         assertThat(summary.ocupacionPromedio()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    @DisplayName("Los turnos de un torneo no cuentan como capacidad; una suspension parcial comun si")
+    void tournamentSlotsAreNotCapacity() {
+        // Torneo de 17:00 a 21:30: tres turnos de la unica cancha.
+        Blackout tournament = new Blackout();
+        tournament.setCourt(court);
+        tournament.setKind(BlackoutKind.TOURNAMENT);
+        tournament.setStartTime(TUESDAY.atTime(17, 0).atZone(ZONE).toInstant());
+        tournament.setEndTime(TUESDAY.atTime(21, 30).atZone(ZONE).toInstant());
+        tournament.setReason("Torneo Apertura");
+        blackoutRepository.save(tournament);
+        Blackout repair = new Blackout();
+        repair.setCourt(court);
+        repair.setStartTime(TUESDAY.atTime(8, 0).atZone(ZONE).toInstant());
+        repair.setEndTime(TUESDAY.atTime(9, 30).atZone(ZONE).toInstant());
+        repair.setReason("Arreglo de la red");
+        blackoutRepository.save(repair);
+        markCompleted(reserve(LocalTime.of(12, 30), "2262415000", "Cliente A"));
+
+        PeriodStats summary = statsService.summary(club, TUESDAY, TUESDAY);
+
+        assertThat(summary.slotsPosibles()).isEqualTo(7);
+        assertThat(summary.slotsOcupados()).isEqualTo(1);
     }
 
     @Test

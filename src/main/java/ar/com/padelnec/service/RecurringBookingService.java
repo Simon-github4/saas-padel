@@ -168,9 +168,11 @@ public class RecurringBookingService {
 
     /** Avisa una sola vez, cuando la fecha entra al horizonte, como los choques. */
     private void reportSuspended(RecurringBooking fixed, LocalDate date, Blackout suspension) {
-        String why = suspension.getReason() == null || suspension.getReason().isBlank()
-                ? "la cancha está suspendida"
-                : "la cancha está suspendida por «%s»".formatted(suspension.getReason());
+        String why = suspension.isTournament()
+                ? "la cancha está reservada para el torneo «%s»".formatted(suspension.getReason())
+                : suspension.getReason() == null || suspension.getReason().isBlank()
+                        ? "la cancha está suspendida"
+                        : "la cancha está suspendida por «%s»".formatted(suspension.getReason());
         alertService.recurringConflict(
                 ("El turno fijo de %s (%s, %s) no se generó para el %s porque %s. Si igual juegan, "
                         + "cargalo a mano; si se levanta la suspensión, se genera sola esa noche.").formatted(
@@ -271,10 +273,11 @@ public class RecurringBookingService {
                     .filter(blackout -> blackout.appliesTo(fixed.getCourt())
                             && blackout.overlaps(start, end))
                     .findFirst()
-                    .ifPresent(blackout -> reasons.add(blackout.getReason() == null
-                            || blackout.getReason().isBlank()
-                            ? "cancha suspendida"
-                            : "suspendida por «%s»".formatted(blackout.getReason())));
+                    .ifPresent(blackout -> reasons.add(blackout.isTournament()
+                            ? "torneo «%s»".formatted(blackout.getReason())
+                            : blackout.getReason() == null || blackout.getReason().isBlank()
+                                    ? "cancha suspendida"
+                                    : "suspendida por «%s»".formatted(blackout.getReason())));
             if (!reasons.isEmpty()) {
                 found.add(new Restriction(date, String.join(" y ", reasons)));
             }

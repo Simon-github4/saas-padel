@@ -10,6 +10,7 @@ import ar.com.padelnec.domain.Customer;
 import ar.com.padelnec.domain.RecurringBooking;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
+import ar.com.padelnec.domain.enums.BlackoutKind;
 import ar.com.padelnec.domain.enums.BookingSource;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CancellationReason;
@@ -309,6 +310,24 @@ class RecurringBookingServiceTest {
 
         assertThat(activeOccurrencesOn(horizon)).hasSize(1);
         assertThat(alertRepository.findPending()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Un turno fijo que cae en un torneo no se genera y el aviso nombra el torneo")
+    void fixedBookingOnATournamentNamesTheTournament() {
+        fixedBooking(LocalTime.of(20, 0), null);
+        LocalDate horizon = TODAY.plusWeeks(4);
+        Blackout torneo = suspend(horizon, "Torneo Apertura");
+        torneo.setKind(BlackoutKind.TOURNAMENT);
+        blackoutRepository.saveAndFlush(torneo);
+
+        recurringBookingService.materializeUpcoming(club);
+
+        assertThat(activeOccurrencesOn(horizon)).isEmpty();
+        assertThat(alertRepository.findPending())
+                .singleElement()
+                .satisfies(alert -> assertThat(alert.getMessage())
+                        .contains("reservada para el torneo «Torneo Apertura»"));
     }
 
     @Test
