@@ -56,12 +56,42 @@ public class ProductSale extends TenantScopedEntity {
     /**
      * Si esta línea ya se cobró: en un pedido de buffet, cuando alguien del
      * grupo paga lo suyo y el resto de la cuenta sigue abierta. Se marca sola
-     * al cobrar, tildando o no lo que corresponde a cada cobro.
+     * al cobrar, por lo que se eligió o por lo que alcanzó a cubrir un monto.
      */
     @Column(nullable = false)
     private boolean paid;
 
     public BigDecimal subtotal() {
         return unitPrice.multiply(BigDecimal.valueOf(quantity));
+    }
+
+    /**
+     * Separa unidades de esta línea en una nueva, que es la que se marca
+     * cobrada: para cobrar 3 de las 5 milanesas, la nueva lleva las 3 y esta se
+     * queda con las 2 que siguen pendientes. Mismo producto, nombre y precio
+     * congelado, y la misma fecha de venta: para la caja y las estadísticas se
+     * vendieron cuando se vendieron.
+     *
+     * <p>Lo pendiente se queda en esta línea, en su lugar: el orden de las
+     * líneas sin cobrar es el orden en que un pago por monto cubre la cuenta, y
+     * una línea nueva quedaría detrás de lo que se cargó después.
+     *
+     * @param units cuántas unidades pasan a la línea nueva; menos que las que tiene esta
+     */
+    public ProductSale splitOff(int units) {
+        if (units <= 0 || units >= quantity) {
+            throw new IllegalArgumentException("Para partir una línea de " + quantity + " no sirven " + units);
+        }
+        ProductSale part = new ProductSale();
+        part.setBooking(booking);
+        part.setBuffetOrder(buffetOrder);
+        part.setProduct(product);
+        part.setProductName(productName);
+        part.setUnitPrice(unitPrice);
+        part.setQuantity(units);
+        part.setRegisteredBy(registeredBy);
+        part.setCreatedAt(getCreatedAt());
+        quantity -= units;
+        return part;
     }
 }
