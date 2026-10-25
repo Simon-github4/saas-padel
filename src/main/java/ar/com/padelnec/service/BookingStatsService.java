@@ -87,7 +87,8 @@ public class BookingStatsService {
     public record PeriodStats(String label, LocalDate from, LocalDate to, int jugados,
                               Duration horasJugadas, int reservados, BigDecimal facturado,
                               BigDecimal cobrado, int cancelados, int noShows,
-                              int slotsOcupados, int slotsPosibles, BigDecimal ocupacionPromedio) {
+                              int slotsOcupados, int slotsPosibles, BigDecimal ocupacionPromedio,
+                              int slotsTorneo) {
     }
 
     public record HourlyStat(java.time.LocalTime hour, int turnos, BigDecimal facturado) {
@@ -423,6 +424,7 @@ public class BookingStatsService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         Duration horas = Duration.ZERO;
         Map<LocalDate, Integer> occupiedByDay = new HashMap<>();
+        List<BookingStatsRow> occupying = new ArrayList<>();
 
         for (BookingStatsRow booking : bookings) {
             switch (booking.status()) {
@@ -439,17 +441,22 @@ public class BookingStatsService {
                 horas = horas.plus(booking.duration());
                 LocalDate day = booking.startTime().atZone(club.zoneId()).toLocalDate();
                 occupiedByDay.merge(day, 1, Integer::sum);
+                occupying.add(booking);
             }
         }
 
-        Occupancy occupancy = occupancy(club, courts, bucketStart, bucketEndExclusive, occupiedByDay, blackouts);
+        Occupancy occupancy = occupancy(club, courts, bucketStart, bucketEndExclusive, occupiedByDay,
+                occupying, blackouts);
         return new PeriodStats(label, bucketStart, bucketEndExclusive.minusDays(1), jugados, horas,
                 reservados, facturado, cobrado, cancelados, noShows,
-                occupancy.occupied(), occupancy.capacity(), occupancy.percentage());
+                occupancy.occupied(), occupancy.capacity(), occupancy.percentage(), occupancy.tournament());
     }
 
-    /** Turnos ocupados, turnos posibles y el porcentaje entre los dos, ya redondeado. */
-    private record Occupancy(int occupied, int capacity, BigDecimal percentage) {
+    /**
+     * Turnos ocupados, turnos posibles y el porcentaje entre los dos, ya redondeado.
+     * {@code tournament} son los ocupados por un torneo, ya incluidos en {@code occupied}.
+     */
+    private record Occupancy(int occupied, int capacity, BigDecimal percentage, int tournament) {
     }
 
     /**
@@ -472,12 +479,13 @@ public class BookingStatsService {
 
     private Occupancy occupancy(Tenant club, Courts courts, LocalDate from,
                                 LocalDate toExclusive, Map<LocalDate, Integer> occupiedByDay,
-                                List<Blackout> blackouts) {
+                                List<BookingStatsRow> occupying, List<Blackout> blackouts) {
         if (courts.active().isEmpty()) {
-            return new Occupancy(0, 0, BigDecimal.ZERO);
+            return new Occupancy(0, 0, BigDecimal.ZERO, 0);
         }
         int totalOccupied = 0;
         int totalCapacity = 0;
+        int totalTournament = 0;
         for (LocalDate day = from; day.isBefore(toExclusive); day = day.plusDays(1)) {
             SlotGenerator.DayPlan plan = slotGenerator.plan(club, day, courts.active(), courts.schedules());
             // Un dia suspendido para todas las canchas no suma capacidad: nadie
@@ -488,24 +496,54 @@ public class BookingStatsService {
             // cancha si cuenta: un turno en que la cancha no abre no es posible.
             if (!dayFullyBlocked(plan, blackouts)) {
                 totalCapacity += (int) courts.active().stream().mapToLong(plan::slotsOpenIn).sum();
+                totalTournament += tournamentSlots(plan, courts.active(), blackouts, occupying);
             }
             totalOccupied += occupiedByDay.getOrDefault(day, 0);
         }
+        // Un turno de torneo es la cancha ocupada, aunque no se haya vendido: suma
+        // a los ocupados, y la tarjeta dice aparte cuantos fueron de torneo.
+        totalOccupied += totalTournament;
         BigDecimal percentage = totalCapacity == 0
                 ? BigDecimal.ZERO
                 : BigDecimal.valueOf(totalOccupied)
                         .divide(BigDecimal.valueOf(totalCapacity), 4, RoundingMode.HALF_UP)
                         .multiply(BigDecimal.valueOf(100))
                         .setScale(1, RoundingMode.HALF_UP);
-        return new Occupancy(totalOccupied, totalCapacity, percentage);
+        return new Occupancy(totalOccupied, totalCapacity, percentage, totalTournament);
     }
 
-    /** Si hay un blackout de club entero que cubre todo el dia operativo. */
+    /**
+     * Cuantos turnos del dia, cancha por cancha, ocupa un torneo. El que igual
+     * tiene un turno cargado (una excepcion del club) ya cuenta como reserva y no
+     * se cuenta dos veces.
+     */
+    private static int tournamentSlots(SlotGenerator.DayPlan plan, List<Court> courts, List<Blackout> blackouts,
+                                       List<BookingStatsRow> occupying) {
+        List<Blackout> tournaments = blackouts.stream().filter(Blackout::isTournament).toList();
+        if (tournaments.isEmpty()) {
+            return 0;
+        }
+        return (int) courts.stream()
+                .mapToLong(court -> plan.slots().stream()
+                        .filter(slot -> plan.opens(court, slot)
+                                && tournaments.stream().anyMatch(blackout -> blackout.appliesTo(court)
+                                        && blackout.overlaps(slot.startsAt(), slot.endsAt()))
+                                && occupying.stream().noneMatch(booking -> court.getId().equals(booking.courtId())
+                                        && booking.startTime().isBefore(slot.endsAt())
+                                        && booking.endTime().isAfter(slot.startsAt())))
+                        .count())
+                .sum();
+    }
+
+    /**
+     * Si hay un blackout de club entero que cubre todo el dia operativo. Un torneo
+     * de todo el club no cuenta: la cancha se usa, y sus turnos suman como ocupados.
+     */
     private boolean dayFullyBlocked(SlotGenerator.DayPlan plan, List<Blackout> blackouts) {
         Instant dayStart = plan.start();
         Instant dayEnd = plan.end();
         return blackouts.stream()
-                .anyMatch(blackout -> blackout.getCourt() == null
+                .anyMatch(blackout -> !blackout.isTournament() && blackout.getCourt() == null
                         && !blackout.getStartTime().isAfter(dayStart)
                         && !blackout.getEndTime().isBefore(dayEnd));
     }
