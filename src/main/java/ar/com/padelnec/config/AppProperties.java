@@ -33,6 +33,7 @@ public class AppProperties {
     private final Analytics analytics = new Analytics();
     private final Mercadopago mercadopago = new Mercadopago();
     private final Push push = new Push();
+    private final Seo seo = new Seo();
 
     @Getter
     @Setter
@@ -190,6 +191,18 @@ public class AppProperties {
          * {@code https:}. Vacio, {@code mailto:} con {@link Mail#getFrom()}.
          */
         private String vapidSubject;
+    }
+
+    @Getter
+    @Setter
+    public static class Seo {
+        /**
+         * Dejar que los buscadores recorran el sitio. En {@code false} (staging),
+         * {@code robots.txt} cierra todo: si no, Google indexaria los clubes de
+         * prueba con la URL de Render, que ahi es la base publica y por eso
+         * {@code CanonicalHost} no la redirige a ningun lado.
+         */
+        private boolean indexable = true;
     }
 
     @Getter
