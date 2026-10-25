@@ -180,6 +180,12 @@ public class PaymentService {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessRuleException("El monto tiene que ser mayor a cero");
         }
+        // La base guarda centavos: $100,005 quedaría $100,01 en el pago y en la
+        // cuenta, pero una devolución redondea para el otro lado y la cuenta deja
+        // de cerrar por un centavo.
+        if (amount.stripTrailingZeros().scale() > 2) {
+            throw new BusinessRuleException("Los montos van con hasta dos decimales");
+        }
         if (method != PaymentMethod.CASH && method != PaymentMethod.TRANSFER) {
             throw new BusinessRuleException("Ese metodo no se puede cargar a mano");
         }
