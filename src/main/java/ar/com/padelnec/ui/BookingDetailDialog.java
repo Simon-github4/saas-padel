@@ -15,6 +15,7 @@ import ar.com.padelnec.support.PhoneNumbers;
 import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.combobox.ComboBox;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Anchor;
@@ -210,11 +211,7 @@ class BookingDetailDialog extends Dialog {
             layout.add(row);
         }
 
-        List<Product> catalog = productRepository.findAllByActiveTrueOrderByNameAsc();
-        Select<Product> product = new Select<>();
-        product.setLabel("Producto");
-        product.setItems(catalog);
-        product.setItemLabelGenerator(p -> "%s (%s)".formatted(p.getName(), money(p.getUnitPrice())));
+        ComboBox<Product> product = ProductCombo.create(productRepository.findAllByActiveTrueOrderByNameAsc());
 
         IntegerField quantity = new IntegerField("Cantidad");
         quantity.setValue(1);
