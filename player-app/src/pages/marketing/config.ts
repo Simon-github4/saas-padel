@@ -18,7 +18,7 @@ export function salesWhatsappHref(): string {
 
 /** Precio único, por club. El alta y el cobro los hace el vendedor a mano. */
 export const MONTHLY_PRICE_ARS = 35000;
-export const TRIAL_DAYS = 7;
+export const TRIAL_DAYS = 14;
 
 const SUBSCRIBE_MESSAGE = 'Hola, quiero contratar el plan para mi club.';
 const SUBSCRIBE_SUBJECT = 'Quiero contratar el plan';

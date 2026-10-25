@@ -107,13 +107,14 @@ export function FeaturesSection() {
 /** Pantallas del panel que un club usa todos los días, pero no venden solas. */
 const EXTRAS = [
   'Agenda que se actualiza sola',
+  'Aviso al celular cuando entra una reserva',
   'Usuario aparte para el mostrador',
   'Caja del día',
   'Buffet, con cobro dividido',
   'Estadísticas del club',
   'Jugadores con marca de confianza',
   'Tope de turnos por jugador',
-  'Suspensiones por lluvia o torneo',
+  'Horarios de torneo y suspensiones por lluvia',
   'Turnos fuera de horario, como excepción',
   'Alertas de lo que necesita tu atención',
 ];

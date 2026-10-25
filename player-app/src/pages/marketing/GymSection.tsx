@@ -5,11 +5,11 @@ import { CONTAINER, CheckGlyph, Reveal, SectionHeading } from './motion';
 const POINTS = [
   {
     title: 'Socios y cuotas',
-    text: 'Cuota mensual con los días por semana que pagó cada uno, y de un vistazo quién está al día y quién la tiene vencida.',
+    text: 'Cuota mensual con los días por semana que pagó cada uno, o pase de 15 días para el que viene de paso. De un vistazo, quién está al día y quién la tiene vencida.',
   },
   {
     title: 'Ingreso con QR',
-    text: 'El socio escanea el QR de la entrada con su celular y entra con su DNI. El sistema controla que la cuota esté vigente.',
+    text: 'El socio escanea el QR de la entrada con su celular y entra con su DNI. El sistema controla que la cuota esté vigente y que no se pase de los días que pagó.',
   },
   {
     title: 'Una o varias sedes',

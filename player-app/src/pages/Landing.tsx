@@ -39,7 +39,7 @@ export function Landing() {
     () =>
       setPageMeta(
         `Reservas online para tu club — ${BRAND}`,
-        'Sistema de reservas online para clubes de pádel: tus jugadores reservan y pagan la seña solos, con Mercado Pago, y vos manejás la agenda desde un panel. 7 días de prueba gratis, sin tarjeta.',
+        'Sistema de reservas online para clubes de pádel: tus jugadores reservan y pagan la seña solos, con Mercado Pago, y vos manejás la agenda desde un panel. 14 días de prueba gratis, sin tarjeta.',
       ),
     [],
   );
