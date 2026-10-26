@@ -8,12 +8,14 @@ import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.repository.ProductRepository;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.BuffetOrderService;
+import ar.com.padelnec.service.BuffetOrderService.Charge;
 import ar.com.padelnec.service.BuffetOrderService.Checkout;
 import ar.com.padelnec.service.BuffetOrderService.NewItem;
 import ar.com.padelnec.service.BuffetOrderService.OrderWithItems;
 import ar.com.padelnec.service.PaymentService;
 import ar.com.padelnec.service.ProductService;
 import ar.com.padelnec.service.TenantService;
+import ar.com.padelnec.support.BuffetCoverage;
 import ar.com.padelnec.support.PersonNames;
 import ar.com.padelnec.support.ProductQuickEntry;
 import ar.com.padelnec.support.ProductQuickEntry.Command;
@@ -53,12 +55,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -78,10 +79,16 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
  * ensucia nada.
  *
  * <p>El circuito rápido: el nombre (o nada, en una venta rápida), Enter, "agua"
- * Enter, "cafe" Enter, Enter (pasa a "Paga con"), el billete, Enter. Cobrado,
+ * Enter, "cafe" Enter, Enter (pasa a "Efectivo"), el billete, Enter. Cobrado,
  * con el vuelto a la vista, y el cursor de vuelta en el nombre para el siguiente.
  * La flecha abajo baja del buscador a los productos, que se recorren con las
  * flechas de costado como una botonera; dos unidades son dos Enter.
+ *
+ * <p>Una cuenta grande se cobra de a partes, sin salir de ella: eligiendo
+ * productos de a unidades (3 de las 5 milanesas) o por monto (el que da
+ * $20.000), y cada parte en efectivo, por transferencia o mitad y mitad. Lo
+ * pagado por monto cubre los productos en el orden en que se cargaron, y el
+ * que queda a medio pagar dice cuánto le falta ({@link BuffetCoverage}).
  */
 @Route(value = "buffet", layout = MainLayout.class)
 @PageTitle("Buffet | Panel del club")
@@ -119,10 +126,17 @@ public class BuffetView extends VerticalLayout {
     private final Div due = new Div();
     private final Span dueLabel = new Span();
     private final Span dueValue = new Span();
-    private final BigDecimalField paysWith = new BigDecimalField("Paga con");
-    private final Span change = new Span();
+    private final Span dueMeta = new Span();
+    private final BigDecimalField cashField = new BigDecimalField("Efectivo");
+    private final BigDecimalField transferField = new BigDecimalField("Transferencia");
+    private final Button cashRest = new Button("el resto");
+    private final Button transferRest = new Button("el resto");
+    private final Span tenderSummary = new Span();
     private final Button cashButton = new Button("Efectivo");
     private final Button transferButton = new Button("Transferencia");
+    private final Button chargeButton = new Button("Cobrar");
+    /** El campo que se completó solo con lo que falta, o null: el escrito a mano no se pisa. */
+    private BigDecimalField autoFilled;
     private final Button laterButton = new Button();
     private final Button discardButton = new Button("Descartar");
     private final Div lastCharge = new Div();
@@ -133,12 +147,12 @@ public class BuffetView extends VerticalLayout {
     private final Map<UUID, Integer> draft = new LinkedHashMap<>();
 
     /**
-     * Productos tildados para cobrar ahora nomás, ej. lo que se lleva uno del
-     * grupo mientras el resto de la cuenta sigue abierta. Uno guarda ids de
-     * ventas ya guardadas, el otro ids de producto de lo recién sumado.
+     * Lo elegido para cobrar ahora nomás, en unidades: las 3 milanesas que paga
+     * uno del grupo mientras el resto de la cuenta sigue abierta. Uno va por id
+     * de venta ya guardada, el otro por id de producto de lo recién sumado.
      */
-    private final Set<UUID> selectedSaleIds = new LinkedHashSet<>();
-    private final Set<UUID> selectedDraftProductIds = new LinkedHashSet<>();
+    private final Map<UUID, Integer> pickedSales = new LinkedHashMap<>();
+    private final Map<UUID, Integer> pickedDrafts = new LinkedHashMap<>();
 
     // --- listas
     private final Span daySummary = new Span();
@@ -196,7 +210,7 @@ public class BuffetView extends VerticalLayout {
         search.setWidthFull();
         search.setValueChangeMode(ValueChangeMode.EAGER);
         search.setHelperText("↓ baja a los productos: ← → para elegir, "
-                + "Enter suma, ↑ vuelve · «-agua» saca uno · Enter vacío pasa a «Paga con»");
+                + "Enter suma, ↑ vuelve · «-agua» saca uno · Enter vacío pasa a «Efectivo»");
         search.getElement().setAttribute("aria-label", "Buscar producto");
         search.addValueChangeListener(event -> filterTiles());
         search.addKeyDownListener(Key.ENTER, event -> onSearchEnter());
@@ -323,38 +337,145 @@ public class BuffetView extends VerticalLayout {
         dueValue.addClassNames("buffet-due__value", "tabular");
         due.add(dueLabel, dueValue);
         due.addClassName("buffet-due");
+        dueMeta.addClassNames("buffet-due__meta", "tabular");
 
-        paysWith.setPrefixComponent(new Span("$"));
-        paysWith.setValueChangeMode(ValueChangeMode.EAGER);
-        paysWith.setPlaceholder("Opcional");
-        paysWith.addValueChangeListener(event -> renderChange());
-        paysWith.addKeyDownListener(Key.ENTER, event -> save(PaymentMethod.CASH));
-        change.addClassNames("buffet-change", "tabular");
-        Div cash = new Div(paysWith, change);
-        cash.addClassName("buffet-cash");
+        // Los dos medios a la vista, a mano: así se ve que se puede pagar una
+        // parte de cada uno. Vacíos, no hacen falta: F8 y F9 cobran todo por uno.
+        tenderField(cashField, PaymentMethod.CASH);
+        tenderField(transferField, PaymentMethod.TRANSFER);
+        restButton(cashRest, cashField, transferField);
+        restButton(transferRest, transferField, cashField);
+        tenderSummary.addClassNames("buffet-tender__summary", "tabular");
+        Div cashBox = new Div(cashField, cashRest);
+        cashBox.addClassName("buffet-tender__field");
+        Div transferBox = new Div(transferField, transferRest);
+        transferBox.addClassName("buffet-tender__field");
+        Div tender = new Div(cashBox, transferBox, tenderSummary);
+        tender.addClassName("buffet-tender");
 
         cashButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_LARGE);
         withKey(cashButton, "F8");
-        cashButton.addClickListener(event -> save(PaymentMethod.CASH));
+        cashButton.addClickListener(event -> pay(PaymentMethod.CASH));
+        // A todo el ancho: el texto dice cuánto cobra y por qué medio.
+        cashButton.addClassName("buffet-actions__wide");
         transferButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_CONTRAST,
                 ButtonVariant.LUMO_LARGE);
         withKey(transferButton, "F9");
-        transferButton.addClickListener(event -> save(PaymentMethod.TRANSFER));
+        transferButton.addClickListener(event -> pay(PaymentMethod.TRANSFER));
+        transferButton.addClassName("buffet-actions__wide");
+        chargeButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_LARGE);
+        withKey(chargeButton, "F8");
+        chargeButton.addClickListener(event -> pay(PaymentMethod.CASH));
+        chargeButton.addClassName("buffet-actions__wide");
         withKey(laterButton, "F4");
-        laterButton.addClickListener(event -> save(null));
+        laterButton.addClickListener(event -> save(null, null));
         laterButton.addClassName("buffet-actions__wide");
         discardButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_ERROR);
         discardButton.addClickListener(event -> resetTicket());
         discardButton.addClassName("buffet-actions__wide");
-        Div actions = new Div(cashButton, transferButton, laterButton, discardButton);
+        Div actions = new Div(cashButton, transferButton, chargeButton, laterButton, discardButton);
         actions.addClassName("buffet-actions");
 
         lastCharge.addClassName("buffet-last");
         lastCharge.setVisible(false);
 
-        Div ticket = new Div(head, customerName, suggestions, lines, due, cash, actions, lastCharge);
+        Div ticket = new Div(head, customerName, suggestions, lines, due, dueMeta, tender, actions, lastCharge);
         ticket.addClassName("buffet-ticket");
         return ticket;
+    }
+
+    /**
+     * Enter en un campo cobra: con algo escrito, lo que dicen los campos; vacío,
+     * todo por ese medio, como el Enter en «Paga con» de antes.
+     */
+    private void tenderField(BigDecimalField field, PaymentMethod method) {
+        field.setPrefixComponent(new Span("$"));
+        field.setValueChangeMode(ValueChangeMode.EAGER);
+        field.setPlaceholder("0");
+        field.addValueChangeListener(event -> {
+            if (event.isFromClient()) {
+                onTyped(field);
+            }
+            renderTender();
+            renderActions();
+        });
+        field.addKeyDownListener(Key.ENTER, event -> pay(method));
+    }
+
+    /**
+     * Con productos elegidos se cobra justo esa parte: lo que se escribe en un
+     * campo completa el otro con lo que falta. Lo que se escribió a mano no se
+     * pisa, así se puede poner el billete y ver el vuelto.
+     */
+    private void onTyped(BigDecimalField field) {
+        if (autoFilled == field) {
+            autoFilled = null;
+        }
+        BigDecimalField other = otherField(field);
+        if (picking() && (other.getValue() == null || autoFilled == other)) {
+            completeWithRest(other, field);
+        }
+    }
+
+    /**
+     * Rehace el campo completado solo cuando cambia lo elegido. Sin nada elegido
+     * se cobra por monto y los campos van a mano: se vacía.
+     */
+    private void refreshAutoFilled() {
+        if (!picking()) {
+            if (autoFilled != null) {
+                BigDecimalField field = autoFilled;
+                autoFilled = null;
+                field.clear();
+            }
+            return;
+        }
+        BigDecimalField typed = null;
+        if (autoFilled != null) {
+            typed = otherField(autoFilled);
+        } else if (cashField.getValue() != null && transferField.getValue() == null) {
+            typed = cashField;
+        } else if (transferField.getValue() != null && cashField.getValue() == null) {
+            typed = transferField;
+        }
+        if (typed != null) {
+            completeWithRest(otherField(typed), typed);
+        }
+    }
+
+    private void completeWithRest(BigDecimalField field, BigDecimalField typed) {
+        BigDecimal rest = typed.getValue() == null ? BigDecimal.ZERO : target().subtract(typed.getValue());
+        if (rest.signum() > 0) {
+            field.setValue(withoutZeroCents(rest));
+            autoFilled = field;
+        } else {
+            // Lo escrito ya cubre todo (o se borró): el otro no lleva nada.
+            field.clear();
+            autoFilled = null;
+        }
+    }
+
+    private BigDecimalField otherField(BigDecimalField field) {
+        return field == cashField ? transferField : cashField;
+    }
+
+    /** «el resto»: lo que falta para lo que se cobra, descontado lo que ya dice el otro campo. */
+    private void restButton(Button button, BigDecimalField field, BigDecimalField other) {
+        button.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_SMALL);
+        button.setTooltipText("Completa con lo que falta");
+        button.addClickListener(event -> {
+            BigDecimal rest = target().subtract(valueOf(other));
+            if (rest.signum() > 0) {
+                field.setValue(withoutZeroCents(rest));
+            }
+            field.focus();
+        });
+    }
+
+    /** 1500.00 se escribe 1500, como lo tipearía el que cobra; los centavos de verdad quedan. */
+    private static BigDecimal withoutZeroCents(BigDecimal value) {
+        BigDecimal stripped = value.stripTrailingZeros();
+        return stripped.scale() < 0 ? stripped.setScale(0) : stripped;
     }
 
     private Component accountsSection() {
@@ -403,9 +524,9 @@ public class BuffetView extends VerticalLayout {
      */
     private void registerShortcuts() {
         Shortcuts.addShortcutListener(this, this::newOrder, Key.F2);
-        Shortcuts.addShortcutListener(this, () -> save(PaymentMethod.CASH), Key.F8);
-        Shortcuts.addShortcutListener(this, () -> save(PaymentMethod.TRANSFER), Key.F9);
-        Shortcuts.addShortcutListener(this, () -> save(null), Key.F4);
+        Shortcuts.addShortcutListener(this, () -> pay(PaymentMethod.CASH), Key.F8);
+        Shortcuts.addShortcutListener(this, () -> pay(PaymentMethod.TRANSFER), Key.F9);
+        Shortcuts.addShortcutListener(this, () -> save(null, null), Key.F4);
     }
 
     private void withKey(Button button, String key) {
@@ -518,7 +639,7 @@ public class BuffetView extends VerticalLayout {
         Command command = ProductQuickEntry.parse(search.getValue());
         if (command.isEmpty()) {
             if (amountDue().signum() > 0) {
-                paysWith.focus();
+                cashField.focus();
             }
             return;
         }
@@ -556,9 +677,11 @@ public class BuffetView extends VerticalLayout {
         int quantity = draft.getOrDefault(product.getId(), 0) + step;
         if (quantity <= 0) {
             draft.remove(product.getId());
-            selectedDraftProductIds.remove(product.getId());
+            pickedDrafts.remove(product.getId());
         } else {
             draft.put(product.getId(), quantity);
+            // Si se elegían más de las que quedan, se eligen las que quedan.
+            pickedDrafts.computeIfPresent(product.getId(), (id, units) -> Math.min(units, quantity));
         }
         renderTicket();
     }
@@ -578,11 +701,10 @@ public class BuffetView extends VerticalLayout {
     private void resetTicket() {
         loaded = null;
         draft.clear();
-        selectedSaleIds.clear();
-        selectedDraftProductIds.clear();
+        clearPicks();
         customerName.clear();
         customerName.setInvalid(false);
-        paysWith.clear();
+        clearTender();
         search.clear();
         renderTicket();
         renderAccounts();
@@ -618,10 +740,9 @@ public class BuffetView extends VerticalLayout {
         if (!keepDraft) {
             draft.clear();
         }
-        selectedSaleIds.clear();
-        selectedDraftProductIds.clear();
+        clearPicks();
         customerName.clear();
-        paysWith.clear();
+        clearTender();
         lastCharge.setVisible(false);
         renderTicket();
         renderAccounts();
@@ -636,22 +757,30 @@ public class BuffetView extends VerticalLayout {
         if (loaded != null) {
             try {
                 loaded = fresh(loaded.order().getId());
-                selectedSaleIds.retainAll(loaded.items().stream().map(ProductSale::getId).toList());
+                // Lo elegido sigue elegido mientras siga pendiente, y nunca más
+                // unidades de las que tiene la línea.
+                Map<UUID, ProductSale> byId = loaded.items().stream()
+                        .collect(Collectors.toMap(ProductSale::getId, Function.identity()));
+                pickedSales.entrySet().removeIf(entry -> byId.get(entry.getKey()) == null
+                        || byId.get(entry.getKey()).isPaid());
+                pickedSales.replaceAll((id, units) -> Math.min(units, byId.get(id).getQuantity()));
             } catch (ResourceNotFoundException ex) {
                 // Se borró desde el detalle.
                 loaded = null;
                 draft.clear();
-                selectedSaleIds.clear();
-                selectedDraftProductIds.clear();
+                clearPicks();
             }
         }
         renderTicket();
     }
 
-    /** Un producto ya guardado en la cuenta se saca en el momento, como en el detalle. */
-    private void removeSaved(ProductSale sale) {
+    /**
+     * Un producto ya guardado en la cuenta se saca en el momento, como en el
+     * detalle. Lo ya cobrado de un producto puede estar en varias líneas: salen juntas.
+     */
+    private void removeSaved(List<ProductSale> sales) {
         try {
-            productService.removeSale(sale.getId());
+            productService.removeSales(sales.stream().map(ProductSale::getId).toList());
         } catch (BusinessRuleException | ResourceNotFoundException ex) {
             warn(ex.getMessage());
         }
@@ -660,11 +789,35 @@ public class BuffetView extends VerticalLayout {
     }
 
     /**
-     * Guarda lo que hay en pantalla y, con un método, cobra todo el saldo.
-     *
-     * @param method efectivo o transferencia; null deja el saldo en la cuenta
+     * F8, F9 o Enter en un campo. Con los campos vacíos cobra todo por ese medio:
+     * lo elegido o, sin nada elegido, lo que debe. Con algo escrito cobra lo que
+     * dicen los campos, sea cual sea la tecla.
      */
-    private void save(PaymentMethod method) {
+    private void pay(PaymentMethod method) {
+        if (!tenderFilled()) {
+            // Con lo que se ve en pantalla: si la cuenta cambió en el medio, no se cobra otro monto.
+            save(Charge.all(method, target()), null);
+            return;
+        }
+        Tender tender = tender();
+        if (tender.problem() != null) {
+            warn(tender.problem());
+            (tender.transfer().compareTo(target()) > 0 ? transferField : cashField).focus();
+            return;
+        }
+        save(Charge.split(tender.cash(), tender.transfer()), tender.change());
+    }
+
+    /**
+     * Guarda lo que hay en pantalla y, si viene un cobro, lo registra.
+     *
+     * <p>Si después del cobro la cuenta sigue debiendo, queda en pantalla para
+     * cobrar la parte que sigue; si quedó saldada, la pantalla pasa al siguiente.
+     *
+     * @param charge cómo se paga; null deja el saldo en la cuenta
+     * @param change el vuelto, para tenerlo a la vista; null si no hay
+     */
+    private void save(Charge charge, BigDecimal change) {
         if (dialogOpen.getAsBoolean()) {
             return;
         }
@@ -676,77 +829,48 @@ public class BuffetView extends VerticalLayout {
                 customerName.focus();
                 return;
             }
-            if (isNew && name.isEmpty() && method == null) {
-                customerName.setErrorMessage("Para dejarlo en la cuenta, poné a nombre de quién es");
-                customerName.setInvalid(true);
-                customerName.focus();
+            if (isNew && name.isEmpty() && charge == null) {
+                askForName("Para dejarlo en la cuenta, poné a nombre de quién es");
                 return;
             }
             BigDecimal toCharge = amountDue();
-            if (method != null && toCharge.signum() <= 0) {
+            if (charge != null && toCharge.signum() <= 0) {
                 warn(isNew ? "Sumá algún producto para cobrar" : "Esta cuenta no tiene nada para cobrar");
                 return;
             }
-            if (method == null && !isNew && draft.isEmpty()) {
+            if (charge != null && picking() && partTotal().signum() <= 0) {
+                warn("Lo que elegiste no tiene nada para cobrar");
+                return;
+            }
+            if (charge == null && !isNew && draft.isEmpty()) {
                 warn("No sumaste nada a la cuenta");
                 return;
             }
-
-            // Con algo tildado, «Paga con» deja de ser el vuelto y pasa a ser
-            // cuánto se cobra ahora: el resto sigue debiéndose en la cuenta.
-            boolean partial = method != null && selectedSubtotal().signum() > 0;
-            BigDecimal chargeAmount = null;
-            BigDecimal given = null;
-            if (partial) {
-                chargeAmount = paysWith.getValue();
-                if (chargeAmount == null || chargeAmount.signum() <= 0) {
-                    warn("Poné cuánto cobrás de lo tildado");
-                    paysWith.focus();
-                    return;
-                }
-                if (chargeAmount.compareTo(toCharge) > 0) {
-                    warn("No podés cobrar más de lo que debe: son %s".formatted(Money.format(toCharge)));
-                    paysWith.focus();
-                    return;
-                }
-            } else if (method == PaymentMethod.CASH) {
-                given = paysWith.getValue();
-                if (given != null && given.compareTo(toCharge) < 0) {
-                    warn("Con %s no alcanza: son %s".formatted(Money.format(given), Money.format(toCharge)));
-                    paysWith.focus();
-                    return;
-                }
-            }
-
-            // Lo tildado queda marcado como cobrado; sin nada tildado pero con
-            // método de pago, se cubre todo lo pendiente (lo que ya debía y lo
-            // que se suma ahora), así al reabrir el pedido se ve qué ya se cobró.
-            Set<UUID> paidSaleIds;
-            Set<UUID> paidProductIds;
-            if (method == null) {
-                paidSaleIds = Set.of();
-                paidProductIds = Set.of();
-            } else if (partial) {
-                paidSaleIds = Set.copyOf(selectedSaleIds);
-                paidProductIds = Set.copyOf(selectedDraftProductIds);
-            } else {
-                paidSaleIds = isNew ? Set.of() : loaded.items().stream()
-                        .filter(sale -> !sale.isPaid())
-                        .map(ProductSale::getId)
-                        .collect(Collectors.toSet());
-                paidProductIds = Set.copyOf(draft.keySet());
+            if (isNew && name.isEmpty() && charge != null && leavesBalance(charge, toCharge)) {
+                askForName("Para dejar lo que falta en la cuenta, poné a nombre de quién es");
+                return;
             }
 
             List<NewItem> items = draft.entrySet().stream()
                     .map(entry -> new NewItem(entry.getKey(), entry.getValue()))
                     .toList();
+            boolean charging = charge != null;
             Checkout result = buffetOrderService.checkout(isNew ? null : loaded.order().getId(),
-                    name, items, method, chargeAmount, paidSaleIds, paidProductIds, currentUserId);
-            showLastCharge(result, method, given);
-            resetTicket();
+                    name, items, charge,
+                    charging ? Map.copyOf(pickedSales) : Map.of(),
+                    charging ? Map.copyOf(pickedDrafts) : Map.of(),
+                    currentUserId);
+            showLastCharge(result, change);
+            if (charging && result.order().balanceDue().signum() > 0) {
+                stayOn(result.order());
+            } else {
+                resetTicket();
+            }
             refreshLists();
         } catch (BusinessRuleException | ResourceNotFoundException ex) {
             warn(ex.getMessage());
+            // Si el rechazo fue porque otro puesto tocó la cuenta, que se vea cómo quedó.
+            reloadLoaded();
         } catch (ObjectOptimisticLockingFailureException ex) {
             warn("Otro puesto cambió esta cuenta recién. Revisala y volvé a cobrar.");
             reloadLoaded();
@@ -756,29 +880,73 @@ public class BuffetView extends VerticalLayout {
         }
     }
 
+    /** Si el cobro deja algo pendiente: lo elegido no es todo, o el monto no llega a lo que debe. */
+    private boolean leavesBalance(Charge charge, BigDecimal toCharge) {
+        if (picking()) {
+            return partTotal().compareTo(toCharge) < 0;
+        }
+        return charge.allWith() == null && charge.cash().add(charge.transfer()).compareTo(toCharge) < 0;
+    }
+
+    private void askForName(String message) {
+        customerName.setErrorMessage(message);
+        customerName.setInvalid(true);
+        customerName.focus();
+    }
+
+    /**
+     * Después de cobrar una parte, la cuenta queda en pantalla con lo que falta:
+     * el que sigue elige lo suyo, paga otro monto o con F8 o F9 paga todo lo que queda.
+     */
+    private void stayOn(BuffetOrder order) {
+        loaded = fresh(order.getId());
+        draft.clear();
+        clearPicks();
+        customerName.clear();
+        customerName.setInvalid(false);
+        clearTender();
+        search.clear();
+        renderTicket();
+        search.focus();
+    }
+
     /** Queda a la vista hasta que se empieza el siguiente: la notificación se va sola. */
-    private void showLastCharge(Checkout result, PaymentMethod method, BigDecimal given) {
+    private void showLastCharge(Checkout result, BigDecimal change) {
         BuffetOrder order = result.order();
         lastCharge.removeAll();
         Span text = new Span();
         text.addClassName("buffet-last__text");
-        String how = method == PaymentMethod.CASH ? "en efectivo" : "por transferencia";
-        if (method == null) {
+        if (result.charged().signum() == 0) {
             text.setText("Quedó en la cuenta de %s: debe %s".formatted(
                     order.getCustomerName(), Money.format(order.balanceDue())));
-        } else if (order.getCustomerName() == null) {
-            text.setText("Venta rápida cobrada: %s %s".formatted(Money.format(result.charged()), how));
         } else {
-            text.setText("Cobrado a %s: %s %s".formatted(order.getCustomerName(),
-                    Money.format(result.charged()), how));
+            String who = order.getCustomerName() == null
+                    ? "Venta rápida cobrada: "
+                    : "Cobrado a %s: ".formatted(order.getCustomerName());
+            String rest = order.balanceDue().signum() > 0
+                    ? " · quedan " + Money.format(order.balanceDue())
+                    : "";
+            text.setText(who + howPaid(result) + rest);
         }
         lastCharge.add(VaadinIcon.CHECK_CIRCLE.create(), text);
-        if (given != null) {
-            Span changeDue = new Span("Vuelto " + Money.format(given.subtract(result.charged())));
+        if (change != null && change.signum() > 0) {
+            Span changeDue = new Span("Vuelto " + Money.format(change));
             changeDue.addClassNames("buffet-last__change", "tabular");
             lastCharge.add(changeDue);
         }
         lastCharge.setVisible(true);
+    }
+
+    /** "$5.000 en efectivo", o "$3.000 por transferencia + $5.000 en efectivo". */
+    private static String howPaid(Checkout result) {
+        List<String> parts = new ArrayList<>();
+        if (result.transfer().signum() > 0) {
+            parts.add(Money.format(result.transfer()) + " por transferencia");
+        }
+        if (result.cash().signum() > 0) {
+            parts.add(Money.format(result.cash()) + " en efectivo");
+        }
+        return String.join(" + ", parts);
     }
 
     /** Lo que hay que cobrar con lo agregado; negativo si la cuenta tiene plata a favor. */
@@ -796,37 +964,155 @@ public class BuffetView extends VerticalLayout {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /** Lo que suman los productos tildados, guardados o recién agregados. */
-    private BigDecimal selectedSubtotal() {
-        BigDecimal fromSaved = loaded == null
-                ? BigDecimal.ZERO
-                : loaded.items().stream()
-                        .filter(sale -> selectedSaleIds.contains(sale.getId()))
-                        .map(ProductSale::subtotal)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal fromDraft = draft.entrySet().stream()
-                .filter(entry -> selectedDraftProductIds.contains(entry.getKey()))
-                .map(entry -> productsById.get(entry.getKey()).getUnitPrice()
-                        .multiply(BigDecimal.valueOf(entry.getValue())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return fromSaved.add(fromDraft);
+    /** Cuánto le cubre ya lo pagado por monto a cada producto, guardado o recién sumado. */
+    private record Covered(Map<UUID, BigDecimal> saved, Map<UUID, BigDecimal> drafts) {
     }
 
-    /** Tilda o destilda un producto para cobrar solo eso, y arma «Paga con» con la suma. */
-    private void toggleSelection(boolean saved, UUID id, boolean picked) {
-        Set<UUID> target = saved ? selectedSaleIds : selectedDraftProductIds;
-        if (picked) {
-            target.add(id);
-        } else {
-            target.remove(id);
+    /**
+     * La misma cuenta que hace el servicio al cobrar ({@link BuffetCoverage}): lo
+     * guardado en el orden en que se cargó, y detrás lo que se suma ahora.
+     */
+    private Covered covered() {
+        List<ProductSale> saved = loaded == null ? List.of() : loaded.items();
+        List<Map.Entry<UUID, Integer>> drafts = List.copyOf(draft.entrySet());
+        List<BuffetCoverage.Line> lines = new ArrayList<>();
+        saved.forEach(sale -> lines.add(coverageLine(sale)));
+        drafts.forEach(entry -> lines.add(draftCoverageLine(entry.getKey(), entry.getValue())));
+        List<BigDecimal> amounts = BuffetCoverage.covered(lines,
+                loaded == null ? BigDecimal.ZERO : loaded.order().getPaidAmount());
+
+        Map<UUID, BigDecimal> savedCovered = new LinkedHashMap<>();
+        for (int i = 0; i < saved.size(); i++) {
+            savedCovered.put(saved.get(i).getId(), amounts.get(i));
         }
-        BigDecimal selected = selectedSubtotal();
-        if (selected.signum() > 0) {
-            paysWith.setValue(selected);
+        Map<UUID, BigDecimal> draftCovered = new LinkedHashMap<>();
+        for (int i = 0; i < drafts.size(); i++) {
+            draftCovered.put(drafts.get(i).getKey(), amounts.get(saved.size() + i));
+        }
+        return new Covered(savedCovered, draftCovered);
+    }
+
+    private static BuffetCoverage.Line coverageLine(ProductSale sale) {
+        return new BuffetCoverage.Line(sale.getUnitPrice(), sale.getQuantity(), sale.isPaid());
+    }
+
+    private BuffetCoverage.Line draftCoverageLine(UUID productId, int quantity) {
+        return new BuffetCoverage.Line(productsById.get(productId).getUnitPrice(), quantity, false);
+    }
+
+    private boolean picking() {
+        return !pickedSales.isEmpty() || !pickedDrafts.isEmpty();
+    }
+
+    /** Lo que suma lo elegido, ya descontado lo que le cubre lo pagado por monto. */
+    private BigDecimal partTotal() {
+        Covered covered = covered();
+        BigDecimal total = BigDecimal.ZERO;
+        if (loaded != null) {
+            for (ProductSale sale : loaded.items()) {
+                Integer units = pickedSales.get(sale.getId());
+                if (units != null) {
+                    total = total.add(BuffetCoverage.cost(coverageLine(sale), units,
+                            covered.saved().get(sale.getId())));
+                }
+            }
+        }
+        for (Map.Entry<UUID, Integer> entry : draft.entrySet()) {
+            Integer units = pickedDrafts.get(entry.getKey());
+            if (units != null) {
+                total = total.add(BuffetCoverage.cost(draftCoverageLine(entry.getKey(), entry.getValue()), units,
+                        covered.drafts().get(entry.getKey())));
+            }
+        }
+        return total;
+    }
+
+    /** Lo que se cobra en esta pasada si se paga justo: lo elegido o, sin nada elegido, todo lo que debe. */
+    private BigDecimal target() {
+        return picking() ? partTotal() : amountDue().max(BigDecimal.ZERO);
+    }
+
+    /**
+     * Elige o deja de elegir unidades de un producto para esta parte.
+     *
+     * @param units cuántas; null lo saca de lo elegido
+     */
+    private void pick(boolean saved, UUID id, Integer units) {
+        Map<UUID, Integer> target = saved ? pickedSales : pickedDrafts;
+        if (units == null) {
+            target.remove(id);
         } else {
-            paysWith.clear();
+            target.put(id, units);
         }
         renderTicket();
+    }
+
+    private void clearPicks() {
+        pickedSales.clear();
+        pickedDrafts.clear();
+    }
+
+    // ------------------------------------------------------ efectivo y transferencia
+
+    /**
+     * Lo que dicen los dos campos frente a lo que se cobra. La transferencia va
+     * justa; el efectivo es lo que te dan, y lo que pase de lo que falta es vuelto.
+     *
+     * @param cash     el efectivo que entra a la caja, ya sin el vuelto
+     * @param left     lo que queda en la cuenta, cobrando por monto menos de lo que debe
+     * @param problem  por qué así no se puede cobrar, o null
+     */
+    private record Tender(BigDecimal cash, BigDecimal transfer, BigDecimal change, BigDecimal left,
+                          String problem) {
+    }
+
+    private Tender tender() {
+        BigDecimal target = target();
+        BigDecimal given = valueOf(cashField);
+        BigDecimal transfer = valueOf(transferField);
+        BigDecimal total = given.add(transfer);
+        BigDecimal change = total.subtract(target).max(BigDecimal.ZERO);
+        BigDecimal left = target.subtract(total).max(BigDecimal.ZERO);
+        String problem = null;
+        if (given.signum() < 0 || transfer.signum() < 0) {
+            problem = "Los montos no pueden ser negativos";
+        } else if (given.stripTrailingZeros().scale() > 2 || transfer.stripTrailingZeros().scale() > 2) {
+            // El botón diría «Cobrar $100,01» por un $100,005: mejor avisar acá.
+            problem = "Los montos van con hasta dos decimales";
+        } else if (transfer.compareTo(target) > 0) {
+            problem = "La transferencia pasa lo que se cobra: son " + Money.format(target);
+        } else if (total.signum() == 0) {
+            problem = "Poné cuánto se cobra";
+        } else if (picking() && left.signum() > 0) {
+            problem = "Faltan %s para lo elegido".formatted(Money.format(left));
+        }
+        return new Tender(given.subtract(change), transfer, change, left, problem);
+    }
+
+    /** "Cobrar $5.000 en efectivo"; mitad y mitad, el total, y el desglose queda debajo de los campos. */
+    private static String chargeText(Tender tender) {
+        String amount = Money.format(tender.cash().add(tender.transfer()));
+        if (tender.transfer().signum() == 0) {
+            return "Cobrar " + amount + " en efectivo";
+        }
+        if (tender.cash().signum() == 0) {
+            return "Cobrar " + amount + " por transferencia";
+        }
+        return "Cobrar " + amount;
+    }
+
+    private boolean tenderFilled() {
+        return cashField.getValue() != null || transferField.getValue() != null;
+    }
+
+    private static BigDecimal valueOf(BigDecimalField field) {
+        return field.getValue() == null ? BigDecimal.ZERO : field.getValue();
+    }
+
+    private void clearTender() {
+        autoFilled = null;
+        cashField.clear();
+        transferField.clear();
     }
 
     private void openDetail() {
@@ -889,17 +1175,38 @@ public class BuffetView extends VerticalLayout {
         suggestAccounts();
 
         lines.removeAll();
-        if (!isNew && !loaded.items().isEmpty()) {
+        Covered covered = covered();
+        boolean chargeable = amountDue().signum() > 0;
+        // Arriba lo que falta cobrar, en el orden en que se cargó; abajo lo ya
+        // cobrado, junto por producto: dos aguas pagadas en dos partes son "2× Agua".
+        List<ProductSale> pending = new ArrayList<>();
+        Map<String, List<ProductSale>> paidGroups = new LinkedHashMap<>();
+        if (!isNew) {
+            for (ProductSale sale : loaded.items()) {
+                if (sale.isPaid() || isCovered(sale.subtotal(), covered.saved().get(sale.getId()))) {
+                    paidGroups.computeIfAbsent(sale.getProductName() + "|" + sale.getUnitPrice().stripTrailingZeros(),
+                            key -> new ArrayList<>()).add(sale);
+                } else {
+                    pending.add(sale);
+                }
+            }
+        }
+        if (!pending.isEmpty()) {
             if (!draft.isEmpty()) {
                 lines.add(caption("En la cuenta"));
             }
-            loaded.items().forEach(sale -> lines.add(savedLine(sale)));
+            pending.forEach(sale -> lines.add(savedLine(sale, covered.saved().get(sale.getId()), chargeable)));
         }
         if (!draft.isEmpty()) {
-            if (!isNew && !loaded.items().isEmpty()) {
+            if (!pending.isEmpty() || !paidGroups.isEmpty()) {
                 lines.add(caption("Se suma ahora"));
             }
-            draft.forEach((productId, quantity) -> lines.add(draftLine(productsById.get(productId), quantity)));
+            draft.forEach((productId, quantity) -> lines.add(
+                    draftLine(productsById.get(productId), quantity, covered.drafts().get(productId), chargeable)));
+        }
+        if (!paidGroups.isEmpty()) {
+            lines.add(caption("Ya cobrado"));
+            paidGroups.values().forEach(group -> lines.add(paidLine(group)));
         }
         if (lines.getComponentCount() == 0) {
             Span empty = new Span("Tocá un producto o escribilo en el buscador.");
@@ -907,13 +1214,24 @@ public class BuffetView extends VerticalLayout {
             lines.add(empty);
         }
 
+        // Con algo elegido, lo grande es lo que se cobra ahora; lo que debe la
+        // cuenta entera queda abajo, chico.
         BigDecimal amount = amountDue();
+        boolean part = picking() && chargeable;
         due.setClassName("buffet-due--credit", amount.signum() < 0);
-        dueLabel.setText(amount.signum() < 0 ? "A favor del cliente (devolvelo desde Detalle)" : "A cobrar");
-        dueValue.setText(Money.format(amount.abs()));
+        if (part) {
+            dueLabel.setText("Esta parte");
+            dueValue.setText(Money.format(partTotal()));
+            dueMeta.setText("La cuenta debe " + Money.format(amount));
+        } else {
+            dueLabel.setText(amount.signum() < 0 ? "A favor del cliente (devolvelo desde Detalle)" : "A cobrar");
+            dueValue.setText(Money.format(amount.abs()));
+        }
+        dueMeta.setVisible(part);
 
         tiles.values().forEach(tile -> tile.showCount(draft.getOrDefault(tile.product.getId(), 0)));
-        renderChange();
+        refreshAutoFilled();
+        renderTender();
         renderActions();
     }
 
@@ -923,49 +1241,73 @@ public class BuffetView extends VerticalLayout {
         return span;
     }
 
-    private Div savedLine(ProductSale sale) {
+    /**
+     * Un producto guardado en la cuenta que falta cobrar, entero o a medio pagar
+     * («quedan $4.000 de $12.000»): se puede elegir para esta parte.
+     */
+    private Div savedLine(ProductSale sale, BigDecimal covered, boolean chargeable) {
         Span quantity = new Span(sale.getQuantity() + "×");
         quantity.addClassNames("buffet-line__qty", "tabular");
-        Span name = new Span(sale.getProductName());
-        name.addClassName("buffet-line__name");
         Span amount = new Span(Money.format(sale.subtotal()));
         amount.addClassNames("buffet-line__amount", "tabular");
 
-        Button remove = new Button(VaadinIcon.CLOSE_SMALL.create(), event -> removeSaved(sale));
-        remove.addThemeVariants(ButtonVariant.LUMO_ICON, ButtonVariant.LUMO_TERTIARY,
-                ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
-        remove.setAriaLabel("Sacar " + sale.getProductName() + " de la cuenta");
-        remove.setTooltipText("Sacar de la cuenta");
-
+        Integer picked = pickedSales.get(sale.getId());
         Div row = new Div();
         row.addClassNames("buffet-line", "buffet-line--saved");
-        if (amountDue().signum() > 0 || sale.isPaid()) {
-            row.addClassName("buffet-line--pickable");
-            row.add(pickCheckbox(sale.getProductName(), sale.isPaid(),
-                    sale.isPaid() || selectedSaleIds.contains(sale.getId()),
-                    picked -> toggleSelection(true, sale.getId(), picked)));
+        row.add(lead(sale.getProductName(), false, chargeable, picked != null,
+                        on -> pick(true, sale.getId(), on ? sale.getQuantity() : null)),
+                quantity, nameCell(sale.getProductName(), sale.subtotal(), covered, false), amount,
+                removeButton(sale.getProductName(), covered.signum() > 0
+                        // A medio pagar: lo que ya tiene pago se mueve, se confirma igual que lo cobrado.
+                        ? () -> confirmRemovePaid(sale.getQuantity() + "× " + sale.getProductName(),
+                                sale.subtotal(), covered, () -> removeSaved(List.of(sale)))
+                        : () -> removeSaved(List.of(sale))));
+        if (picked != null && sale.getQuantity() > 1) {
+            row.add(unitsPicker(sale.getProductName(), picked, sale.getQuantity(),
+                    units -> pick(true, sale.getId(), units)));
         }
-        row.add(quantity, name, amount, remove);
         return row;
     }
 
     /**
-     * El check para cobrar solo este producto ahora, y dejar el resto para
-     * después. Lo ya cobrado queda tildado y no se puede destildar: ese cobro
-     * ya se hizo, no hay nada que rearmar.
+     * Lo ya cobrado de un producto, en una línea aunque se haya pagado en varias
+     * partes. Sacarlo deja plata a favor del cliente: se confirma antes.
      */
-    private Checkbox pickCheckbox(String productName, boolean paid, boolean picked, Consumer<Boolean> onPick) {
-        Checkbox checkbox = new Checkbox();
-        checkbox.addClassName("buffet-line__pick");
-        checkbox.setValue(picked);
-        checkbox.setEnabled(!paid);
-        checkbox.setAriaLabel((paid ? "Ya cobrado: " : "Cobrar ") + productName + (paid ? "" : " ahora"));
-        checkbox.setTooltipText(paid ? "Ya cobrado" : "Cobrar esto ahora, dejar el resto en la cuenta");
-        checkbox.addValueChangeListener(event -> onPick.accept(Boolean.TRUE.equals(event.getValue())));
-        return checkbox;
+    private Div paidLine(List<ProductSale> group) {
+        String productName = group.getFirst().getProductName();
+        int units = group.stream().mapToInt(ProductSale::getQuantity).sum();
+        BigDecimal subtotal = group.stream().map(ProductSale::subtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Span quantity = new Span(units + "×");
+        quantity.addClassNames("buffet-line__qty", "tabular");
+        Span amount = new Span(Money.format(subtotal));
+        amount.addClassNames("buffet-line__amount", "tabular");
+
+        Div row = new Div();
+        row.addClassNames("buffet-line", "buffet-line--saved", "buffet-line--paid");
+        row.add(lead(productName, true, false, false, on -> { }), quantity,
+                nameCell(productName, subtotal, subtotal, true), amount,
+                removeButton(productName, () -> confirmRemovePaid(units + "× " + productName, subtotal, subtotal,
+                        () -> removeSaved(group))));
+        return row;
     }
 
-    private Div draftLine(Product product, int quantity) {
+    private Button removeButton(String productName, Runnable onRemove) {
+        Button remove = new Button(VaadinIcon.CLOSE_SMALL.create(), event -> onRemove.run());
+        remove.addThemeVariants(ButtonVariant.LUMO_ICON, ButtonVariant.LUMO_TERTIARY,
+                ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_SMALL);
+        remove.setAriaLabel("Sacar " + productName + " de la cuenta");
+        remove.setTooltipText("Sacar de la cuenta");
+        return remove;
+    }
+
+    private void confirmRemovePaid(String what, BigDecimal subtotal, BigDecimal paidOfIt, Runnable then) {
+        ConfirmDialog dialog = BuffetOrderDialog.confirmPaidRemoval(loaded.order(), what, subtotal, paidOfIt, then);
+        dialogOpen = dialog::isOpened;
+        dialog.open();
+    }
+
+    private Div draftLine(Product product, int quantity, BigDecimal covered, boolean chargeable) {
         Button less = stepButton(VaadinIcon.MINUS, "Uno menos de " + product.getName(),
                 () -> changeQuantity(product, -1));
         Span count = new Span(String.valueOf(quantity));
@@ -975,19 +1317,87 @@ public class BuffetView extends VerticalLayout {
         Div stepper = new Div(less, count, more);
         stepper.addClassName("buffet-stepper");
 
-        Span name = new Span(product.getName());
-        name.addClassName("buffet-line__name");
-        Span amount = new Span(Money.format(product.getUnitPrice().multiply(BigDecimal.valueOf(quantity))));
+        BigDecimal subtotal = product.getUnitPrice().multiply(BigDecimal.valueOf(quantity));
+        Span amount = new Span(Money.format(subtotal));
         amount.addClassNames("buffet-line__amount", "tabular");
 
+        // Lo nuevo casi nunca viene cubierto: solo si la cuenta tenía plata a favor.
+        boolean done = isCovered(subtotal, covered);
+        Integer picked = pickedDrafts.get(product.getId());
         Div row = new Div();
         row.addClassNames("buffet-line", "buffet-line--new");
-        if (amountDue().signum() > 0) {
-            row.addClassName("buffet-line--pickable");
-            row.add(pickCheckbox(product.getName(), false, selectedDraftProductIds.contains(product.getId()),
-                    picked -> toggleSelection(false, product.getId(), picked)));
+        row.setClassName("buffet-line--paid", done);
+        row.add(lead(product.getName(), done, chargeable, picked != null,
+                        on -> pick(false, product.getId(), on ? quantity : null)),
+                stepper, nameCell(product.getName(), subtotal, covered, done), amount);
+        if (!done && picked != null && quantity > 1) {
+            row.add(unitsPicker(product.getName(), picked, quantity, units -> pick(false, product.getId(), units)));
         }
-        row.add(stepper, name, amount);
+        return row;
+    }
+
+    private static boolean isCovered(BigDecimal subtotal, BigDecimal covered) {
+        return subtotal.signum() > 0 && covered.compareTo(subtotal) >= 0;
+    }
+
+    /**
+     * Lo primero de cada línea: la marca de cobrado, o el check para elegirla
+     * para esta parte y dejar el resto para después. Sin nada para cobrar, vacío.
+     */
+    private Component lead(String productName, boolean done, boolean chargeable, boolean picked,
+                           Consumer<Boolean> onPick) {
+        if (done) {
+            Span mark = new Span(VaadinIcon.CHECK.create());
+            mark.addClassName("buffet-line__paid-mark");
+            mark.getElement().setAttribute("title", "Ya cobrado");
+            mark.getElement().setAttribute("aria-label", "Ya cobrado");
+            return mark;
+        }
+        if (!chargeable) {
+            return new Span();
+        }
+        Checkbox checkbox = new Checkbox();
+        checkbox.addClassName("buffet-line__pick");
+        checkbox.setValue(picked);
+        checkbox.setAriaLabel("Cobrar " + productName + " en esta parte");
+        checkbox.setTooltipText("Cobrar esto ahora, dejar el resto en la cuenta");
+        checkbox.addValueChangeListener(event -> onPick.accept(Boolean.TRUE.equals(event.getValue())));
+        return checkbox;
+    }
+
+    /** El nombre y, si un pago por monto lo dejó a medio pagar, cuánto le falta. */
+    private Div nameCell(String productName, BigDecimal subtotal, BigDecimal covered, boolean done) {
+        Span name = new Span(productName);
+        name.addClassName("buffet-line__name");
+        Div cell = new Div(name);
+        cell.addClassName("buffet-line__label");
+        if (!done && covered.signum() > 0) {
+            Span left = new Span("quedan %s de %s".formatted(Money.format(subtotal.subtract(covered)),
+                    Money.format(subtotal)));
+            left.addClassNames("buffet-line__left", "tabular");
+            cell.add(left);
+        }
+        return cell;
+    }
+
+    /** Cuántas de las unidades de un producto entran en esta parte: 3 de las 5 milanesas. */
+    private Div unitsPicker(String productName, int picked, int available, Consumer<Integer> onChange) {
+        Button less = stepButton(VaadinIcon.MINUS, "Una menos de " + productName + " en esta parte",
+                () -> onChange.accept(picked - 1));
+        less.setEnabled(picked > 1);
+        Span count = new Span(String.valueOf(picked));
+        count.addClassNames("buffet-stepper__count", "tabular");
+        Button more = stepButton(VaadinIcon.PLUS, "Una más de " + productName + " en esta parte",
+                () -> onChange.accept(picked + 1));
+        more.setEnabled(picked < available);
+        Div stepper = new Div(less, count, more);
+        stepper.addClassName("buffet-stepper");
+
+        Span label = new Span("Paga");
+        Span of = new Span("de " + available);
+        of.addClassName("tabular");
+        Div row = new Div(label, stepper, of);
+        row.addClassName("buffet-line__units");
         return row;
     }
 
@@ -999,37 +1409,61 @@ public class BuffetView extends VerticalLayout {
         return button;
     }
 
-    private void renderChange() {
-        BigDecimal given = paysWith.getValue();
-        BigDecimal amount = amountDue();
-        boolean partial = selectedSubtotal().signum() > 0;
-        paysWith.setHelperText(partial ? "Cobra lo tildado, sin vuelto" : null);
-        if (partial) {
-            // Cobro parcial: lo que se puso es lo que se cobra, no hay vuelto que calcular.
-            change.setText("");
-            change.setVisible(false);
+    /** La línea debajo de los campos: cómo queda la cuenta con lo que se escribió. */
+    private void renderTender() {
+        tenderSummary.removeClassNames("buffet-tender__summary--change", "buffet-tender__summary--left",
+                "buffet-tender__summary--problem");
+        if (!tenderFilled() || amountDue().signum() <= 0) {
+            tenderSummary.setText("");
+            tenderSummary.setVisible(false);
             return;
         }
-        if (given == null || amount.signum() <= 0) {
-            change.setText("");
-            change.setVisible(false);
-            return;
+        Tender tender = tender();
+        if (tender.problem() != null) {
+            tenderSummary.setText(tender.problem());
+            tenderSummary.addClassName("buffet-tender__summary--problem");
+        } else if (tender.change().signum() > 0) {
+            tenderSummary.setText("Vuelto " + Money.format(tender.change()));
+            tenderSummary.addClassName("buffet-tender__summary--change");
+        } else if (tender.left().signum() > 0) {
+            tenderSummary.setText("Quedan %s en la cuenta".formatted(Money.format(tender.left())));
+            tenderSummary.addClassName("buffet-tender__summary--left");
+        } else if (tender.cash().signum() > 0 && tender.transfer().signum() > 0) {
+            tenderSummary.setText("%s en efectivo + %s por transferencia".formatted(
+                    Money.format(tender.cash()), Money.format(tender.transfer())));
+        } else {
+            tenderSummary.setText(picking() ? "Justo lo elegido" : "Paga todo lo que debe");
         }
-        BigDecimal rest = given.subtract(amount);
-        change.setVisible(true);
-        change.setClassName("buffet-change--short", rest.signum() < 0);
-        change.setText(rest.signum() < 0
-                ? "Faltan " + Money.format(rest.negate())
-                : "Vuelto " + Money.format(rest));
+        tenderSummary.setVisible(true);
     }
 
+    /**
+     * Con los campos vacíos, un botón por medio que dice cuánto cobra: todo lo
+     * que debe, o lo elegido, entero por ese medio. Con algo escrito, uno solo
+     * que cobra lo que dicen los campos: así no queda la duda de cuál apretar.
+     */
     private void renderActions() {
         boolean isNew = loaded == null;
         boolean named = !customerName.getValue().isBlank();
         boolean chargeable = amountDue().signum() > 0;
+        boolean filled = tenderFilled();
+        cashButton.setVisible(!filled);
+        transferButton.setVisible(!filled);
         cashButton.setEnabled(chargeable);
         transferButton.setEnabled(chargeable);
-        paysWith.setEnabled(chargeable);
+        String all = chargeable ? Money.format(target()) + " " : "";
+        cashButton.setText("Cobrar " + all + "en efectivo");
+        transferButton.setText("Cobrar " + all + "por transferencia");
+        cashField.setEnabled(chargeable);
+        transferField.setEnabled(chargeable);
+        cashRest.setEnabled(chargeable);
+        transferRest.setEnabled(chargeable);
+
+        Tender tender = filled && chargeable ? tender() : null;
+        boolean ready = tender != null && tender.problem() == null;
+        chargeButton.setVisible(filled);
+        chargeButton.setEnabled(ready);
+        chargeButton.setText(ready ? chargeText(tender) : "Cobrar");
 
         laterButton.setText(isNew ? "Cobrar después" : "Guardar en la cuenta");
         laterButton.setEnabled(!draft.isEmpty() || (isNew && named));
@@ -1138,13 +1572,18 @@ public class BuffetView extends VerticalLayout {
         return order.getTotalPrice().signum() > 0 && order.getTotalPrice().compareTo(order.getPaidAmount()) == 0;
     }
 
-    /** "2x Agua · 1x Café". */
+    /**
+     * "2x Agua · 1x Café". Lo que se partió al cobrar de a partes vuelve a ir
+     * junto: 5 milanesas son "5x Milanesa", se hayan pagado como se hayan pagado.
+     */
     private static String itemsSummary(List<ProductSale> items) {
         if (items.isEmpty()) {
             return "Sin productos";
         }
-        return items.stream()
-                .map(sale -> "%dx %s".formatted(sale.getQuantity(), sale.getProductName()))
+        Map<String, Integer> byName = new LinkedHashMap<>();
+        items.forEach(sale -> byName.merge(sale.getProductName(), sale.getQuantity(), Integer::sum));
+        return byName.entrySet().stream()
+                .map(entry -> "%dx %s".formatted(entry.getValue(), entry.getKey()))
                 .collect(Collectors.joining(" · "));
     }
 

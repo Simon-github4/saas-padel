@@ -13,7 +13,11 @@ public interface ProductSaleRepository extends JpaRepository<ProductSale, UUID> 
 
     List<ProductSale> findAllByBookingIdOrderByCreatedAtAsc(UUID bookingId);
 
-    List<ProductSale> findAllByBuffetOrderIdInOrderByCreatedAtAsc(Collection<UUID> buffetOrderIds);
+    /**
+     * En el orden en que se cargaron, que es el orden en que un pago por monto
+     * cubre la cuenta. El id desempata dos líneas con la misma fecha.
+     */
+    List<ProductSale> findAllByBuffetOrderIdInOrderByCreatedAtAscIdAsc(Collection<UUID> buffetOrderIds);
 
     /**
      * Lo vendido en el buffet dentro de una ventana, por fecha de venta: en turnos

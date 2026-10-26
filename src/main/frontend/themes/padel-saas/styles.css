@@ -864,32 +864,69 @@ vaadin-button.agenda-tournament-toggle--on:hover {
   color: var(--lumo-tertiary-text-color);
 }
 
+/* La primera columna es la del check para elegir la línea, o la marca de
+   cobrada: siempre está, aunque vacía, así los nombres quedan alineados. */
 .buffet-line {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: 1.75rem auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: var(--lumo-space-s);
+  column-gap: var(--lumo-space-s);
   min-height: 2.5rem;
 }
 
 .buffet-line--new {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-}
-
-.buffet-line--pickable {
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
-}
-
-.buffet-line--new.buffet-line--pickable {
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: 1.75rem auto minmax(0, 1fr) auto;
 }
 
 .buffet-line--saved {
   color: var(--lumo-secondary-text-color);
 }
 
+.buffet-line--paid .buffet-line__qty,
+.buffet-line--paid .buffet-line__name,
+.buffet-line--paid .buffet-line__amount {
+  color: var(--lumo-tertiary-text-color);
+}
+
 .buffet-line__pick {
   margin: 0;
+}
+
+.buffet-line__paid-mark {
+  display: inline-flex;
+  justify-content: center;
+  color: var(--lumo-success-text-color);
+}
+
+.buffet-line__paid-mark vaadin-icon {
+  width: var(--lumo-icon-size-s);
+  height: var(--lumo-icon-size-s);
+}
+
+.buffet-line__label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Lo que le falta a un producto que un pago por monto dejo a medio pagar. */
+.buffet-line__left {
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 700;
+  color: var(--lumo-error-text-color);
+}
+
+/* Cuantas unidades de la linea entran en esta parte: debajo, desde la
+   columna de la cantidad, para que se lea como parte de esa linea. */
+.buffet-line__units {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--lumo-space-s);
+  padding-bottom: var(--lumo-space-xs);
+  font-size: var(--lumo-font-size-s);
+  font-weight: 600;
+  color: var(--lumo-body-text-color);
 }
 
 .buffet-line__qty {
@@ -946,26 +983,54 @@ vaadin-button.agenda-tournament-toggle--on:hover {
   color: var(--lumo-success-text-color);
 }
 
-.buffet-cash {
+.buffet-due__meta {
+  margin-top: calc(var(--lumo-space-xs) * -1);
+  text-align: end;
+  font-size: var(--lumo-font-size-s);
+  color: var(--lumo-secondary-text-color);
+}
+
+/* Efectivo y transferencia lado a lado, cada uno con su «el resto» abajo. */
+.buffet-tender {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--lumo-space-s);
+}
+
+.buffet-tender__field {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--lumo-space-m);
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
 }
 
-.buffet-cash vaadin-big-decimal-field {
-  width: 9rem;
+.buffet-tender__field vaadin-big-decimal-field {
+  width: 100%;
+  padding-bottom: 0;
 }
 
-.buffet-change {
-  padding-bottom: var(--lumo-space-s);
+.buffet-tender__field vaadin-button {
+  margin: 0;
+}
+
+.buffet-tender__summary {
+  grid-column: 1 / -1;
+  padding-top: var(--lumo-space-xs);
+  font-weight: 700;
+  color: var(--lumo-success-text-color);
+}
+
+/* El vuelto, grande: el billete todavia esta en la mano. */
+.buffet-tender__summary--change {
   font-size: var(--lumo-font-size-xl);
   font-weight: 800;
-  color: var(--lumo-success-text-color);
-  white-space: nowrap;
 }
 
-.buffet-change--short {
+.buffet-tender__summary--left {
+  color: var(--lumo-body-text-color);
+}
+
+.buffet-tender__summary--problem {
   color: var(--lumo-error-text-color);
 }
 
