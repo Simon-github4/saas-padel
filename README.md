@@ -188,14 +188,16 @@ cubre `PanelRememberMeTest`.
 **Los avisos al celular del club son Web Push hecho a mano.** Quien atiende puede
 tocar "Avisarme en este celular" en su menú (arriba a la derecha) y le llega una
 notificación por cada reserva que entra por la página, con el panel cerrado: "Cancha 2
-· sáb 17/10 09:30 · Juan Pérez · Paga en el club". Es de cada persona en cada
+· sáb 17/10 09:30 · Juan Pérez · Paga en el club", y por cada turno que un jugador
+cancela desde su link ("Turno cancelado", con lo que queda por hacer: devolver la
+seña, gente en lista de espera). Es de cada persona en cada
 dispositivo (tabla `push_subscription`) y no depende de la sesión; se borra al
 apagarla, al tocar "Salir" en ese dispositivo, al cambiar la clave o deshabilitar al
 usuario, y cuando el servicio de push contesta 404/410. Un solo lugar decide "entró
-una reserva web nueva" (`NewBookingFeed`, una vez por reserva aunque después se
-confirme) y de ahí salen el cartel con sonido del panel abierto y este aviso, que se
-manda en un hilo aparte (`PanelPushNotifier`): ni el pedido del jugador ni el webhook
-de MercadoPago esperan a FCM o a Apple. Sin librería de Web Push: el cifrado
+una reserva web nueva" o "un jugador canceló" (`WebBookingFeed`, una vez por reserva
+aunque después se confirme) y de ahí salen el cartel con sonido del panel abierto y
+este aviso, que se manda en un hilo aparte (`PanelPushNotifier`): ni el pedido del
+jugador ni el webhook de MercadoPago esperan a FCM o a Apple. Sin librería de Web Push: el cifrado
 `aes128gcm` de RFC 8291 sale con el JDK (lo valida el ejemplo del propio RFC en
 `WebPushEncryptionTest`) y la firma VAPID con nimbus, que ya estaba. El panel se
 instala como "TurnosPadel Club" con su manifest y un service worker propio en

@@ -21,6 +21,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,6 +45,7 @@ public class GymCheckinService {
     private final GymSedeRepository sedeRepository;
     private final GymBillingService billingService;
     private final TenantService tenantService;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     /**
@@ -156,6 +158,13 @@ public class GymCheckinService {
                         now, today, distance, false)
                 : checkinRepository.insertIfAbsentByStaff(clubId, member.getId(), membership.getId(),
                         sede.getId(), now, today, distance, overLimit, staffUserId);
+
+        // El cartel con sonido del panel, solo para el que escaneo: lo que carga el mostrador
+        // ya lo sabe el mostrador.
+        if (staffUserId == null && inserted > 0) {
+            events.publishEvent(new GymCheckinEvent(clubId, member.getFullName(), sede.getName(),
+                    !status.paidToday()));
+        }
 
         // Si otro pedido se adelanto entre la lectura y el insert, el ingreso ya existe: es un
         // "ya registrado", no un error.

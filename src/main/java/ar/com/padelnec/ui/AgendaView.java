@@ -76,7 +76,7 @@ import java.util.stream.Collectors;
 @Route(value = "", layout = MainLayout.class)
 @PageTitle("Agenda | Panel del club")
 @PermitAll
-public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings {
+public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings {
 
     private static final DateTimeFormatter DATE_HEADING =
             DateTimeFormatter.ofPattern("EEEE d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es-AR"));
@@ -488,11 +488,11 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
     }
 
     /**
-     * Redibuja el dia que se esta mirando, sea o no el de la reserva nueva: es
-     * una consulta por reserva que entra, y asi no hay que adivinar que dia toca.
+     * Redibuja el dia que se esta mirando, sea o no el de la reserva nueva o la
+     * cancelada: es una consulta por aviso, y asi no hay que adivinar que dia toca.
      */
     @Override
-    public void newBookingsArrived() {
+    public void webBookingsChanged() {
         refresh();
     }
 

@@ -4,8 +4,11 @@ import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.OperationalAlert;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.gym.GymModule;
+import ar.com.padelnec.gym.service.GymCheckinFeed;
 import ar.com.padelnec.gym.ui.GymNavigation;
-import ar.com.padelnec.notification.NewBookingFeed;
+import ar.com.padelnec.gym.ui.GymTodayView;
+import ar.com.padelnec.gym.ui.RefreshesOnCheckins;
+import ar.com.padelnec.notification.WebBookingFeed;
 import ar.com.padelnec.notification.push.PanelPushService;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.AlertService;
@@ -78,16 +81,26 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
     /** Se rellena en cada navegacion con el nombre de la pantalla activa. */
     private final H1 viewTitle = new H1();
 
-    /** Cada cuanto se pregunta por reservas nuevas (en memoria, no toca la base). */
+    /** Cada cuanto se pregunta por reservas e ingresos nuevos (en memoria, no toca la base). */
     private static final int POLL_MILLIS = 10_000;
     /** Las alertas si consultan la base: una de cada tres pasadas, o sea cada 30 segundos. */
     private static final int ALERTS_EVERY_N_POLLS = 3;
 
     /**
-     * Acorde de dos notas con Web Audio, sin archivo de sonido. Los navegadores no
-     * dejan sonar nada hasta que la persona toca la pagina una vez, asi que el
-     * contexto de audio se destraba con el primer click o tecla: antes de eso el
-     * aviso aparece igual pero en silencio.
+     * Donde guarda cada navegador si quiere oir los ingresos al gimnasio. Es del
+     * dispositivo y no de la persona: el mostrador de padel y el del gimnasio pueden
+     * ser la misma cuenta en dos computadoras distintas.
+     */
+    private static final String GYM_SOUND_KEY = "padel.sonidoIngresos";
+
+    /**
+     * Los sonidos de los avisos, con Web Audio y sin archivos. Cada uno con su forma
+     * para reconocerlo sin mirar: la reserva sube, la cancelacion baja y mas grave, y
+     * el ingreso al gimnasio es un toque corto y bajo, porque en hora pico suena mucho.
+     *
+     * <p>Los navegadores no dejan sonar nada hasta que la persona toca la pagina una
+     * vez, asi que el contexto de audio se destraba con el primer click o tecla: antes
+     * de eso el aviso aparece igual pero en silencio.
      */
     private static final String CHIME_SETUP = """
             if (!window.padelChime) {
@@ -101,21 +114,36 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
               };
               ['pointerdown', 'keydown', 'touchstart'].forEach(
                   (name) => document.addEventListener(name, unlock, {passive: true}));
-              window.padelChime = () => {
+              const sounds = {
+                reserva: {wave: 'sine', peak: 0.25, length: 0.5, notes: [[880, 0], [1318.5, 0.16]]},
+                cancelacion: {wave: 'triangle', peak: 0.3, length: 0.6, notes: [[659.25, 0], [440, 0.2]]},
+                ingreso: {wave: 'sine', peak: 0.14, length: 0.22, notes: [[1046.5, 0]]}
+              };
+              const gymSoundKey = $0;
+              let free = 0;
+              window.padelChime = (kind) => {
                 if (!ctx || ctx.state !== 'running') { return; }
-                const now = ctx.currentTime;
-                [[880, 0], [1318.5, 0.16]].forEach(([freq, offset]) => {
+                if (kind === 'ingreso') {
+                  try {
+                    if (localStorage.getItem(gymSoundKey) === 'off') { return; }
+                  } catch (e) { /* sin almacenamiento suena, que es lo de fabrica */ }
+                }
+                const sound = sounds[kind] || sounds.reserva;
+                // Dos avisos en la misma pasada no se pisan: el segundo espera al primero.
+                const start = Math.max(ctx.currentTime, free);
+                free = start + sound.notes[sound.notes.length - 1][1] + sound.length + 0.15;
+                sound.notes.forEach(([freq, offset]) => {
                   const osc = ctx.createOscillator();
                   const gain = ctx.createGain();
-                  osc.type = 'sine';
+                  osc.type = sound.wave;
                   osc.frequency.value = freq;
-                  gain.gain.setValueAtTime(0.0001, now + offset);
-                  gain.gain.exponentialRampToValueAtTime(0.25, now + offset + 0.02);
-                  gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.5);
+                  gain.gain.setValueAtTime(0.0001, start + offset);
+                  gain.gain.exponentialRampToValueAtTime(sound.peak, start + offset + 0.02);
+                  gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + sound.length);
                   osc.connect(gain);
                   gain.connect(ctx.destination);
-                  osc.start(now + offset);
-                  osc.stop(now + offset + 0.55);
+                  osc.start(start + offset);
+                  osc.stop(start + offset + sound.length + 0.05);
                 });
               };
             }
@@ -127,11 +155,18 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
     private Instant lastAlertSeen = Instant.now();
     private Registration alertPoll;
 
-    private final NewBookingFeed newBookingFeed;
+    private final WebBookingFeed webBookingFeed;
     private final UUID clubId;
-    /** Las reservas de antes de esto ya estaban cuando se abrio el panel. */
+    /** Las reservas y cancelaciones de antes de esto ya estaban cuando se abrio el panel. */
     private Instant lastBookingSeen = Instant.now();
     private int pollTicks;
+
+    private final GymCheckinFeed gymCheckinFeed;
+    /** Los ingresos de antes de esto ya estaban cuando se abrio el panel. */
+    private Instant lastCheckinSeen = Instant.now();
+    /** "Sonar ingresos al gimnasio"; nulo si el club no tiene el modulo. */
+    private MenuItem gymSoundItem;
+    private boolean gymSoundOn = true;
 
     private final PanelPushService panelPushService;
     /** "Avisarme en este celular"; nulo si este usuario no puede tener avisos. */
@@ -139,10 +174,12 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
 
     public MainLayout(AuthenticationContext authenticationContext, AlertService alertService,
                       TenantService tenantService, AppProperties properties, GymModule gymModule,
-                      NewBookingFeed newBookingFeed, PanelPushService panelPushService) {
+                      WebBookingFeed webBookingFeed, GymCheckinFeed gymCheckinFeed,
+                      PanelPushService panelPushService) {
         this.authenticationContext = authenticationContext;
         this.alertService = alertService;
-        this.newBookingFeed = newBookingFeed;
+        this.webBookingFeed = webBookingFeed;
+        this.gymCheckinFeed = gymCheckinFeed;
         this.panelPushService = panelPushService;
         this.gymEnabled = gymModule.isEnabled();
         Tenant club = tenantService.requireCurrent();
@@ -336,8 +373,28 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         currentUser().filter(user -> DevicePushItem.availableFor(user, panelPushService))
                 .ifPresent(user -> devicePush = new DevicePushItem(menu, panelPushService, user));
 
+        if (gymEnabled) {
+            gymSoundItem = menu.addItem("Sonar ingresos al gimnasio", event -> toggleGymSound());
+            gymSoundItem.setCheckable(true);
+            gymSoundItem.setChecked(gymSoundOn);
+        }
+
         menu.addItem("Salir", event -> logout());
         return bar;
+    }
+
+    /**
+     * Prende o apaga el toque de los ingresos en este navegador; el cartel aparece
+     * igual. Lo que se guarda es lo que lee {@code padelChime}, asi que vale en el
+     * momento para todas las pestañas abiertas.
+     */
+    private void toggleGymSound() {
+        gymSoundOn = !gymSoundOn;
+        // A mano y no confiando en el tilde automatico del item: asi no importa en que
+        // orden lo cambia Vaadin respecto de este listener.
+        gymSoundItem.setChecked(gymSoundOn);
+        UI.getCurrent().getPage().executeJs("try { localStorage.setItem($0, $1 ? 'on' : 'off'); } catch (e) { }",
+                GYM_SOUND_KEY, gymSoundOn);
     }
 
     /** Quien sale de un dispositivo deja de recibir ahi los avisos de reservas. */
@@ -452,17 +509,25 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
      * parado en la agenda no se entera de que un jugador cancelo por la web un
      * turno con gente en lista de espera hasta que cambia de pantalla, y a esa
      * altura el turno ya puede haberse perdido. Las alertas se consultan cada treinta segundos, y las
-     * reservas nuevas cada diez (esas salen de memoria, ver {@link NewBookingFeed}).
+     * reservas, cancelaciones e ingresos al gimnasio cada diez (esos salen de memoria, ver
+     * {@link WebBookingFeed} y {@link GymCheckinFeed}).
      */
     @Override
     protected void onAttach(AttachEvent attachEvent) {
         super.onAttach(attachEvent);
         UI ui = attachEvent.getUI();
         ui.setPollInterval(POLL_MILLIS);
-        ui.getPage().executeJs(CHIME_SETUP);
+        ui.getPage().executeJs(CHIME_SETUP, GYM_SOUND_KEY);
         alertPoll = ui.addPollListener(event -> onPoll());
         if (devicePush != null) {
             devicePush.attach(ui, getElement());
+        }
+        if (gymSoundItem != null) {
+            ui.getPage().executeJs("try { return localStorage.getItem($0) !== 'off'; } catch (e) { return true; }",
+                    GYM_SOUND_KEY).then(Boolean.class, on -> {
+                        gymSoundOn = !Boolean.FALSE.equals(on);
+                        gymSoundItem.setChecked(gymSoundOn);
+                    });
         }
     }
 
@@ -477,38 +542,87 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
     }
 
     private void onPoll() {
-        checkNewBookings();
+        checkWebBookings();
+        if (gymEnabled) {
+            checkGymCheckins();
+        }
         if (pollTicks++ % ALERTS_EVERY_N_POLLS == 0) {
             checkNewAlerts();
         }
     }
 
-    /** Avisa con sonido las reservas que los jugadores hicieron por la web. */
-    private void checkNewBookings() {
-        List<NewBookingFeed.Entry> fresh = newBookingFeed.since(clubId, lastBookingSeen);
+    /** Avisa con sonido lo que los jugadores hicieron por la web: reservas nuevas y cancelaciones. */
+    private void checkWebBookings() {
+        List<WebBookingFeed.Entry> fresh = webBookingFeed.since(clubId, lastBookingSeen);
         if (fresh.isEmpty()) {
             return;
         }
         lastBookingSeen = fresh.getLast().at();
 
-        if (getContent() instanceof RefreshesOnNewBookings view) {
-            view.newBookingsArrived();
+        if (getContent() instanceof RefreshesOnWebBookings view) {
+            view.webBookingsChanged();
         }
 
-        String text = fresh.size() == 1 ? fresh.getFirst().text() : fresh.size() + " reservas nuevas";
+        List<String> booked = textsOf(fresh, WebBookingFeed.Kind.NEW);
+        if (!booked.isEmpty()) {
+            announce(booked.size() == 1 ? booked.getFirst() : booked.size() + " reservas nuevas",
+                    10_000, AgendaView.class, "Ver agenda");
+            chime("reserva");
+        }
+        List<String> cancelled = textsOf(fresh, WebBookingFeed.Kind.CANCELLED);
+        if (!cancelled.isEmpty()) {
+            announce(cancelled.size() == 1 ? cancelled.getFirst() : cancelled.size() + " turnos cancelados",
+                    10_000, AgendaView.class, "Ver agenda");
+            chime("cancelacion");
+        }
+    }
+
+    private static List<String> textsOf(List<WebBookingFeed.Entry> entries, WebBookingFeed.Kind kind) {
+        return entries.stream().filter(entry -> entry.kind() == kind).map(WebBookingFeed.Entry::text).toList();
+    }
+
+    /**
+     * Avisa con un toque corto los socios que entraron escaneando el QR.
+     *
+     * <p>Uno por cartel, con nombre, hasta tres juntos: a diferencia de las reservas,
+     * aca el nombre es lo que importa (quien entro debiendo el mes). Mas que eso en
+     * diez segundos es la hora pico, y alcanza con la cuenta. El cartel dura menos que
+     * el de las reservas porque se encadenan.
+     */
+    private void checkGymCheckins() {
+        List<GymCheckinFeed.Entry> fresh = gymCheckinFeed.since(clubId, lastCheckinSeen);
+        if (fresh.isEmpty()) {
+            return;
+        }
+        lastCheckinSeen = fresh.getLast().at();
+
+        if (getContent() instanceof RefreshesOnCheckins view) {
+            view.checkinsArrived();
+        }
+
+        if (fresh.size() <= 3) {
+            fresh.forEach(entry -> announce(entry.text(), 6_000, GymTodayView.class, "Ver ingresos"));
+        } else {
+            announce(fresh.size() + " ingresos al gimnasio", 6_000, GymTodayView.class, "Ver ingresos");
+        }
+        chime("ingreso");
+    }
+
+    /** Cartel arriba a la derecha, con un boton a la pantalla donde se ve lo avisado. */
+    private void announce(String text, int durationMillis, Class<? extends Component> target, String targetLabel) {
         Notification notification = new Notification();
         notification.setPosition(Notification.Position.TOP_END);
-        notification.setDuration(10_000);
+        notification.setDuration(durationMillis);
 
         Span message = new Span(text);
         message.getStyle().set("flex", "1 1 16rem");
         HorizontalLayout content = new HorizontalLayout(message);
-        // Parado en la agenda el boton no hacia nada: navegar a la misma ruta no
-        // la recarga, y el tablero ya se redibujo solo.
-        if (!(getContent() instanceof AgendaView)) {
-            Button open = new Button("Ver agenda", event -> {
+        // Parado en esa pantalla el boton no hacia nada: navegar a la misma ruta no
+        // la recarga, y la pantalla ya se redibujo sola.
+        if (!target.isInstance(getContent())) {
+            Button open = new Button(targetLabel, event -> {
                 notification.close();
-                UI.getCurrent().navigate(AgendaView.class);
+                UI.getCurrent().navigate(target);
             });
             open.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SMALL);
             content.add(open);
@@ -517,8 +631,11 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         content.addClassNames(LumoUtility.Gap.SMALL);
         notification.add(content);
         notification.open();
+    }
 
-        UI.getCurrent().getPage().executeJs("window.padelChime && window.padelChime()");
+    /** {@code kind} es uno de los sonidos de {@link #CHIME_SETUP}. */
+    private static void chime(String kind) {
+        UI.getCurrent().getPage().executeJs("window.padelChime && window.padelChime($0)", kind);
     }
 
     private void checkNewAlerts() {

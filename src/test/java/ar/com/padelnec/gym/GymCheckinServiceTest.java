@@ -14,6 +14,7 @@ import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.domain.PayMethod;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
 import ar.com.padelnec.gym.service.GymBillingService;
+import ar.com.padelnec.gym.service.GymCheckinFeed;
 import ar.com.padelnec.gym.service.GymCheckinService;
 import ar.com.padelnec.gym.service.GymCheckinService.CheckInResult;
 import ar.com.padelnec.gym.service.GymLocation.Point;
@@ -60,6 +61,7 @@ class GymCheckinServiceTest {
     private static final LocalDate MONDAY = LocalDate.of(2026, 9, 14);
 
     @Autowired private GymCheckinService checkinService;
+    @Autowired private GymCheckinFeed checkinFeed;
     @Autowired private GymCheckinRepository checkinRepository;
     @Autowired private GymMemberService memberService;
     @Autowired private GymMembershipService membershipService;
@@ -344,6 +346,47 @@ class GymCheckinServiceTest {
         assertThatThrownBy(() -> checkinService.forceCheckIn(memberId, necochea.getId(), UUID.randomUUID()))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("No tenés una cuota vigente");
+    }
+
+    // ------------------------------------------------------- aviso del panel
+
+    @Test
+    @DisplayName("El socio que escanea queda en el aviso del panel, una sola vez aunque escanee de nuevo")
+    void scanShowsUpInThePanelFeedOnce() {
+        gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea);
+        Instant before = MONDAY_10AM.minusSeconds(1);
+
+        scan(necochea);
+        scan(necochea);
+
+        assertThat(checkinFeed.since(club.getId(), before))
+                .singleElement()
+                .satisfies(entry -> assertThat(entry.text()).isEqualTo("Ingreso: Juan Pérez · Necochea"));
+        assertThat(checkinFeed.since(UUID.randomUUID(), before)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("El que entra debiendo el mes avisa la deuda, para que el mostrador le cobre")
+    void owingMemberShowsTheDebtInThePanelFeed() {
+        gym.sell(club, memberId, MONDAY.minusDays(40), MONDAY.minusDays(10), 3, necochea);
+
+        scan(necochea);
+
+        assertThat(checkinFeed.since(club.getId(), MONDAY_10AM.minusSeconds(1)))
+                .singleElement()
+                .satisfies(entry -> assertThat(entry.text()).endsWith("· Debe el mes"));
+    }
+
+    @Test
+    @DisplayName("Lo que carga el mostrador no suena en el panel, y un escaneo rechazado tampoco")
+    void manualAndRejectedCheckInsDoNotShowUpInThePanelFeed() {
+        assertThatThrownBy(() -> scan(necochea)).isInstanceOf(BusinessRuleException.class);
+
+        gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea);
+        UUID staff = clubUserService.createStaff(club, "Mostrador", "mostrador@troncos.test", "clave-larga-1").getId();
+        checkinService.forceCheckIn(memberId, necochea.getId(), staff);
+
+        assertThat(checkinFeed.since(club.getId(), MONDAY_10AM.minusSeconds(1))).isEmpty();
     }
 
     // ---------------------------------------------------------------- ubicacion
