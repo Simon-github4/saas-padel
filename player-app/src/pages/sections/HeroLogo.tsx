@@ -1,6 +1,7 @@
-import type { CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import type { Slot } from '../../api/client';
 import { InstagramGlyph, type ClubInstagram } from '../../components/Ui';
+import { loadLogoCutout, type Cutout } from '../../logoCutout';
 import { DEFAULT_CTA, HERO_SCREEN, PinGlyph, TodaySlots } from './HeroClassic';
 
 function delay(ms: number): CSSProperties {
@@ -24,10 +25,10 @@ function titleSize(headline: string): string {
  * recomprimido. Base y cancha partida lo estiran a pantalla completa —en un
  * celular, dos o tres veces su tamaño— y se ve pixelado.
  *
- * <p>Acá el logo va chico, bajo un reflector, y nunca más grande que lo que
- * la imagen aguanta. El fondo es el mismo logo, enorme y desenfocado: toma los
- * colores del club sin pedirle otra foto, y con ese desenfoque la resolución
- * deja de importar.
+ * <p>Acá el logo va suelto: se le borra el blanco de fondo (ver logoCutout) y
+ * queda apoyado sobre la portada, sin placa ni marco, nunca más grande que lo
+ * que la imagen aguanta. El fondo toma el color de marca del propio logo, en
+ * una franja que baja desde arriba y se pierde antes del título.
  *
  * <p>Sigue la paleta clara u oscura del club, como la Base, y ofrece los mismos
  * horarios de hoy para reservar directo.
@@ -65,35 +66,29 @@ export function HeroLogo({
   const headline = heroHeadline ?? name;
   const cta = heroCtaLabel ?? DEFAULT_CTA;
   const courtsLabel = courtCount > 0 ? `${courtCount} ${courtCount === 1 ? 'cancha' : 'canchas'}` : null;
+  const logo = useLogoCutout(heroImageUrl);
+  // Sin color propio (un logo en blanco y negro, o mientras se procesa), el del club.
+  const tint = logo?.tint ? `rgb(${logo.tint.join(' ')})` : 'var(--color-ladrillo)';
 
   return (
     <section className={`relative mx-[calc(50%-50vw)] flex flex-col justify-center overflow-hidden py-[clamp(1rem,4svh,3rem)] ${HERO_SCREEN}`}>
-      {heroImageUrl && (
-        // scale-150 para que el borde del desenfoque, que se aclara, quede
-        // afuera de la portada.
-        <img
-          src={heroImageUrl}
-          alt=""
-          aria-hidden
-          className="absolute inset-0 h-full w-full scale-150 object-cover opacity-35 blur-3xl saturate-150"
-        />
-      )}
-      <div className="absolute inset-0 bg-gradient-to-b from-pista/30 via-pista/70 to-pista" aria-hidden />
       <div
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(65%_55%_at_50%_100%,var(--color-ladrillo),transparent_70%)] opacity-30"
+        className="absolute inset-0 bg-[linear-gradient(to_bottom,color-mix(in_srgb,var(--tinte)_32%,transparent),transparent_55%)]"
+        style={{ '--tinte': tint } as CSSProperties}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(65%_55%_at_50%_100%,var(--color-ladrillo),transparent_70%)] opacity-20"
         aria-hidden
       />
 
-      {/* --logo: lado del logo. Hasta 12rem (192 px): en un celular, que pinta
-          tres píxeles por punto, eso pide unos 580, menos de lo que la imagen
-          tiene. */}
-      <div className="relative mx-auto w-full max-w-lg px-5 text-center [--logo:clamp(5rem,18svh,12rem)] md:max-w-2xl">
-        <Plate imageUrl={heroImageUrl} name={name} />
+      {/* --logo: lado del logo. Hasta 13rem (208 px): en un celular, que pinta
+          tres píxeles por punto, eso pide unos 620, lo que la imagen tiene. */}
+      <div className="relative mx-auto w-full max-w-lg px-5 text-center [--logo:clamp(5.5rem,22svh,13rem)] md:max-w-2xl">
+        <Logo imageUrl={heroImageUrl} logo={logo} name={name} />
 
-        {/* El título arranca donde la luz ya casi se apagó: más arriba, las
-            letras claras de la paleta oscura quedaban sobre blanco. */}
         <h1
-          className={`hero-title portada-sube mt-[calc(var(--logo)*0.5)] ${titleSize(headline)}`}
+          className={`hero-title portada-sube mt-[clamp(0.5rem,2.5svh,1.5rem)] ${titleSize(headline)}`}
           style={delay(120)}
         >
           {headline}
@@ -166,27 +161,56 @@ export function HeroLogo({
   );
 }
 
-/**
- * Bordes del logo esfumados, por si no está hecho sobre blanco: dos degradados,
- * uno por eje, que se cruzan. Uno solo radial se comía las esquinas, y en los
- * logos de perfil el texto suele llegar hasta ahí.
- */
-const FEATHER: CSSProperties = {
-  maskImage:
-    'linear-gradient(to right, transparent, black 7%, black 93%, transparent), ' +
-    'linear-gradient(to bottom, transparent, black 7%, black 93%, transparent)',
-  maskComposite: 'intersect',
-};
+type LoadedLogo = Cutout & { src: string };
 
 /**
- * El logo bajo un reflector, como una cancha de noche: sin placa ni marco. El
- * blanco sobre el que están hechos casi todos los logos de perfil se funde con
- * la luz, y la luz se apaga hacia el fondo, así que no queda ningún borde
- * recto. Al cargar, el reflector se prende con un parpadeo y después aparece el
- * logo. object-contain para que uno que no es cuadrado quede entero. Sin logo,
- * la inicial del club.
+ * El logo recortado, o null mientras se procesa. Si no se puede recortar (una
+ * URL de otro sitio que no deja leer sus píxeles), devuelve la imagen tal cual,
+ * marcada como no recortada.
  */
-function Plate({ imageUrl, name }: { imageUrl: string | null; name: string }) {
+function useLogoCutout(url: string | null): LoadedLogo | null {
+  const [logo, setLogo] = useState<{ url: string; value: LoadedLogo } | null>(null);
+
+  useEffect(() => {
+    if (!url) {
+      return;
+    }
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    loadLogoCutout(url)
+      .then((result) => {
+        objectUrl = result.src;
+        if (cancelled) {
+          URL.revokeObjectURL(result.src);
+        } else {
+          setLogo({ url, value: result });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLogo({ url, value: { src: url, cut: false, tint: null } });
+        }
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [url]);
+
+  return logo && logo.url === url ? logo.value : null;
+}
+
+/**
+ * El logo suelto sobre la portada. Recortado, lleva solo una sombra que sigue
+ * su silueta (drop-shadow, no box-shadow) para despegarse del fondo. Si no se
+ * pudo recortar —una foto, un logo sobre un color—, va con las esquinas
+ * redondeadas, que es lo mínimo para que no corte en seco. Mientras se procesa
+ * el lugar queda reservado, así nada salta cuando aparece. Sin imagen, la
+ * inicial del club.
+ */
+function Logo({ imageUrl, logo, name }: { imageUrl: string | null; logo: LoadedLogo | null; name: string }) {
   if (!imageUrl) {
     return (
       <div
@@ -199,30 +223,18 @@ function Plate({ imageUrl, name }: { imageUrl: string | null; name: string }) {
     );
   }
   return (
-    // El margen de arriba es lo que la luz sobresale del logo: sin él, en una
-    // pantalla baja la barra de arriba le cortaba el halo.
-    <div className="relative mx-auto mt-[calc(var(--logo)*0.35)] size-[var(--logo)]">
-      {/* Dispersión: la luz tiñe el aire con el color del club, muy suave. */}
-      <div
-        className="reflector pointer-events-none absolute -inset-[110%] bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-ladrillo)_30%,transparent),transparent)]"
-        aria-hidden
-      />
-      {/* El charco de luz: un círculo blanco desenfocado. Con radio 0,9 del
-          logo y el desenfoque en 0,12, en las esquinas (0,71) la luz sigue
-          casi plena: el blanco del logo y el de la luz son el mismo y el
-          cuadrado de la imagen no se ve. Después se apaga de a poco, sin filo. */}
-      <div
-        className="reflector pointer-events-none absolute -inset-[40%] rounded-full bg-white blur-[calc(var(--logo)*0.12)]"
-        aria-hidden
-      />
-      <img
-        src={imageUrl}
-        alt={`Logo de ${name}`}
-        className="logo-aparece relative h-full w-full object-contain"
-        style={FEATHER}
-        loading="eager"
-        fetchPriority="high"
-      />
+    <div className="mx-auto size-[var(--logo)]">
+      {logo && (
+        <img
+          src={logo.src}
+          alt={`Logo de ${name}`}
+          className={`logo-aparece h-full w-full object-contain ${
+            logo.cut
+              ? '[filter:drop-shadow(0_10px_18px_rgba(0,0,0,0.28))]'
+              : 'rounded-[18%] shadow-[0_18px_40px_rgba(0,0,0,0.3)]'
+          }`}
+        />
+      )}
     </div>
   );
 }
