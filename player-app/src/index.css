@@ -313,6 +313,19 @@ button:not([aria-label]) {
   animation-delay: var(--portada-delay, 0ms);
 }
 
+/* Portada "logo del club": el logo aparece cuando termina de recortarse,
+   subiendo apenas, sin esperar a ninguna otra pieza. */
+@keyframes logo-aparece {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+}
+
+.logo-aparece {
+  animation: logo-aparece 600ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
 /* Portada "cancha partida": la foto se destapa desde la red hacia afuera
    (hacia arriba en el telefono, hacia la izquierda en desktop), la red se
    dibuja y la ficha del centro cae en su lugar. */
@@ -436,6 +449,7 @@ button:not([aria-label]) {
   .portada-sube,
   .portada-pica,
   .portada-flip,
+  .logo-aparece,
   .split-foto,
   .split-red-h,
   .split-red-v,

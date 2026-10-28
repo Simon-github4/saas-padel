@@ -825,6 +825,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver,
             case CLASSIC -> "Base";
             case SCOREBOARD -> "Marcador de cancha";
             case COURT_SPLIT -> "Vista de cancha partida";
+            case LOGO -> "Logo del club";
         };
     }
 
