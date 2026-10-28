@@ -24,9 +24,8 @@ function titleSize(headline: string): string {
  * recomprimido. Base y cancha partida lo estiran a pantalla completa —en un
  * celular, dos o tres veces su tamaño— y se ve pixelado.
  *
- * <p>Acá el logo va en una placa que mide como mucho 15rem (240 px): aun en un
- * celular, que pinta tres píxeles por punto, eso pide unos 720, casi lo que la
- * imagen tiene. El fondo es el mismo logo, enorme y desenfocado: toma los
+ * <p>Acá el logo va chico, bajo un reflector, y nunca más grande que lo que
+ * la imagen aguanta. El fondo es el mismo logo, enorme y desenfocado: toma los
  * colores del club sin pedirle otra foto, y con ese desenfoque la resolución
  * deja de importar.
  *
@@ -76,7 +75,7 @@ export function HeroLogo({
           src={heroImageUrl}
           alt=""
           aria-hidden
-          className="absolute inset-0 h-full w-full scale-150 object-cover opacity-45 blur-3xl saturate-150"
+          className="absolute inset-0 h-full w-full scale-150 object-cover opacity-35 blur-3xl saturate-150"
         />
       )}
       <div className="absolute inset-0 bg-gradient-to-b from-pista/30 via-pista/70 to-pista" aria-hidden />
@@ -85,13 +84,16 @@ export function HeroLogo({
         aria-hidden
       />
 
-      <div className="relative mx-auto w-full max-w-lg px-5 text-center md:max-w-2xl">
-        <div className="portada-sube mx-auto w-fit" style={delay(0)}>
-          <Plate imageUrl={heroImageUrl} name={name} />
-        </div>
+      {/* --logo: lado del logo. Hasta 12rem (192 px): en un celular, que pinta
+          tres píxeles por punto, eso pide unos 580, menos de lo que la imagen
+          tiene. */}
+      <div className="relative mx-auto w-full max-w-lg px-5 text-center [--logo:clamp(5rem,18svh,12rem)] md:max-w-2xl">
+        <Plate imageUrl={heroImageUrl} name={name} />
 
+        {/* El título arranca donde la luz ya casi se apagó: más arriba, las
+            letras claras de la paleta oscura quedaban sobre blanco. */}
         <h1
-          className={`hero-title portada-sube mt-[clamp(0.75rem,3svh,1.75rem)] ${titleSize(headline)}`}
+          className={`hero-title portada-sube mt-[calc(var(--logo)*0.5)] ${titleSize(headline)}`}
           style={delay(120)}
         >
           {headline}
@@ -165,20 +167,62 @@ export function HeroLogo({
 }
 
 /**
- * La placa del logo: fondo blanco porque casi todos los logos de perfil están
- * hechos sobre blanco, y object-contain para que uno que no es cuadrado quede
- * entero en vez de recortado. Sin logo, la inicial del club.
+ * Bordes del logo esfumados, por si no está hecho sobre blanco: dos degradados,
+ * uno por eje, que se cruzan. Uno solo radial se comía las esquinas, y en los
+ * logos de perfil el texto suele llegar hasta ahí.
+ */
+const FEATHER: CSSProperties = {
+  maskImage:
+    'linear-gradient(to right, transparent, black 7%, black 93%, transparent), ' +
+    'linear-gradient(to bottom, transparent, black 7%, black 93%, transparent)',
+  maskComposite: 'intersect',
+};
+
+/**
+ * El logo bajo un reflector, como una cancha de noche: sin placa ni marco. El
+ * blanco sobre el que están hechos casi todos los logos de perfil se funde con
+ * la luz, y la luz se apaga hacia el fondo, así que no queda ningún borde
+ * recto. Al cargar, el reflector se prende con un parpadeo y después aparece el
+ * logo. object-contain para que uno que no es cuadrado quede entero. Sin logo,
+ * la inicial del club.
  */
 function Plate({ imageUrl, name }: { imageUrl: string | null; name: string }) {
+  if (!imageUrl) {
+    return (
+      <div
+        className="display portada-sube mx-auto grid size-[var(--logo)] place-items-center rounded-full bg-ladrillo text-[length:calc(var(--logo)*0.55)] text-white"
+        style={delay(0)}
+        aria-hidden
+      >
+        {name.trim().charAt(0).toUpperCase()}
+      </div>
+    );
+  }
   return (
-    <div className="size-[clamp(6rem,24svh,15rem)] overflow-hidden rounded-[22%] bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_0_0_8px_color-mix(in_srgb,var(--color-cal)_8%,transparent),0_24px_60px_rgba(0,0,0,0.35)]">
-      {imageUrl ? (
-        <img src={imageUrl} alt={`Logo de ${name}`} className="h-full w-full object-contain" loading="eager" fetchPriority="high" />
-      ) : (
-        <div className="display grid h-full w-full place-items-center bg-ladrillo text-[length:clamp(3rem,12svh,7rem)] text-white" aria-hidden>
-          {name.trim().charAt(0).toUpperCase()}
-        </div>
-      )}
+    // El margen de arriba es lo que la luz sobresale del logo: sin él, en una
+    // pantalla baja la barra de arriba le cortaba el halo.
+    <div className="relative mx-auto mt-[calc(var(--logo)*0.35)] size-[var(--logo)]">
+      {/* Dispersión: la luz tiñe el aire con el color del club, muy suave. */}
+      <div
+        className="reflector pointer-events-none absolute -inset-[110%] bg-[radial-gradient(closest-side,color-mix(in_srgb,var(--color-ladrillo)_30%,transparent),transparent)]"
+        aria-hidden
+      />
+      {/* El charco de luz: un círculo blanco desenfocado. Con radio 0,9 del
+          logo y el desenfoque en 0,12, en las esquinas (0,71) la luz sigue
+          casi plena: el blanco del logo y el de la luz son el mismo y el
+          cuadrado de la imagen no se ve. Después se apaga de a poco, sin filo. */}
+      <div
+        className="reflector pointer-events-none absolute -inset-[40%] rounded-full bg-white blur-[calc(var(--logo)*0.12)]"
+        aria-hidden
+      />
+      <img
+        src={imageUrl}
+        alt={`Logo de ${name}`}
+        className="logo-aparece relative h-full w-full object-contain"
+        style={FEATHER}
+        loading="eager"
+        fetchPriority="high"
+      />
     </div>
   );
 }

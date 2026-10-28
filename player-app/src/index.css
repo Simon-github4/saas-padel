@@ -313,6 +313,44 @@ button:not([aria-label]) {
   animation-delay: var(--portada-delay, 0ms);
 }
 
+/* Portada "logo del club": el reflector se prende como uno de cancha de
+   noche, con un parpadeo, y el logo aparece cuando la luz ya está firme. */
+@keyframes reflector {
+  0% {
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.7;
+  }
+  22% {
+    opacity: 0.1;
+  }
+  36% {
+    opacity: 0.85;
+  }
+  44% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.reflector {
+  animation: reflector 1000ms linear 150ms backwards;
+}
+
+@keyframes logo-aparece {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+}
+
+.logo-aparece {
+  animation: logo-aparece 700ms cubic-bezier(0.22, 1, 0.36, 1) 700ms backwards;
+}
+
 /* Portada "cancha partida": la foto se destapa desde la red hacia afuera
    (hacia arriba en el telefono, hacia la izquierda en desktop), la red se
    dibuja y la ficha del centro cae en su lugar. */
@@ -436,6 +474,8 @@ button:not([aria-label]) {
   .portada-sube,
   .portada-pica,
   .portada-flip,
+  .reflector,
+  .logo-aparece,
   .split-foto,
   .split-red-h,
   .split-red-v,
