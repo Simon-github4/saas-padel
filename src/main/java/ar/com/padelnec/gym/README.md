@@ -53,6 +53,16 @@ La ubicación la informa el celular: no frena a quien la falsifique a propósito
 mostrador puede registrar ingresos sin ella (está en la sede). Cada ingreso guarda a
 cuántos metros estaba (`gym_checkin.distance_m`).
 
+### Aviso en el panel
+
+Cuando un socio entra escaneando el QR, el panel abierto muestra un cartel ("Ingreso:
+Juan Pérez · Necochea", más "· Debe el mes" si entró por la gracia) con un toque corto,
+distinto del de las reservas, e «Ingresos de hoy» se redibuja. Sale de `GymCheckinFeed`,
+en memoria y después del commit, como el aviso de reservas web. Los ingresos que carga el
+mostrador y los escaneos repetidos del día no suenan, y no van al celular: en hora pico
+serían decenas. Cada navegador puede apagar el sonido desde el menú del usuario («Sonar
+ingresos al gimnasio», guardado en `localStorage`); el cartel aparece igual.
+
 ## Desarrollo
 
 Con el perfil `dev`, `GymDevSeeder` prende el gimnasio en `club-necochea` (solo DNI) y

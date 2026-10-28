@@ -21,10 +21,11 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Manda el aviso de una reserva nueva a los celulares del club (Web Push).
+ * Manda a los celulares del club el aviso de una reserva nueva o de un turno que el
+ * jugador cancelo (Web Push).
  *
- * <p>En un hilo aparte: quien dispara esto es el pedido del jugador que reservo o el
- * webhook de MercadoPago que acredito la seña, y ninguno de los dos tiene por que
+ * <p>En un hilo aparte: quien dispara esto es el pedido del jugador que reservo o
+ * cancelo, o el webhook de MercadoPago que acredito la seña, y ninguno tiene por que
  * esperar a FCM o a Apple, ni enterarse si fallan. Un solo hilo alcanza: son un par
  * de avisos por reserva, y asi salen en el orden en que entraron.
  *
@@ -66,13 +67,26 @@ public class PanelPushNotifier {
      * reserva: si por algun motivo llegara dos veces, el celular muestra una sola.
      */
     public void newWebBooking(UUID clubId, UUID bookingId, String body) {
+        notifyClub(clubId, "Nueva reserva", bookingId.toString(), body);
+    }
+
+    /**
+     * Un jugador cancelo desde su link: el horario quedo libre para revender. Lleva su
+     * propio {@code tag} y no el de la reserva: con el mismo, el celular cambiaria en
+     * silencio el aviso de la reserva nueva por este, sin sonar ni vibrar.
+     */
+    public void webCancellation(UUID clubId, UUID bookingId, String body) {
+        notifyClub(clubId, "Turno cancelado", "cancelado-" + bookingId, body);
+    }
+
+    private void notifyClub(UUID clubId, String title, String tag, String body) {
         if (vapidKeys.isEmpty()) {
             return;
         }
         byte[] payload = objectMapper.writeValueAsBytes(Map.of(
-                "title", "Nueva reserva",
+                "title", title,
                 "body", body,
-                "tag", bookingId.toString(),
+                "tag", tag,
                 "url", "/admin/"));
         executor.execute(() -> deliverToClub(clubId, payload));
     }
@@ -102,7 +116,7 @@ public class PanelPushNotifier {
                     .header("Content-Encoding", "aes128gcm")
                     .header("Content-Type", "application/octet-stream")
                     .header("TTL", String.valueOf(TTL.toSeconds()))
-                    // Una reserva nueva es para ver ya: sin esto Android puede demorarla
+                    // Una reserva nueva o un turno libre son para ver ya: sin esto Android puede demorarlos
                     // hasta que el celular salga del ahorro de bateria.
                     .header("Urgency", "high")
                     .POST(HttpRequest.BodyPublishers.ofByteArray(body))

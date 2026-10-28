@@ -378,6 +378,10 @@ public class BookingService {
         }
 
         alertIfSomeoneIsWaiting(club, booking);
+        // El cartel con sonido del panel y el aviso al celular: el horario quedo libre
+        // y el club lo puede revender.
+        events.publishEvent(BookingEvent.of(club.getId(), booking.getId(),
+                BookingEvent.Kind.CANCELLED_BY_CUSTOMER));
         return new CancellationResult(booking, refundNeeded, club.getWhatsappNumber());
     }
 

@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 @Route(value = "gimnasio/hoy", layout = ar.com.padelnec.ui.MainLayout.class)
 @PageTitle("Ingresos de hoy | Panel del club")
 @PermitAll
-public class GymTodayView extends VerticalLayout implements BeforeEnterObserver {
+public class GymTodayView extends VerticalLayout implements BeforeEnterObserver, RefreshesOnCheckins {
 
     private final GymModule gymModule;
     private final GymOverviewService overviewService;
@@ -83,6 +83,14 @@ public class GymTodayView extends VerticalLayout implements BeforeEnterObserver 
     @Override
     public void beforeEnter(BeforeEnterEvent event) {
         GymViewSupport.requireEnabled(event, gymModule);
+    }
+
+    /** Un ingreso nuevo es siempre de hoy: si se esta mirando otro dia, no cambia nada. */
+    @Override
+    public void checkinsArrived() {
+        if (overviewService.today().equals(day.getValue())) {
+            refresh();
+        }
     }
 
     private void buildCheckinColumns() {

@@ -15,7 +15,7 @@ import ar.com.padelnec.domain.enums.BookingSource;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CancellationReason;
 import ar.com.padelnec.gym.GymFixture;
-import ar.com.padelnec.notification.NewBookingFeed;
+import ar.com.padelnec.notification.WebBookingFeed;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CustomerRepository;
@@ -65,7 +65,7 @@ class BookingServiceTest {
     @Autowired private BlackoutRepository blackoutRepository;
     @Autowired private OperationalAlertRepository alertRepository;
     @Autowired private PlayerAccountRepository playerAccountRepository;
-    @Autowired private NewBookingFeed newBookingFeed;
+    @Autowired private WebBookingFeed webBookingFeed;
     @Autowired private ClubFixture fixture;
     @Autowired private Clock clock;
 
@@ -492,14 +492,15 @@ class BookingServiceTest {
 
         Booking booking = reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
 
-        List<NewBookingFeed.Entry> entries = newBookingFeed.since(club.getId(), before);
+        List<WebBookingFeed.Entry> entries = webBookingFeed.since(club.getId(), before);
         assertThat(entries).hasSize(1);
+        assertThat(entries.getFirst().kind()).isEqualTo(WebBookingFeed.Kind.NEW);
         assertThat(entries.getFirst().bookingId()).isEqualTo(booking.getId());
         assertThat(entries.getFirst().text()).contains("Cancha 1").contains("Simon Diaz");
 
         // Confirmarla despues es otro evento de la misma reserva: no se avisa de nuevo.
         bookingService.confirmByClub(club, booking.getId());
-        assertThat(newBookingFeed.since(club.getId(), before)).hasSize(1);
+        assertThat(webBookingFeed.since(club.getId(), before)).hasSize(1);
     }
 
     @Test
@@ -510,7 +511,7 @@ class BookingServiceTest {
         bookingService.createManual(club, court1.getId(),
                 slotAt(LocalTime.of(20, 0)), "Grupo del martes", "2262415000", null, null);
 
-        assertThat(newBookingFeed.since(club.getId(), before)).isEmpty();
+        assertThat(webBookingFeed.since(club.getId(), before)).isEmpty();
     }
 
     @Test
@@ -520,7 +521,49 @@ class BookingServiceTest {
 
         reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
 
-        assertThat(newBookingFeed.since(UUID.randomUUID(), before)).isEmpty();
+        assertThat(webBookingFeed.since(UUID.randomUUID(), before)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("El turno que cancela el jugador suena en el panel, aunque ya hubiera sonado como nuevo")
+    void customerCancellationShowsUpInThePanelFeed() {
+        Instant before = Instant.parse(NOW).minusSeconds(1);
+        // A las 21:30: el jugador puede cancelar hasta 12 horas antes.
+        Booking booking = reserve(court1, LocalTime.of(21, 30), PaymentChoice.PAY_AT_CLUB);
+
+        bookingService.cancelByManagementToken(booking.getManagementToken());
+
+        List<WebBookingFeed.Entry> entries = webBookingFeed.since(club.getId(), before);
+        assertThat(entries).extracting(WebBookingFeed.Entry::kind)
+                .containsExactly(WebBookingFeed.Kind.NEW, WebBookingFeed.Kind.CANCELLED);
+        assertThat(entries.getLast().bookingId()).isEqualTo(booking.getId());
+        assertThat(entries.getLast().text()).startsWith("Turno cancelado:")
+                .contains("Cancha 1").contains("Simon Diaz");
+    }
+
+    @Test
+    @DisplayName("Tambien suena la cancelacion de un turno que habia cargado el club")
+    void customerCancellationOfAManualBookingShowsUpInThePanelFeed() {
+        Instant before = Instant.parse(NOW).minusSeconds(1);
+        Booking booking = bookingService.createManual(club, court1.getId(),
+                slotAt(LocalTime.of(21, 30)), "Grupo del martes", "2262415000", null, null);
+
+        bookingService.cancelByManagementToken(booking.getManagementToken());
+
+        assertThat(webBookingFeed.since(club.getId(), before)).extracting(WebBookingFeed.Entry::kind)
+                .containsExactly(WebBookingFeed.Kind.CANCELLED);
+    }
+
+    @Test
+    @DisplayName("La baja que da el club no suena en el panel: la hizo el mismo club")
+    void clubCancellationDoesNotShowUpInThePanelFeed() {
+        Instant before = Instant.parse(NOW).minusSeconds(1);
+        Booking booking = reserve(court1, LocalTime.of(18, 30), PaymentChoice.PAY_AT_CLUB);
+
+        bookingService.cancelByClub(club, booking.getId(), "Lluvia");
+
+        assertThat(webBookingFeed.since(club.getId(), before)).extracting(WebBookingFeed.Entry::kind)
+                .containsExactly(WebBookingFeed.Kind.NEW);
     }
 
     @Test

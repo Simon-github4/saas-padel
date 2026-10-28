@@ -57,6 +57,8 @@ public class BookingNotificationListener {
             case CONFIRMATION_EXPIRED -> notificationService.confirmationExpired(club, booking);
             case CANCELLED_BY_CLUB -> notificationService.cancelledByClub(club, booking);
             case REMINDER -> notificationService.reminder(club, booking);
+            // Lo avisa WebBookingFeed al club; al jugador no hay nada que decirle.
+            case CANCELLED_BY_CUSTOMER -> { }
         }
     }
 }

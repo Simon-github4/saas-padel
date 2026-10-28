@@ -14,7 +14,8 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * "Avisarme en este celular", en el menu del usuario: los avisos de reservas nuevas
- * en este dispositivo, aunque el panel este cerrado (Web Push).
+ * y de turnos cancelados por el jugador en este dispositivo, aunque el panel este
+ * cerrado (Web Push).
  *
  * <p>Es de cada persona en cada dispositivo. El estado lo pregunta el navegador al
  * abrir el panel: si ya esta suscripto y el servidor tiene esa suscripcion para
@@ -209,7 +210,7 @@ final class DevicePushItem {
             panelPushService.subscribe(user, subscription, request == null ? null : request.getHeader("User-Agent"));
             endpoint = browserEndpoint;
             on = true;
-            show("Listo: cuando entre una reserva por la página te avisamos en este "
+            show("Listo: cuando entre o se cancele una reserva por la página te avisamos en este "
                     + (mobile ? "celular" : "dispositivo") + ", aunque el panel esté cerrado.", false);
         } catch (BusinessRuleException ex) {
             on = false;
