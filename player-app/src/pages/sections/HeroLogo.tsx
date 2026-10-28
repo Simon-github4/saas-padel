@@ -176,13 +176,9 @@ function useLogoCutout(url: string | null): LoadedLogo | null {
       return;
     }
     let cancelled = false;
-    let objectUrl: string | null = null;
     loadLogoCutout(url)
       .then((result) => {
-        objectUrl = result.src;
-        if (cancelled) {
-          URL.revokeObjectURL(result.src);
-        } else {
+        if (!cancelled) {
           setLogo({ url, value: result });
         }
       })
@@ -193,9 +189,6 @@ function useLogoCutout(url: string | null): LoadedLogo | null {
       });
     return () => {
       cancelled = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
     };
   }, [url]);
 
@@ -207,10 +200,12 @@ function useLogoCutout(url: string | null): LoadedLogo | null {
  * su silueta (drop-shadow, no box-shadow) para despegarse del fondo. Si no se
  * pudo recortar —una foto, un logo sobre un color—, va con las esquinas
  * redondeadas, que es lo mínimo para que no corte en seco. Mientras se procesa
- * el lugar queda reservado, así nada salta cuando aparece. Sin imagen, la
- * inicial del club.
+ * el lugar queda reservado, así nada salta cuando aparece. Si el recorte no
+ * se puede mostrar, vuelve a la imagen original: un logo roto en la portada
+ * es peor que uno sin recortar. Sin imagen, la inicial del club.
  */
 function Logo({ imageUrl, logo, name }: { imageUrl: string | null; logo: LoadedLogo | null; name: string }) {
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
   if (!imageUrl) {
     return (
       <div
@@ -226,10 +221,11 @@ function Logo({ imageUrl, logo, name }: { imageUrl: string | null; logo: LoadedL
     <div className="mx-auto size-[var(--logo)]">
       {logo && (
         <img
-          src={logo.src}
+          src={brokenSrc === logo.src ? imageUrl : logo.src}
           alt={`Logo de ${name}`}
+          onError={() => setBrokenSrc(logo.src)}
           className={`logo-aparece h-full w-full object-contain ${
-            logo.cut
+            logo.cut && brokenSrc !== logo.src
               ? '[filter:drop-shadow(0_10px_18px_rgba(0,0,0,0.28))]'
               : 'rounded-[18%] shadow-[0_18px_40px_rgba(0,0,0,0.3)]'
           }`}

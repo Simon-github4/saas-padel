@@ -169,9 +169,11 @@ export function cutWhiteBackground(data: Uint8ClampedArray, width: number, heigh
 const MAX_SIDE = 1024;
 
 /**
- * Baja el logo, lo recorta y devuelve un object URL del PNG resultante (hay
- * que liberarlo con URL.revokeObjectURL). Rechaza si no se puede leer: una URL
- * externa sin CORS, por ejemplo; ahí la portada muestra la imagen tal cual.
+ * Baja el logo, lo recorta y devuelve el PNG resultante como data: URL. No
+ * como blob: (URL.createObjectURL): la CSP de la app del jugador no lo
+ * permite en img-src y en producción el logo salía roto. Rechaza si no se
+ * puede leer: una URL externa, que connect-src no deja bajar, por ejemplo;
+ * ahí la portada muestra la imagen tal cual.
  */
 export async function loadLogoCutout(url: string): Promise<Cutout & { src: string }> {
   const response = await fetch(url);
@@ -192,9 +194,5 @@ export async function loadLogoCutout(url: string): Promise<Cutout & { src: strin
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
   const result = cutWhiteBackground(pixels.data, canvas.width, canvas.height);
   context.putImageData(pixels, 0, 0);
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-  if (!blob) {
-    throw new Error('Sin PNG');
-  }
-  return { ...result, src: URL.createObjectURL(blob) };
+  return { ...result, src: canvas.toDataURL('image/png') };
 }
