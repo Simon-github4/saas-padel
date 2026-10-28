@@ -88,7 +88,7 @@ export interface Club {
   /** 0-100: cuanto se oscurece la foto de portada. Lo gradua el club. */
   heroOverlay: number;
   /** Diseño de portada que eligió el club. */
-  heroVariant: 'CLASSIC' | 'SCOREBOARD' | 'COURT_SPLIT';
+  heroVariant: 'CLASSIC' | 'SCOREBOARD' | 'COURT_SPLIT' | 'LOGO';
   playersPerCourt: number;
   /** Paleta clara u oscura de la app. */
   themeMode: 'DARK' | 'LIGHT';
