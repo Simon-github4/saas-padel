@@ -146,7 +146,8 @@ class PanelPushTest {
         Map<?, ?> payload = objectMapper.readValue(browserA.decrypt(first.body()), Map.class);
         assertThat(payload.get("title")).isEqualTo("Nueva reserva");
         assertThat(payload.get("tag")).isEqualTo(bookingA.getId().toString());
-        assertThat(payload.get("url")).isEqualTo("/admin/");
+        // Tocar el aviso abre la agenda en el dia del turno, marcado.
+        assertThat(payload.get("url")).isEqualTo("/admin/?reserva=" + bookingA.getId());
         assertThat((String) payload.get("body"))
                 .contains("Cancha 1").contains("18:30").contains("Simon Diaz").endsWith("Paga en el club");
 

@@ -42,6 +42,7 @@ import com.vaadin.flow.component.sidenav.SideNavItem;
 import com.vaadin.flow.router.AfterNavigationEvent;
 import com.vaadin.flow.router.AfterNavigationObserver;
 import com.vaadin.flow.router.PageTitle;
+import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.theme.lumo.LumoIcon;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import com.vaadin.flow.shared.Registration;
@@ -563,22 +564,34 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
             view.webBookingsChanged();
         }
 
-        List<String> booked = textsOf(fresh, WebBookingFeed.Kind.NEW);
+        List<WebBookingFeed.Entry> booked = entriesOf(fresh, WebBookingFeed.Kind.NEW);
         if (!booked.isEmpty()) {
-            announce(booked.size() == 1 ? booked.getFirst() : booked.size() + " reservas nuevas",
-                    10_000, AgendaView.class, "Ver agenda");
+            announceBookings(booked, booked.size() + " reservas nuevas");
             chime("reserva");
         }
-        List<String> cancelled = textsOf(fresh, WebBookingFeed.Kind.CANCELLED);
+        List<WebBookingFeed.Entry> cancelled = entriesOf(fresh, WebBookingFeed.Kind.CANCELLED);
         if (!cancelled.isEmpty()) {
-            announce(cancelled.size() == 1 ? cancelled.getFirst() : cancelled.size() + " turnos cancelados",
-                    10_000, AgendaView.class, "Ver agenda");
+            announceBookings(cancelled, cancelled.size() + " turnos cancelados");
             chime("cancelacion");
         }
     }
 
-    private static List<String> textsOf(List<WebBookingFeed.Entry> entries, WebBookingFeed.Kind kind) {
-        return entries.stream().filter(entry -> entry.kind() == kind).map(WebBookingFeed.Entry::text).toList();
+    /**
+     * Uno solo lleva a su dia en la agenda, marcado (ver {@link AgendaView#BOOKING_PARAM}).
+     * Varios juntos van a la agenda sin mas: no hay uno que mostrar antes que otro.
+     */
+    private void announceBookings(List<WebBookingFeed.Entry> entries, String severalText) {
+        if (entries.size() == 1) {
+            WebBookingFeed.Entry entry = entries.getFirst();
+            announce(entry.text(), 10_000, AgendaView.class, "Ver agenda", AgendaView.showing(entry.bookingId()));
+        } else {
+            announce(severalText, 10_000, AgendaView.class, "Ver agenda");
+        }
+    }
+
+    private static List<WebBookingFeed.Entry> entriesOf(List<WebBookingFeed.Entry> entries,
+                                                        WebBookingFeed.Kind kind) {
+        return entries.stream().filter(entry -> entry.kind() == kind).toList();
     }
 
     /**
@@ -610,6 +623,11 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
 
     /** Cartel arriba a la derecha, con un boton a la pantalla donde se ve lo avisado. */
     private void announce(String text, int durationMillis, Class<? extends Component> target, String targetLabel) {
+        announce(text, durationMillis, target, targetLabel, QueryParameters.empty());
+    }
+
+    private void announce(String text, int durationMillis, Class<? extends Component> target, String targetLabel,
+                          QueryParameters parameters) {
         Notification notification = new Notification();
         notification.setPosition(Notification.Position.TOP_END);
         notification.setDuration(durationMillis);
@@ -618,11 +636,12 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         message.getStyle().set("flex", "1 1 16rem");
         HorizontalLayout content = new HorizontalLayout(message);
         // Parado en esa pantalla el boton no hacia nada: navegar a la misma ruta no
-        // la recarga, y la pantalla ya se redibujo sola.
-        if (!target.isInstance(getContent())) {
+        // la recarga, y la pantalla ya se redibujo sola. Con parametros si sirve: la
+        // agenda salta al dia del turno y lo marca.
+        if (!target.isInstance(getContent()) || !parameters.getParameters().isEmpty()) {
             Button open = new Button(targetLabel, event -> {
                 notification.close();
-                UI.getCurrent().navigate(target);
+                UI.getCurrent().navigate(target, parameters);
             });
             open.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SMALL);
             content.add(open);

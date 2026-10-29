@@ -2,6 +2,17 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "backend-ver-reserva",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5174"
+      ],
+      "env": { "DEV_DB_PORT": "54600", "DEV_DB_DIR": "target/devdb-ver-reserva" },
+      "port": 8080
+    },
+    {
       "name": "player-app",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "player-app"],
