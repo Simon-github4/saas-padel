@@ -157,6 +157,21 @@ vaadin-app-layout::part(drawer) {
   width: 14.4rem;
 }
 
+/* "Recordatorio" + el logo de WhatsApp en su verde, que se reconoce antes de
+   leer: reemplaza el texto "por WhatsApp", que en el celular no entraba. */
+.whatsapp-reminder {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lumo-space-xs);
+}
+
+.whatsapp-glyph {
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  color: #25d366;
+}
+
 /* La marca encabeza el menu y se separa de los items con una linea, no con
    aire: el drawer es angosto y el espacio en blanco solo no alcanza para
    leerlo como un bloque aparte. */
@@ -269,6 +284,10 @@ vaadin-side-nav-item[current]::part(item) {
   border-radius: var(--lumo-border-radius-l);
   padding: var(--lumo-space-xs);
   width: 100%;
+  /* Los z-index de las celdas sticky (y del turno marcado) quedan adentro del
+     tablero: sin esto competian con el menu lateral, que en el celular flota
+     sobre el contenido, y los nombres de las canchas le pasaban por encima. */
+  isolation: isolate;
 }
 
 /* grid-template-columns/-rows los completa AgendaView en tiempo de

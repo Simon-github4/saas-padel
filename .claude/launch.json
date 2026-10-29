@@ -9,7 +9,7 @@
         "-Dspring-boot.run.profiles=dev",
         "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5174"
       ],
-      "env": { "DEV_DB_PORT": "54600", "DEV_DB_DIR": "target/devdb-ver-reserva" },
+      "env": { "DEV_DB_PORT": "45432", "DEV_DB_DIR": "target/devdb-ver-reserva" },
       "port": 8080
     },
     {
