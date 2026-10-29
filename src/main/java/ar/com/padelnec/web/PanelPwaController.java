@@ -30,8 +30,9 @@ public class PanelPwaController {
      * Sin handler de {@code fetch}: no intercepta ningun pedido del panel, asi que
      * el panel funciona igual que sin service worker.
      *
-     * <p>El click enfoca el panel si ya estaba abierto (su propio aviso con sonido
-     * muestra la reserva) y si no, lo abre en la agenda.
+     * <p>El click lleva a la agenda en el dia del turno, marcado ({@code ?reserva=}): si
+     * el panel ya estaba abierto lo enfoca y lo lleva ahi, y si no, lo abre. Si ese panel
+     * no es de este service worker ({@code navigate} falla), queda enfocado donde estaba.
      */
     private static final String SERVICE_WORKER = """
             /* Service worker del panel del club: solo avisos de reservas nuevas, sin cache. */
@@ -67,7 +68,12 @@ public class PanelPwaController {
               event.waitUntil(self.clients.matchAll({type: 'window', includeUncontrolled: true})
                   .then((windows) => {
                     const panel = windows.find((client) => new URL(client.url).pathname.startsWith('/admin'));
-                    return panel ? panel.focus() : self.clients.openWindow(target);
+                    if (!panel) {
+                      return self.clients.openWindow(target);
+                    }
+                    return panel.focus()
+                        .then((focused) => (focused || panel).navigate(target))
+                        .catch(() => undefined);
                   }));
             });
             """;

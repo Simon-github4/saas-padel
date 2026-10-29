@@ -39,7 +39,11 @@ import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.router.BeforeEnterEvent;
+import com.vaadin.flow.router.BeforeEnterObserver;
+import com.vaadin.flow.router.Location;
 import com.vaadin.flow.router.PageTitle;
+import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
@@ -76,7 +80,14 @@ import java.util.stream.Collectors;
 @Route(value = "", layout = MainLayout.class)
 @PageTitle("Agenda | Panel del club")
 @PermitAll
-public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings {
+public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings, BeforeEnterObserver {
+
+    /**
+     * {@code /admin/?reserva=<id>}: la agenda abre en el dia de ese turno y lo marca.
+     * Es a donde lleva "Ver agenda" del aviso de una reserva o una cancelacion, en el
+     * panel y en el celular ({@code PanelPushNotifier} arma el mismo link a mano).
+     */
+    static final String BOOKING_PARAM = "reserva";
 
     private static final DateTimeFormatter DATE_HEADING =
             DateTimeFormatter.ofPattern("EEEE d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es-AR"));
@@ -131,6 +142,21 @@ public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings
     private record MarkableCard(Div card, Button button) {
     }
 
+    /**
+     * El turno que se vino a ver desde un aviso: su cancha y su hora, no la reserva,
+     * porque si el jugador la cancelo lo que hay que mirar es el hueco que dejo.
+     */
+    private record Spotlight(UUID courtId, Instant startsAt) {
+    }
+
+    /**
+     * Solo mientras se dibuja el tablero al llegar: la marca es un aviso de unos
+     * segundos, no un estado, asi que el tablero que se redibuja despues ya no la lleva.
+     */
+    private Spotlight spotlight;
+    /** Lo que dura la marca en {@code .agenda-card--spotlight}; despues se limpia el link. */
+    private static final int SPOTLIGHT_MILLIS = 4_000;
+
     public AgendaView(TenantService tenantService, BookingService bookingService,
                       CourtRepository courtRepository, BlackoutRepository blackoutRepository,
                       SlotGenerator slotGenerator, PaymentService paymentService,
@@ -179,6 +205,71 @@ public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings
         // El value-change listener de dayPicker() ya quedo registrado por add(header()...)
         // de arriba, asi que este setValue dispara el primer refresh() solo.
         datePicker.setValue(LocalDate.now(club.zoneId()));
+    }
+
+    static QueryParameters showing(UUID bookingId) {
+        return QueryParameters.of(BOOKING_PARAM, bookingId.toString());
+    }
+
+    /**
+     * Viniendo de un aviso, salta al dia del turno y lo marca. La reserva se busca en
+     * el club de la sesion ({@code @TenantId}): un id de otro club no encuentra nada.
+     */
+    @Override
+    public void beforeEnter(BeforeEnterEvent event) {
+        event.getLocation().getQueryParameters().getSingleParameter(BOOKING_PARAM)
+                .flatMap(AgendaView::parseUuid)
+                .flatMap(bookingService::findByIdWithDetails)
+                .ifPresent(this::spotlight);
+    }
+
+    private static Optional<UUID> parseUuid(String text) {
+        try {
+            return Optional.of(UUID.fromString(text));
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+    }
+
+    private void spotlight(Booking booking) {
+        spotlight = new Spotlight(booking.getCourt().getId(), booking.getStartTime());
+        LocalDate day = booking.getStartTime().atZone(club.zoneId()).toLocalDate();
+        if (day.equals(datePicker.getValue())) {
+            // Mismo dia: el DatePicker no dispara el cambio, y el tablero hay que
+            // redibujarlo igual para que aparezca la marca.
+            setMarking(false);
+            refresh();
+        } else {
+            datePicker.setValue(day);
+        }
+        spotlight = null;
+        // Con muchas canchas u horarios la tarjeta puede quedar fuera de la
+        // pantalla, sobre todo en el celular. En el cuadro siguiente: entrando de
+        // cero (desde el aviso del celular) el tablero todavia no tiene alto.
+        getElement().executeJs("""
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                  const card = this.querySelector('.agenda-card--spotlight');
+                  if (card) card.scrollIntoView({block: 'center', inline: 'center'});
+                }));
+                return new Promise((resolve) => setTimeout(resolve, $0));
+                """, SPOTLIGHT_MILLIS).then(ignored -> forgetBookingLink(booking.getId()));
+    }
+
+    /**
+     * Pasada la marca, el link vuelve a ser el de la agenda: si no, recargar la pagina
+     * (o volver a abrir la app instalada) marcaria el mismo turno otra vez. Solo si
+     * todavia se esta en la agenda de ese turno: en esos segundos se pudo haber ido a
+     * otra pantalla, o a otro turno desde un aviso nuevo.
+     */
+    private void forgetBookingLink(UUID bookingId) {
+        getUI().ifPresent(ui -> {
+            Location location = ui.getInternals().getActiveViewLocation();
+            boolean stillHere = location.getPath().isEmpty() && location.getQueryParameters()
+                    .getSingleParameter(BOOKING_PARAM).filter(bookingId.toString()::equals).isPresent();
+            if (stillHere) {
+                ui.getPage().getHistory().replaceState(null, "");
+            }
+        });
     }
 
     // --------------------------------------------------------------- header
@@ -596,8 +687,21 @@ public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings
         courts.forEach(court -> board.add(courtHeader(court)));
         for (AgendaRow row : rows) {
             board.add(timeLabel(row));
-            courts.forEach(court -> board.add(slotCard(row, court)));
+            courts.forEach(court -> board.add(spotlit(slotCard(row, court), row, court)));
         }
+    }
+
+    /**
+     * La tarjeta del turno que se vino a ver late con un anillo naranja unos segundos
+     * y vuelve a ser una tarjeta mas (la animacion termina sola, ver styles.css).
+     */
+    private Component spotlit(Component card, AgendaRow row, Court court) {
+        boolean here = spotlight != null && spotlight.courtId().equals(court.getId())
+                && spotlight.startsAt().equals(row.slot().startsAt());
+        if (here && card instanceof Div div && div.hasClassName("agenda-card")) {
+            div.addClassName("agenda-card--spotlight");
+        }
+        return card;
     }
 
     private Component corner() {

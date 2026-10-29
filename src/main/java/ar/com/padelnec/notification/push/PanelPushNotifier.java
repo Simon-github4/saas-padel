@@ -67,7 +67,7 @@ public class PanelPushNotifier {
      * reserva: si por algun motivo llegara dos veces, el celular muestra una sola.
      */
     public void newWebBooking(UUID clubId, UUID bookingId, String body) {
-        notifyClub(clubId, "Nueva reserva", bookingId.toString(), body);
+        notifyClub(clubId, "Nueva reserva", bookingId.toString(), bookingId, body);
     }
 
     /**
@@ -76,10 +76,14 @@ public class PanelPushNotifier {
      * silencio el aviso de la reserva nueva por este, sin sonar ni vibrar.
      */
     public void webCancellation(UUID clubId, UUID bookingId, String body) {
-        notifyClub(clubId, "Turno cancelado", "cancelado-" + bookingId, body);
+        notifyClub(clubId, "Turno cancelado", "cancelado-" + bookingId, bookingId, body);
     }
 
-    private void notifyClub(UUID clubId, String title, String tag, String body) {
+    /**
+     * Tocar el aviso abre la agenda en el dia del turno, marcado: el {@code ?reserva=}
+     * es el {@code AgendaView.BOOKING_PARAM} del panel, que este paquete no ve.
+     */
+    private void notifyClub(UUID clubId, String title, String tag, UUID bookingId, String body) {
         if (vapidKeys.isEmpty()) {
             return;
         }
@@ -87,7 +91,7 @@ public class PanelPushNotifier {
                 "title", title,
                 "body", body,
                 "tag", tag,
-                "url", "/admin/"));
+                "url", "/admin/?reserva=" + bookingId));
         executor.execute(() -> deliverToClub(clubId, payload));
     }
 
