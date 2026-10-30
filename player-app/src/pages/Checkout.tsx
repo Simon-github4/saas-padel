@@ -105,6 +105,10 @@ export function Checkout({
   // Lo que pasa cuando llega el mensaje tiene que ver la sesión y los datos de
   // ahora, no los de cuando empezó a esperar.
   const settleRef = useRef<((progress: PhoneVerificationProgress) => Promise<void>) | null>(null);
+  // Lo que devuelve el servidor con el pedido: mandándolo de nuevo, esta pestaña le
+  // cambia el turno a su mismo mensaje. Sin él (otra pestaña, otra persona) el
+  // servidor arma un pedido aparte en vez de tocar el que ya está escrito.
+  const ownerTokenRef = useRef<string | null>(null);
   useEffect(() => {
     if (!verification || verification.status !== 'PENDING') {
       return;
@@ -164,12 +168,19 @@ export function Checkout({
   async function startVerification(): Promise<boolean> {
     const started = await api.startPhoneVerification(
       slug,
-      { phoneNumber: phone, courtId: court.courtId, startTime: slot.startsAt, fullName },
+      {
+        phoneNumber: phone,
+        courtId: court.courtId,
+        startTime: slot.startsAt,
+        fullName,
+        ownerToken: ownerTokenRef.current,
+      },
       session?.token,
     );
     if (!started.verificationRequired || !started.verificationId || !started.whatsappLink) {
       return false;
     }
+    ownerTokenRef.current = started.ownerToken;
     setVerification({
       id: started.verificationId,
       link: started.whatsappLink,

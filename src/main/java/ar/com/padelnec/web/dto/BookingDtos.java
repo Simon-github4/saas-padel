@@ -38,7 +38,10 @@ public final class BookingDtos {
             @Size(max = 25) String phoneNumber,
             UUID courtId,
             Instant startTime,
-            @Size(max = 120) String fullName) {
+            @Size(max = 120) String fullName,
+            // El que devolvio el pedido anterior de esta pestana: vuelve a pedir por el
+            // mismo y le cambia el turno, en vez de abrir otro con otro codigo.
+            @Size(max = 64) String ownerToken) {
 
         public boolean holdsBooking() {
             return courtId != null && startTime != null && fullName != null && !fullName.isBlank();
@@ -48,14 +51,23 @@ public final class BookingDtos {
     /**
      * Si hace falta confirmar el telefono y, si hace falta, con que: el link abre
      * WhatsApp con el mensaje ya escrito, el QR es ese mismo link para escanearlo
-     * desde la compu, y el id sirve para preguntar si llego.
+     * desde la compu, y el id sirve para preguntar si llego. El ownerToken lo vuelve
+     * a mandar la pagina si pide de nuevo.
      */
     public record PhoneVerificationResponse(boolean verificationRequired, UUID verificationId,
-                                            String whatsappLink, String whatsappQr) {
+                                            String whatsappLink, String whatsappQr, String ownerToken) {
 
         public static PhoneVerificationResponse notRequired() {
-            return new PhoneVerificationResponse(false, null, null, null);
+            return new PhoneVerificationResponse(false, null, null, null, null);
         }
+    }
+
+    /** El codigo del link que guarda el turno en "Mis turnos" (el {@code ?guardar=} de la URL). */
+    public record SaveBookingRequest(@NotBlank @Size(max = 64) String code) {
+    }
+
+    /** Si este navegador fue el primero en abrir el link y puede guardarse el turno. */
+    public record SaveBookingResponse(boolean saved) {
     }
 
     /**

@@ -19,6 +19,8 @@ export interface PhoneVerificationStart {
   whatsappLink: string | null;
   /** El mismo link como QR (data URI de un SVG), para escanearlo desde la compu. */
   whatsappQr: string | null;
+  /** Para volver a pedir desde esta pestaña y cambiarle el turno al mismo mensaje. */
+  ownerToken: string | null;
 }
 
 export type PhoneVerificationStatus = 'PENDING' | 'VERIFIED' | 'EXPIRED';
@@ -416,7 +418,13 @@ export const api = {
    */
   startPhoneVerification: (
     slug: string,
-    body: { phoneNumber: string; courtId: string; startTime: string; fullName: string },
+    body: {
+      phoneNumber: string;
+      courtId: string;
+      startTime: string;
+      fullName: string;
+      ownerToken: string | null;
+    },
     token?: string,
   ) =>
     request<PhoneVerificationStart>(`/${slug}/phone-verification`, {
@@ -462,6 +470,17 @@ export const api = {
   booking: (token: string) => request<BookingDetail>(`/manage/${token}`),
 
   cancel: (token: string) => request<Cancellation>(`/manage/${token}/cancel`, { method: 'POST' }),
+
+  /**
+   * Canjea el código del link que llega en la respuesta de WhatsApp. Solo el primer
+   * navegador que lo abre recibe `saved: true` y guarda el turno en "Mis turnos":
+   * el mismo mensaje reenviado después muestra el turno pero no lo guarda.
+   */
+  saveToDevice: (token: string, code: string) =>
+    request<{ saved: boolean }>(`/manage/${token}/save`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
 
   share: (token: string) => request<BookingShareInfo>(`/share/${token}`),
 };

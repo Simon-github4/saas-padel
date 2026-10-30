@@ -57,6 +57,11 @@ public class PhoneVerificationService {
      * si pasa esto sin resultado, se corto en el medio y la pagina reserva ella.
      */
     static final Duration BOOKING_GRACE = Duration.ofMinutes(1);
+    /**
+     * Lo que sirve el link de la respuesta para guardar el turno en "Mis turnos". El
+     * jugador lo toca al llegar el mensaje; despues ya es un link reenviado.
+     */
+    static final Duration SAVE_TTL = Duration.ofHours(24);
 
     /** El codigo es el unico grupo de 6 digitos del mensaje, aunque el jugador le cambie el resto. */
     private static final Pattern CODE = Pattern.compile("(?<!\\d)\\d{6}(?!\\d)");
@@ -66,8 +71,13 @@ public class PhoneVerificationService {
     private final AppProperties properties;
     private final Clock clock;
 
-    /** Lo que la pagina necesita para pedirle el mensaje al jugador. */
-    public record Challenge(UUID id, String whatsappLink) {
+    /**
+     * Lo que la pagina necesita para pedirle el mensaje al jugador.
+     *
+     * @param ownerToken lo que la pagina manda si vuelve a pedir, para cambiar el
+     *     turno de este pedido en vez de abrir otro
+     */
+    public record Challenge(UUID id, String whatsappLink, String ownerToken) {
     }
 
     /**
@@ -151,16 +161,20 @@ public class PhoneVerificationService {
     /**
      * El mensaje que tiene que mandar el jugador, si este numero lo necesita.
      *
-     * <p>Mientras el pedido anterior siga vigente se devuelve el mismo: el jugador
-     * que vuelve atras y toca reservar de nuevo puede tener ese mensaje ya escrito
-     * en WhatsApp, y un codigo nuevo lo dejaria sin efecto.
+     * <p>Mientras el pedido anterior de esta misma pestana siga vigente se devuelve
+     * el mismo: el jugador que vuelve atras y toca reservar de nuevo puede tener ese
+     * mensaje ya escrito en WhatsApp, y un codigo nuevo lo dejaria sin efecto. Otra
+     * pestana -- o alguien que escribio el numero de otro -- recibe un pedido propio:
+     * si reusara el mismo, le cambiaria el turno al mensaje que ya esta escrito.
      *
      * @param club para el texto del mensaje (la verificacion vale para todos) y para
      *     el turno que espera
      * @param booking el turno que sale cuando llegue el mensaje; nulo si la pagina
      *     reserva ella (las versiones viejas)
+     * @param ownerToken el que devolvio el pedido anterior de esta pestana, o nulo
      */
-    public Optional<Challenge> requestVerification(String rawPhone, Tenant club, PendingBooking booking) {
+    public Optional<Challenge> requestVerification(String rawPhone, Tenant club, PendingBooking booking,
+                                                   String ownerToken) {
         if (!isActive()) {
             return Optional.empty();
         }
@@ -172,8 +186,10 @@ public class PhoneVerificationService {
         Instant now = clock.instant();
         repository.deleteAllByExpiresAtBefore(now.minus(Duration.ofDays(1)));
 
-        Optional<PhoneVerification> pending = repository.findFirstByPhoneNumberOrderByExpiresAtDesc(phone)
-                .filter(latest -> !latest.isConfirmed() && latest.getExpiresAt().isAfter(now));
+        Optional<PhoneVerification> pending = ownerToken == null || ownerToken.isBlank()
+                ? Optional.empty()
+                : repository.findFirstByPhoneNumberAndOwnerTokenAndConfirmedAtIsNullAndExpiresAtAfter(
+                        phone, ownerToken, now);
         if (pending.isPresent()) {
             // Vale el ultimo turno que eligio: si volvio atras y cambio de horario,
             // el mensaje que ya tiene escrito tiene que reservar el nuevo.
@@ -191,6 +207,7 @@ public class PhoneVerificationService {
         verification.setPhoneNumber(phone);
         verification.setCode(unusedCode(now));
         verification.setExpiresAt(now.plus(CODE_TTL));
+        verification.setOwnerToken(Tokens.generate());
         hold(verification, club, booking);
         return Optional.of(challenge(repository.save(verification), club));
     }
@@ -225,12 +242,34 @@ public class PhoneVerificationService {
         return Progress.of(verification.getExpiresAt().isAfter(now) ? Status.PENDING : Status.EXPIRED);
     }
 
-    /** La reserva que salio al llegar el mensaje. */
-    public void recordBooking(UUID verificationId, UUID bookingId) {
-        repository.findById(verificationId).ifPresent(verification -> {
+    /**
+     * La reserva que salio al llegar el mensaje.
+     *
+     * @return el codigo para el link que guarda el turno en "Mis turnos", o nulo si
+     *     reservo con cuenta: ahi el turno ya aparece solo
+     */
+    public String recordBooking(UUID verificationId, UUID bookingId) {
+        return repository.findById(verificationId).map(verification -> {
             verification.setBookingId(bookingId);
-            repository.save(verification);
-        });
+            if (verification.getPlayerAccountId() == null) {
+                verification.setSaveCode(Tokens.generate());
+            }
+            return repository.save(verification).getSaveCode();
+        }).orElse(null);
+    }
+
+    /**
+     * Gasta el codigo del link que guarda el turno en "Mis turnos": el primero que
+     * lo abre se lo queda, y despues el link solo muestra el turno.
+     *
+     * @return si este llamado lo gasto
+     */
+    public boolean useSaveCode(UUID bookingId, String code) {
+        if (code == null || code.isBlank()) {
+            return false;
+        }
+        Instant now = clock.instant();
+        return repository.useSaveCode(bookingId, code, now, now.minus(SAVE_TTL)) == 1;
     }
 
     /** Por que no salio la reserva que esperaba el mensaje. */
@@ -304,11 +343,13 @@ public class PhoneVerificationService {
 
     private Inbound confirm(PhoneVerification verification, Instant now) {
         if (verification.isConfirmed()) {
-            // Con el pedido: si ya reservo su turno, la respuesta se lo dice.
+            // Con el pedido: la respuesta dice si su turno ya salio, no salio o esta saliendo.
             return new Inbound(InboundOutcome.ALREADY_VERIFIED, verification);
         }
         if (repository.confirm(verification.getId(), now) == 0) {
-            return Inbound.of(InboundOutcome.ALREADY_VERIFIED);
+            // Lo confirmo otro mensaje igual en este mismo instante: el pedido como quedo.
+            return new Inbound(InboundOutcome.ALREADY_VERIFIED,
+                    repository.findById(verification.getId()).orElse(verification));
         }
         verification.setConfirmedAt(now);
         repository.markVerified(verification.getPhoneNumber());
@@ -339,7 +380,8 @@ public class PhoneVerificationService {
         String message = "¡Hola! Quiero confirmar mi número para reservar en %s. Mi código es %s"
                 .formatted(club.getName(), verification.getCode());
         return new Challenge(verification.getId(),
-                phoneNumbers.whatsappLink(properties.getWhatsapp().getFromNumber(), message));
+                phoneNumbers.whatsappLink(properties.getWhatsapp().getFromNumber(), message),
+                verification.getOwnerToken());
     }
 
     /**

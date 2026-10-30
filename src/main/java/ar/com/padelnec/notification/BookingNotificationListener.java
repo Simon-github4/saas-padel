@@ -59,6 +59,8 @@ public class BookingNotificationListener {
             case REMINDER -> notificationService.reminder(club, booking);
             // Lo avisa WebBookingFeed al club; al jugador no hay nada que decirle.
             case CANCELLED_BY_CUSTOMER -> { }
+            // La confirmacion ya le llego como respuesta a su WhatsApp: otra seria repetida.
+            case CONFIRMED_BY_PLAYER_MESSAGE -> { }
         }
     }
 }

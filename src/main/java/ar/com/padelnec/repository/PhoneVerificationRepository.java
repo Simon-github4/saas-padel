@@ -17,8 +17,9 @@ public interface PhoneVerificationRepository extends JpaRepository<PhoneVerifica
     // sale del Clock de la aplicacion y created_at del reloj del sistema, y los
     // plazos tienen que poder probarse moviendo el Clock.
 
-    /** El pedido vigente es el ultimo que se hizo. */
-    Optional<PhoneVerification> findFirstByPhoneNumberOrderByExpiresAtDesc(String phoneNumber);
+    /** El pedido en curso que hizo esta pestana para este numero. */
+    Optional<PhoneVerification> findFirstByPhoneNumberAndOwnerTokenAndConfirmedAtIsNullAndExpiresAtAfter(
+            String phoneNumber, String ownerToken, Instant now);
 
     /** Pedidos para un numero, para el tope diario: los que vencen despues de {@code after}. */
     long countByPhoneNumberAndExpiresAtAfter(String phoneNumber, Instant after);
@@ -41,6 +42,21 @@ public interface PhoneVerificationRepository extends JpaRepository<PhoneVerifica
     @Query("UPDATE PhoneVerification v SET v.confirmedAt = :now, v.updatedAt = :now "
             + "WHERE v.id = :id AND v.confirmedAt IS NULL")
     int confirm(@Param("id") UUID id, @Param("now") Instant now);
+
+    /**
+     * Gasta el codigo del link que guarda el turno en "Mis turnos", si sigue sin
+     * usar y el mensaje es de las ultimas 24 horas. Condicionado por lo mismo que
+     * {@link #confirm}: dos navegadores que lo abren juntos no se lo quedan los dos.
+     *
+     * @return 1 si lo gasto este llamado, 0 si ya estaba usado, vencido o no es de este turno
+     */
+    @Transactional
+    @Modifying
+    @Query("UPDATE PhoneVerification v SET v.saveUsedAt = :now, v.updatedAt = :now "
+            + "WHERE v.bookingId = :bookingId AND v.saveCode = :code AND v.saveUsedAt IS NULL "
+            + "AND v.confirmedAt > :since")
+    int useSaveCode(@Param("bookingId") UUID bookingId, @Param("code") String code,
+                    @Param("now") Instant now, @Param("since") Instant since);
 
     /** Limpieza oportunista: pasado el dia, un pedido ya no cuenta para nada. */
     @Transactional

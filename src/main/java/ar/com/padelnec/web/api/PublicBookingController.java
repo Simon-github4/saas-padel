@@ -34,6 +34,8 @@ import ar.com.padelnec.web.dto.BookingDtos.PaymentOptionsResponse;
 import ar.com.padelnec.web.dto.BookingDtos.PhoneVerificationRequest;
 import ar.com.padelnec.web.dto.BookingDtos.PhoneVerificationResponse;
 import ar.com.padelnec.web.dto.BookingDtos.PhoneVerificationStatusResponse;
+import ar.com.padelnec.web.dto.BookingDtos.SaveBookingRequest;
+import ar.com.padelnec.web.dto.BookingDtos.SaveBookingResponse;
 import ar.com.padelnec.web.ClientIp;
 import ar.com.padelnec.web.UnauthorizedSessionException;
 import ar.com.padelnec.web.dto.CourtSearchResponse;
@@ -233,11 +235,16 @@ public class PublicBookingController {
             if (accountId != null) {
                 playerAuthService.requireAccountPhone(accountId, request.phoneNumber());
             }
+            // Las reglas del turno, antes de mandarlo a WhatsApp: si no puede salir, que
+            // se entere ahora y no cuando ya mando el mensaje.
+            bookingService.checkBookable(club, new NewBooking(request.courtId(), request.startTime(),
+                    request.fullName(), request.phoneNumber(), PaymentChoice.PAY_AT_CLUB, accountId));
             booking = new PendingBooking(request.courtId(), request.startTime(), request.fullName(), accountId);
         }
-        return phoneVerificationService.requestVerification(request.phoneNumber(), club, booking)
+        return phoneVerificationService
+                .requestVerification(request.phoneNumber(), club, booking, request.ownerToken())
                 .map(challenge -> new PhoneVerificationResponse(true, challenge.id(), challenge.whatsappLink(),
-                        QrCodes.svgDataUri(challenge.whatsappLink())))
+                        QrCodes.svgDataUri(challenge.whatsappLink()), challenge.ownerToken()))
                 .orElseGet(PhoneVerificationResponse::notRequired);
     }
 
@@ -316,6 +323,19 @@ public class PublicBookingController {
         ManagedBooking managed = bookingService.findByManagementToken(token);
         return BookingDetailResponse.of(managed.club(), managed.booking(), clock.instant(),
                 notificationService.shareLink(managed.booking()));
+    }
+
+    /**
+     * Gasta el codigo del link que va en la respuesta de WhatsApp: si es el primero
+     * en abrirlo, la pagina guarda el turno en "Mis turnos" de ese navegador.
+     *
+     * <p>Lo llama la pagina, nunca el GET del link: WhatsApp visita los links para
+     * armar la vista previa, y esa visita lo gastaria antes que el jugador.
+     */
+    @PostMapping("/manage/{token}/save")
+    public SaveBookingResponse saveToDevice(@PathVariable String token, @Valid @RequestBody SaveBookingRequest request) {
+        ManagedBooking managed = bookingService.findByManagementToken(token);
+        return new SaveBookingResponse(phoneVerificationService.useSaveCode(managed.booking().getId(), request.code()));
     }
 
     /** Vista publica de solo lectura, para compartir el turno con otros jugadores. */

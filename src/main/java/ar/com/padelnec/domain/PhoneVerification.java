@@ -41,7 +41,7 @@ public class PhoneVerification extends BaseEntity {
     private Instant confirmedAt;
 
     // El turno que el jugador estaba reservando: sale solo cuando llega el mensaje
-    // (ver V15). Nulos en los pedidos de paginas viejas, que reservan ellas.
+    // (ver V23). Nulos en los pedidos de paginas viejas, que reservan ellas.
 
     /** Un club cualquiera, sin filtro por tenant: el pedido no es de ningun club. */
     @Column(name = "club_id")
@@ -72,6 +72,17 @@ public class PhoneVerification extends BaseEntity {
 
     @Column(name = "booking_error_message", length = 300)
     private String bookingErrorMessage;
+
+    /** La pestana que hizo el pedido: solo ella le cambia el turno (ver V23). */
+    @Column(name = "owner_token", length = 64)
+    private String ownerToken;
+
+    /** Lo que lleva el link de la respuesta para guardar el turno en "Mis turnos", una vez. */
+    @Column(name = "save_code", length = 64)
+    private String saveCode;
+
+    @Column(name = "save_used_at")
+    private Instant saveUsedAt;
 
     public boolean isConfirmed() {
         return confirmedAt != null;

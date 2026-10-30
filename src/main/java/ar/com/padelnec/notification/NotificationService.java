@@ -120,6 +120,29 @@ public class NotificationService {
                         money(booking.getTotalPrice()), managementLink(booking));
     }
 
+    /**
+     * La confirmacion que va como respuesta al WhatsApp con que el jugador confirmo
+     * su numero: la de {@link #confirmedUnpaidMessage}, con el link que guarda el
+     * turno en "Mis turnos" del navegador que lo abre. Hace falta: desde Instagram se
+     * reserva en su navegador, y el link de WhatsApp abre otro que no sabe nada.
+     *
+     * @param saveCode el codigo de un solo uso del link, o nulo si reservo con cuenta
+     */
+    public String confirmedByMessageReply(Tenant club, Booking booking, String saveCode) {
+        String link = saveCode == null
+                ? managementLink(booking)
+                : managementLink(booking) + "?guardar=" + saveCode;
+        return """
+                ✅ ¡Listo %s! Tu turno en *%s* quedó reservado.
+                %s
+                💵 Se abona %s en el club.
+
+                Guardá este mensaje: es el comprobante de tu turno. Para verlo o cancelarlo:
+                %s"""
+                .formatted(firstName(booking), club.getName(), slotLine(club, booking),
+                        money(booking.getTotalPrice()), link);
+    }
+
     /** Sena acreditada por MercadoPago. */
     public void bookingConfirmedPaid(Tenant club, Booking booking) {
         String link = managementLink(booking);

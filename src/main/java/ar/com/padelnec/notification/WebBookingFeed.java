@@ -77,7 +77,7 @@ public class WebBookingFeed {
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
     public void on(BookingEvent event) {
         switch (event.kind()) {
-            case CONFIRMATION_REQUEST, CONFIRMED_UNPAID, CONFIRMED_PAID ->
+            case CONFIRMATION_REQUEST, CONFIRMED_UNPAID, CONFIRMED_BY_PLAYER_MESSAGE, CONFIRMED_PAID ->
                     TenantContext.runAs(event.clubId(), () -> recordNew(event));
             case CANCELLED_BY_CUSTOMER -> TenantContext.runAs(event.clubId(), () -> recordCancelled(event));
             // Lo demas lo hizo el club o el sistema: no hay nada de que avisarle.

@@ -100,21 +100,59 @@ public class BookingService {
 
     @Transactional
     public Booking create(Tenant club, NewBooking request) {
-        Court court = courtRepository.findById(request.courtId())
-                .filter(Court::isActive)
-                .orElseThrow(() -> new ResourceNotFoundException("La cancha no existe o no está activa"));
+        return create(club, request, false);
+    }
+
+    /**
+     * La reserva sin sena que sale cuando llega el WhatsApp con que el jugador
+     * confirmo su numero ({@code WhatsAppInboxService}).
+     *
+     * <p>Queda firme aunque el club pida confirmar por WhatsApp: el jugador acaba de
+     * escribirnos desde ese numero, que es mas de lo que prueba tocar el link. Y al
+     * jugador no se le manda la confirmacion aparte: va en la respuesta a su mensaje.
+     */
+    @Transactional
+    public Booking createFromPlayerMessage(Tenant club, NewBooking request) {
+        return create(club, request, true);
+    }
+
+    /**
+     * Las mismas reglas que {@link #create}, sin tomar nada: para decirle al jugador
+     * que el turno no puede salir antes de mandarlo a WhatsApp, y no cuando vuelve.
+     * Al reservar se miran todas de nuevo, porque en el medio alguien puede tomarlo.
+     */
+    @Transactional(readOnly = true)
+    public void checkBookable(Tenant club, NewBooking request) {
+        Court court = activeCourt(request.courtId());
+        ResolvedSlot slot = openSlot(club, court, request.startTime(), false);
+        validateWindow(club, slot, clock.instant());
+        priceFor(club, court, slot);
+        customerService.cleanName(request.fullName());
+
+        Optional<Customer> known = customerService.findByPhone(request.phoneNumber());
+        if (known.isPresent()) {
+            if (known.get().isBlocked()) {
+                throw new BusinessRuleException(Reason.CUSTOMER_BLOCKED,
+                        "No podemos tomar la reserva online. Comunicate con el club.");
+            }
+            validateQuota(club, known.get(), slot);
+        }
+        resolvePaymentMode(club, known.orElseGet(Customer::new), request.paymentChoice());
+
+        if (!availabilityService.isCourtFree(court, slot.slot().startsAt(), slot.slot().endsAt())) {
+            throw new SlotUnavailableException("Justo tomaron ese turno. Elegí otro horario.");
+        }
+    }
+
+    private Booking create(Tenant club, NewBooking request, boolean fromPlayerMessage) {
+        Court court = activeCourt(request.courtId());
 
         ResolvedSlot slot = openSlot(club, court, request.startTime(), false);
 
         Instant now = clock.instant();
         validateWindow(club, slot, now);
 
-        BigDecimal price = pricingService
-                .resolve(club, pricingService.rulesFor(club, slot.operatingDate().getDayOfWeek()),
-                        court, slot.operatingDate().getDayOfWeek(), slot.slot().startTime())
-                .map(PricingService.ResolvedPrice::totalPrice)
-                .orElseThrow(() -> new BusinessRuleException(Reason.NO_PRICE,
-                        "Ese horario todavía no tiene tarifa publicada. Consultá con el club."));
+        BigDecimal price = priceFor(club, court, slot);
 
         Customer customer = customerService.findOrCreate(
                 request.phoneNumber(), request.fullName(), request.playerAccountId());
@@ -138,7 +176,7 @@ public class BookingService {
         booking.setManagementToken(Tokens.generate());
         booking.setShareToken(Tokens.generate());
 
-        boolean skipConfirmation = payAtClub && !club.isRequiresBookingConfirmation();
+        boolean skipConfirmation = payAtClub && (fromPlayerMessage || !club.isRequiresBookingConfirmation());
 
         if (payAtClub) {
             booking.setDepositAmount(BigDecimal.ZERO);
@@ -161,8 +199,9 @@ public class BookingService {
         leaveWaitlistOnceBooked(saved);
 
         if (skipConfirmation) {
-            events.publishEvent(BookingEvent.of(club.getId(), saved.getId(),
-                    BookingEvent.Kind.CONFIRMED_UNPAID));
+            events.publishEvent(BookingEvent.of(club.getId(), saved.getId(), fromPlayerMessage
+                    ? BookingEvent.Kind.CONFIRMED_BY_PLAYER_MESSAGE
+                    : BookingEvent.Kind.CONFIRMED_UNPAID));
         } else if (payAtClub) {
             events.publishEvent(BookingEvent.of(club.getId(), saved.getId(),
                     BookingEvent.Kind.CONFIRMATION_REQUEST));
@@ -227,6 +266,21 @@ public class BookingService {
     }
 
     /** El turno de la grilla que arranca en {@code startTime}, si esa cancha abre a esa hora. */
+    private Court activeCourt(UUID courtId) {
+        return courtRepository.findById(courtId)
+                .filter(Court::isActive)
+                .orElseThrow(() -> new ResourceNotFoundException("La cancha no existe o no está activa"));
+    }
+
+    private BigDecimal priceFor(Tenant club, Court court, ResolvedSlot slot) {
+        return pricingService
+                .resolve(club, pricingService.rulesFor(club, slot.operatingDate().getDayOfWeek()),
+                        court, slot.operatingDate().getDayOfWeek(), slot.slot().startTime())
+                .map(PricingService.ResolvedPrice::totalPrice)
+                .orElseThrow(() -> new BusinessRuleException(Reason.NO_PRICE,
+                        "Ese horario todavía no tiene tarifa publicada. Consultá con el club."));
+    }
+
     private ResolvedSlot openSlot(Tenant club, Court court, Instant startTime,
                                   boolean allowAvailabilityException) {
         SlotGenerator.ResolvedPlan resolved = slotGenerator.resolveWithPlan(club, startTime)

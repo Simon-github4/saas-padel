@@ -104,6 +104,15 @@ export function LoginPage() {
       />
 
       <div className="mt-6 space-y-4">
+        {/* Se llega acá también desde "Mis turnos" sin turnos guardados. Quien
+            reservó como invitado desde otra app (el navegador de Instagram) no los
+            ve en este: que no lo lea como que la reserva no salió. */}
+        {!showCodeStep && (
+          <Alert tone="info">
+            ¿Reservaste sin cuenta? Tu turno está en el link que te mandamos por WhatsApp: abrilo y
+            queda guardado en este celular.
+          </Alert>
+        )}
         <Card>
           {showCodeStep ? (
             <form className="space-y-5" onSubmit={submitCode}>

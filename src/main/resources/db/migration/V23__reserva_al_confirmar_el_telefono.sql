@@ -27,3 +27,14 @@ ALTER TABLE phone_verification ADD COLUMN booking_id UUID REFERENCES booking (id
 ALTER TABLE phone_verification ADD COLUMN booking_error_code VARCHAR(40);
 ALTER TABLE phone_verification ADD COLUMN booking_error_reason VARCHAR(40);
 ALTER TABLE phone_verification ADD COLUMN booking_error_message VARCHAR(300);
+
+-- La pestana que hizo el pedido: solo ella le cambia el turno. Otra que pide por
+-- el mismo numero recibe un pedido propio, en vez de pisar el horario y el nombre
+-- del mensaje que el jugador ya tiene escrito.
+ALTER TABLE phone_verification ADD COLUMN owner_token VARCHAR(64);
+
+-- El link de la respuesta guarda el turno en "Mis turnos" del navegador que lo
+-- abre, una sola vez: el jugador lo toca apenas llega, y si despues reenvia el
+-- mensaje, quien lo abra ve el turno pero no se lo queda en su lista.
+ALTER TABLE phone_verification ADD COLUMN save_code VARCHAR(64);
+ALTER TABLE phone_verification ADD COLUMN save_used_at TIMESTAMPTZ;

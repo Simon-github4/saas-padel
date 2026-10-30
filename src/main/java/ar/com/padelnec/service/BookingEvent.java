@@ -17,6 +17,12 @@ public record BookingEvent(UUID clubId, UUID bookingId, Kind kind) {
         CONFIRMATION_REQUEST,
         /** Turno de palabra ya confirmado. */
         CONFIRMED_UNPAID,
+        /**
+         * Turno de palabra que salio al llegar el WhatsApp con que el jugador confirmo
+         * su numero. Al jugador no se le manda nada: la confirmacion ya va en la
+         * respuesta a su mensaje. Es para el aviso al club.
+         */
+        CONFIRMED_BY_PLAYER_MESSAGE,
         /** Sena acreditada por MercadoPago. */
         CONFIRMED_PAID,
         /** Se vencio el plazo y la cancha volvio a la grilla. */
