@@ -10,6 +10,7 @@ import ar.com.padelnec.domain.PlayerAccount;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.WaitlistEntry;
 import ar.com.padelnec.domain.enums.AlertType;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.OperationalAlertRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
 import ar.com.padelnec.repository.WaitlistEntryRepository;
@@ -34,10 +35,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -51,21 +49,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, WaitlistServiceTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class WaitlistServiceTest {
 
     private static final String NOW = "2026-09-01T10:00:00Z";
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 1);
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at(NOW);
-        }
-    }
 
     @Autowired private WaitlistService waitlistService;
     @Autowired private WaitlistEntryRepository waitlistEntryRepository;

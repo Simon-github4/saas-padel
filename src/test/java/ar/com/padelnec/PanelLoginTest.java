@@ -7,6 +7,7 @@ import ar.com.padelnec.domain.ClubUser;
 import ar.com.padelnec.domain.PanelLogin;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.UserRole;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.ClubUserRepository;
 import ar.com.padelnec.repository.PanelLoginRepository;
 import ar.com.padelnec.security.RateLimitedAuthenticationProvider;
@@ -30,7 +31,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 /** Cada ingreso al panel queda anotado con el club, la IP y el dispositivo. */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class})
 class PanelLoginTest {
 
     private static final String PASSWORD = "unaClaveLarga123";

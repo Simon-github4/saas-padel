@@ -10,9 +10,11 @@ import ar.com.padelnec.domain.Customer;
 import ar.com.padelnec.domain.RecurringBooking;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.AlertType;
+import ar.com.padelnec.domain.enums.BlackoutKind;
 import ar.com.padelnec.domain.enums.BookingSource;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CancellationReason;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.OperationalAlertRepository;
@@ -38,10 +40,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 
 /**
  * Turnos fijos: el grupo que juega todas las semanas a la misma hora.
@@ -52,23 +51,13 @@ import org.springframework.context.annotation.Primary;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class,
-        RecurringBookingServiceTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class RecurringBookingServiceTest {
 
     /** Martes 01/09/2026. El horizonte de los tests son 4 semanas. */
     private static final String NOW = "2026-09-01T10:00:00Z";
     private static final LocalDate TODAY = LocalDate.of(2026, 9, 1);
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at(NOW);
-        }
-    }
 
     @Autowired private RecurringBookingService recurringBookingService;
     @Autowired private RecurringBookingRepository recurringBookingRepository;
@@ -321,6 +310,24 @@ class RecurringBookingServiceTest {
 
         assertThat(activeOccurrencesOn(horizon)).hasSize(1);
         assertThat(alertRepository.findPending()).hasSize(1);
+    }
+
+    @Test
+    @DisplayName("Un turno fijo que cae en un torneo no se genera y el aviso nombra el torneo")
+    void fixedBookingOnATournamentNamesTheTournament() {
+        fixedBooking(LocalTime.of(20, 0), null);
+        LocalDate horizon = TODAY.plusWeeks(4);
+        Blackout torneo = suspend(horizon, "Torneo Apertura");
+        torneo.setKind(BlackoutKind.TOURNAMENT);
+        blackoutRepository.saveAndFlush(torneo);
+
+        recurringBookingService.materializeUpcoming(club);
+
+        assertThat(activeOccurrencesOn(horizon)).isEmpty();
+        assertThat(alertRepository.findPending())
+                .singleElement()
+                .satisfies(alert -> assertThat(alert.getMessage())
+                        .contains("reservada para el torneo «Torneo Apertura»"));
     }
 
     @Test

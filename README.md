@@ -172,6 +172,44 @@ Los tokens de reserva (`management_token` y sus hermanos) siguen en claro: viaja
 WhatsApp y hay que poder resolverlos desde la URL, y ese cambio es más grande. Lo
 cubre `TokenStorageTest`.
 
+**El panel recuerda el dispositivo 15 días.** La sesión del panel vive en la memoria
+del proceso: se pierde a los 30 minutos sin uso —en el celular, apenas Chrome congela
+la pestaña con la pantalla apagada— y con cada deploy. Al entrar con la clave queda
+una cookie (`panel-recordado`, `HttpOnly`) que vuelve a armar la sesión sola durante
+15 días fijos desde ese ingreso: usarlo todos los días no lo estira. Siempre activo,
+sin casilla: el formulario de login de Vaadin no tiene dónde ponerla. La base guarda
+la huella del token, como las sesiones del jugador, y lo olvida al tocar "Salir", al
+cambiar la clave o al deshabilitar al usuario. El token no rota en cada uso, como el
+`PersistentTokenBasedRememberMeServices` de Spring: al volver con la sesión vencida el
+navegador pide la página y sus recursos en paralelo con la misma cookie, y esa
+rotación lo tomaría como un robo y cerraría todos los dispositivos del usuario. Lo
+cubre `PanelRememberMeTest`.
+
+**Los avisos al celular del club son Web Push hecho a mano.** Quien atiende puede
+tocar "Avisarme en este celular" en su menú (arriba a la derecha) y le llega una
+notificación por cada reserva que entra por la página, con el panel cerrado: "Cancha 2
+· sáb 17/10 09:30 · Juan Pérez · Paga en el club", y por cada turno que un jugador
+cancela desde su link ("Turno cancelado", con lo que queda por hacer: devolver la
+seña, gente en lista de espera). Es de cada persona en cada
+dispositivo (tabla `push_subscription`) y no depende de la sesión; se borra al
+apagarla, al tocar "Salir" en ese dispositivo, al cambiar la clave o deshabilitar al
+usuario, y cuando el servicio de push contesta 404/410. Un solo lugar decide "entró
+una reserva web nueva" o "un jugador canceló" (`WebBookingFeed`, una vez por reserva
+aunque después se confirme) y de ahí salen el cartel con sonido del panel abierto y
+este aviso, que se manda en un hilo aparte (`PanelPushNotifier`): ni el pedido del
+jugador ni el webhook de MercadoPago esperan a FCM o a Apple. Sin librería de Web Push: el cifrado
+`aes128gcm` de RFC 8291 sale con el JDK (lo valida el ejemplo del propio RFC en
+`WebPushEncryptionTest`) y la firma VAPID con nimbus, que ya estaba. El panel se
+instala como "TurnosPadel Club" con su manifest y un service worker propio en
+`/panel-sw.js`, alcance `/admin/`, que solo muestra avisos: sin `fetch` ni cache, por
+eso no se usa el `@PWA` de Vaadin, que arma uno de Workbox que cachea. El permiso se
+pide en el navegador en el momento del toque, sin ir antes al servidor: Safari y
+Firefox lo niegan si llega después. En iPhone hace falta instalar el panel en la
+pantalla de inicio (Safari no permite avisos desde una pestaña), y la opción lo dice.
+La suscripción llega desde la página y el servidor le hace un POST, así que solo se
+aceptan endpoints de los servicios de push conocidos (Google, Mozilla, Apple,
+Microsoft). Lo cubre `PanelPushTest`.
+
 **La identidad del jugador es la cuenta, no el teléfono.** El historial de
 `/account` sale de `booking.player_account_id`, que se completa cuando la reserva
 se hace con sesión iniciada. Antes cruzaba clubes emparejando el teléfono de la
@@ -193,6 +231,50 @@ de la app del jugador sólo admite scripts del propio origen y la política de
 privacidad promete que no hay rastreo de terceros. Además la conversión ya vive en
 esta base, así que el embudo sale de un JOIN y no de una integración. Ver
 [Estadísticas de visitas](#estadísticas-de-visitas).
+
+**El reparto de la caja entre turnos y buffet se calcula al leer, no se guarda.**
+Un cobro de turno es un solo importe: las consumiciones se suman al total del
+turno (`ProductService.registerSale`) y `payment` no dice qué parte pagó. La caja
+del día lo reparte con una regla, en `CashRegisterService.buffetShares`:
+
+- El precio de la cancha es el total del turno menos lo consumido en él.
+- Los cobros del turno, en orden y de cualquier día, llenan primero la cancha
+  (la seña es siempre cancha). **Todo lo que pasa del precio de la cancha es
+  buffet**, también lo cobrado de más.
+- Una devolución recorre lo mismo para atrás: resta primero del buffet.
+- Un cobro de un pedido de buffet sin turno es buffet entero.
+
+Por qué sin tope en lo consumido: lo consumido cambia cuando se saca un producto, y
+con tope un cobro ya hecho cambiaba de parte. Se cobraba una bebida (buffet), se
+sacaba y se devolvía, y el cobro de antes pasaba a figurar como turno; al volver a
+cargarla, otra vez buffet. El precio de la cancha no se mueve al cargar o sacar
+productos, así que cada movimiento se queda en su parte.
+
+Lo que la regla no ve, a sabiendas:
+- Si el mostrador cobra de más en un turno sin consumiciones (25.000 por una cancha
+  de 20.000), el excedente figura como buffet hasta que se devuelve. La devolución
+  también sale del buffet, así que los turnos siempre dan bien.
+- Si las bebidas se pagan antes que la cancha y por otro medio, la regla las cuenta
+  como cancha. El total del día da bien; el reparto por medio de pago puede quedar
+  corrido.
+
+Corregir esos dos casos obliga a guardar la parte de cada cobro en el momento de
+cobrar (una columna en `payment` y su migración) y dejar de recalcularla. No se
+hizo porque son casos de error de tipeo o poco frecuentes, y calcular al leer vale
+también para los días anteriores al cambio. Lo cubre `CashRegisterServiceTest`.
+
+En Estadísticas, **Facturado** suma los turnos (por fecha del turno, con lo
+consumido en ellos) y los pedidos de buffet sin turno (por fecha de venta), en un
+solo número. Lo consumido en un turno no se suma dos veces porque ya está en su
+total. La regla vive en un solo lugar (`BookingStatsService.facturadoOf`), y la
+caja del día le pide ese número a `BookingStatsService.facturado` en vez de
+recalcularlo, para que las dos pantallas den siempre lo mismo. Por eso lo vendido
+de la caja va por fecha calendario y lo pendiente por la agenda del día: en un
+club que cierra después de medianoche, un turno de las 00:30 es pendiente de la
+noche anterior y vendido del día siguiente. En la caja se llama **Vendido** y no
+Facturado porque en el mostrador "facturado" suena a factura; la aclaración dice
+que es el Facturado de Estadísticas. Lo cubren `BookingStatsServiceTest` y
+`CashRegisterServiceTest`.
 
 **Los teléfonos argentinos se fuerzan a celular.** Escrito sin el 15 ni el 9,
 `2262 415000` es indistinguible de una línea fija. Sin esa corrección, el mismo
@@ -354,6 +436,8 @@ plantillas aprobadas por Meta y que cada club conecte su cuenta de MercadoPago.
 | `MP_CLIENT_ID`, `MP_CLIENT_SECRET` | Aplicación de MercadoPago (Tus integraciones) con la que se conectan los clubes por OAuth |
 | `MP_WEBHOOK_SECRET` | Clave secreta de webhooks de esa aplicación: una sola para todos los clubes |
 | `GOOGLE_CLIENT_ID` | Login con Google en la app del jugador |
+| `PUSH_VAPID_PUBLIC_KEY`, `PUSH_VAPID_PRIVATE_KEY` | Claves de los avisos al celular del club (Web Push), en Base64 URL. Se generan una sola vez con `npx web-push generate-vapid-keys`. Sin ellas no hay avisos y la opción no aparece en el panel; en dev se generan solas (`target/dev-vapid-keys.local`). **Si cambian, cada persona tiene que volver a activar los avisos.** |
+| `PUSH_VAPID_SUBJECT` | Contacto que ven los servicios de push si algo falla: `mailto:alguien@...` o una URL `https://`. Vacía, `mailto:` con `MAIL_FROM` |
 
 Sobre las plantillas: WhatsApp solo permite texto libre dentro de las 24 horas
 posteriores a un mensaje del jugador. Todos los avisos de este sistema los inicia el
@@ -387,7 +471,9 @@ Los cambios futuros se agregan como `V2__...`, `V3__...`, sin editar el V1.
 
 Una base de desarrollo creada con las migraciones anteriores a la consolidación
 no arranca (Flyway rechaza el historial): hay que resetearla con
-`DEV_DB_RESET=true` o `mvn clean`.
+`DEV_DB_RESET=true` o `mvn clean`. Lo mismo pasa al volver de una rama con
+migraciones propias; para no pisar esa base, `DEV_DB_DIR` arranca con otra carpeta
+(por ejemplo `target/devdb-otra-rama`).
 
 ### Desplegar con Docker
 

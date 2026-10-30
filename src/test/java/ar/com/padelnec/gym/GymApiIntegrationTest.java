@@ -288,17 +288,21 @@ class GymApiIntegrationTest {
         assertThat(before.get("periodStart").asText()).isNotBlank();
         // Sin adelantos, la cobertura llega hasta el fin del mes corriente.
         assertThat(before.get("paidUntil").asText()).isEqualTo(before.get("periodEnd").asText());
-        assertThat(before.get("weekUsed").asInt()).isZero();
-        assertThat(before.get("weekLimit").asInt()).isEqualTo(3);
+        assertThat(before.get("used").asInt()).isZero();
+        assertThat(before.get("limit").asInt()).isEqualTo(3);
+        // El club cuenta por semana (lo normal): la ventana termina el domingo.
+        assertThat(before.get("limitPeriod").asText()).isEqualTo("WEEK");
+        assertThat(LocalDate.parse(before.get("windowEnd").asText()).getDayOfWeek())
+                .isEqualTo(java.time.DayOfWeek.SUNDAY);
         assertThat(before.get("checkedInToday").asBoolean()).isFalse();
         assertThat(before.get("membership").get("sedes").get(0).asText()).isEqualTo("Necochea");
 
         JsonNode entry = post("los-troncos", "/checkin", token, Map.of("qrToken", qr()), 200);
         assertThat(entry.get("sedeName").asText()).isEqualTo("Necochea");
-        assertThat(entry.get("weekUsed").asInt()).isEqualTo(1);
+        assertThat(entry.get("used").asInt()).isEqualTo(1);
 
         JsonNode after = get("los-troncos", "/me", token, 200);
-        assertThat(after.get("weekUsed").asInt()).isEqualTo(1);
+        assertThat(after.get("used").asInt()).isEqualTo(1);
         assertThat(after.get("checkedInToday").asBoolean()).isTrue();
         assertThat(after.get("recent")).hasSize(1);
     }
@@ -420,5 +424,26 @@ class GymApiIntegrationTest {
                             .contains("rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"/gym/los-troncos/icon-180.png\"")
                             .doesNotContain("href=\"/apple-touch-icon.png\""));
         }
+    }
+
+    @Test
+    @DisplayName("Con un nuevo inicio de mes que deja hueco, \"mi estado\" dice que dias no entra y que tiene pago despues")
+    void meExplainsTheGapBeforeANewStart() {
+        String token = readyToken(ana);
+        assertThat(get("los-troncos", "/me", token, 200).get("gap").isNull()).isTrue();
+
+        // Ana tiene pago hasta dentro de 29 dias; el mes nuevo arranca dentro de 35.
+        LocalDate today = LocalDate.now(ZONE);
+        LocalDate newStart = today.plusDays(35);
+        TenantContext.runAs(club.getId(), () -> membershipService.charge(ana.id(), 1, new BigDecimal("30000"), 3,
+                PayMethod.CASH, sede.getId(), Set.of(sede.getId()), null, today, newStart, null));
+
+        JsonNode me = get("los-troncos", "/me", token, 200);
+        assertThat(me.get("canEnter").asBoolean()).isTrue();
+        assertThat(me.get("paidUntil").asText()).isEqualTo(today.plusDays(29).toString());
+        assertThat(me.get("gap").get("start").asText()).isEqualTo(today.plusDays(30).toString());
+        assertThat(me.get("gap").get("end").asText()).isEqualTo(today.plusDays(34).toString());
+        assertThat(me.get("paidAhead").get("start").asText()).isEqualTo(newStart.toString());
+        assertThat(me.get("paidAhead").get("end").asText()).isEqualTo(newStart.plusMonths(1).minusDays(1).toString());
     }
 }

@@ -1,5 +1,6 @@
 package ar.com.padelnec.ui;
 
+import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
@@ -8,29 +9,44 @@ import ar.com.padelnec.notification.NotificationService;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.ProductRepository;
+import ar.com.padelnec.repository.TenantStoryTemplateRepository;
 import ar.com.padelnec.security.ClubUserPrincipal;
+import ar.com.padelnec.service.BlackoutService;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.CustomerService;
+import ar.com.padelnec.service.DayStoryService;
 import ar.com.padelnec.service.PaymentService;
 import ar.com.padelnec.service.ProductService;
 import ar.com.padelnec.service.SlotGenerator;
 import ar.com.padelnec.service.SlotGenerator.Slot;
 import ar.com.padelnec.service.TenantService;
+import ar.com.padelnec.service.TournamentService;
+import ar.com.padelnec.service.TournamentService.MarkResult;
+import ar.com.padelnec.service.TournamentService.TournamentSlot;
 import ar.com.padelnec.support.PhoneNumbers;
+import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.spring.security.AuthenticationContext;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.details.Details;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.icon.VaadinIcon;
+import com.vaadin.flow.component.notification.Notification;
+import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
+import com.vaadin.flow.component.textfield.TextField;
+import com.vaadin.flow.router.BeforeEnterEvent;
+import com.vaadin.flow.router.BeforeEnterObserver;
+import com.vaadin.flow.router.Location;
 import com.vaadin.flow.router.PageTitle;
+import com.vaadin.flow.router.QueryParameters;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
@@ -43,11 +59,15 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 /**
  * Agenda del dia: canchas contra horarios, que es como el club mira su negocio.
@@ -55,15 +75,28 @@ import java.util.UUID;
  * <p>Muestra a la vez lo vendido y lo que queda libre. Un hueco no es una celda
  * vacia sino una venta pendiente, asi que se puede tocar para cargar ahi mismo el
  * turno que entro por telefono.
+ *
+ * <p>En modo torneo, los huecos se tocan para elegirlos (uno por uno, o la fila o
+ * la columna entera) y se guardan juntos como turnos de un torneo: ver
+ * {@link TournamentService}.
  */
 @Route(value = "", layout = MainLayout.class)
 @PageTitle("Agenda | Panel del club")
 @PermitAll
-public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings {
+public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings, BeforeEnterObserver {
+
+    /**
+     * {@code /admin/?reserva=<id>}: la agenda abre en el dia de ese turno y lo marca.
+     * Es a donde lleva "Ver agenda" del aviso de una reserva o una cancelacion, en el
+     * panel y en el celular ({@code PanelPushNotifier} arma el mismo link a mano).
+     */
+    static final String BOOKING_PARAM = "reserva";
 
     private static final DateTimeFormatter DATE_HEADING =
             DateTimeFormatter.ofPattern("EEEE d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es-AR"));
     private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter WEEKDAY =
+            DateTimeFormatter.ofPattern("EEEE", Locale.forLanguageTag("es-AR"));
 
     private final TenantService tenantService;
     private final BookingService bookingService;
@@ -76,6 +109,11 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
     private final PhoneNumbers phoneNumbers;
     private final NotificationService notificationService;
     private final CustomerService customerService;
+    private final TournamentService tournamentService;
+    private final BlackoutService blackoutService;
+    private final DayStoryService dayStoryService;
+    private final TenantStoryTemplateRepository storyTemplates;
+    private final AppProperties properties;
     private final transient AuthenticationContext authenticationContext;
     private final Clock clock;
 
@@ -86,18 +124,53 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
     private final VerticalLayout fixedListItems = new VerticalLayout();
     private final Div board = new Div();
 
+    private final Button markTournament = new Button();
+    private final Button copyPreviousDay = new Button();
+    private final HorizontalLayout tournamentBar = new HorizontalLayout();
+    private final Span tournamentCount = new Span();
+    private final TextField tournamentName = new TextField();
+
     private Tenant club;
     private List<Court> courts = List.of();
     private List<Blackout> blackouts = List.of();
     private SlotGenerator.DayPlan plan;
     private Map<UUID, Instant> bookingRows = Map.of();
 
+    /** En modo torneo, tocar un hueco lo elige en vez de abrir la carga de un turno. */
+    private boolean marking;
+    private final Set<TournamentSlot> marked = new LinkedHashSet<>();
+    /**
+     * Los huecos que se pueden elegir en el tablero dibujado, con su tarjeta: elegir
+     * uno cambia solo esa tarjeta, sin redibujar todo (y sin que salte el scroll).
+     */
+    private final Map<TournamentSlot, MarkableCard> markable = new LinkedHashMap<>();
+
+    private record MarkableCard(Div card, Button button) {
+    }
+
+    /**
+     * El turno que se vino a ver desde un aviso: su cancha y su hora, no la reserva,
+     * porque si el jugador la cancelo lo que hay que mirar es el hueco que dejo.
+     */
+    private record Spotlight(UUID courtId, Instant startsAt) {
+    }
+
+    /**
+     * Solo mientras se dibuja el tablero al llegar: la marca es un aviso de unos
+     * segundos, no un estado, asi que el tablero que se redibuja despues ya no la lleva.
+     */
+    private Spotlight spotlight;
+    /** Lo que dura la marca en {@code .agenda-card--spotlight}; despues se limpia el link. */
+    private static final int SPOTLIGHT_MILLIS = 4_000;
+
     public AgendaView(TenantService tenantService, BookingService bookingService,
                       CourtRepository courtRepository, BlackoutRepository blackoutRepository,
                       SlotGenerator slotGenerator, PaymentService paymentService,
                       ProductService productService, ProductRepository productRepository,
                       PhoneNumbers phoneNumbers, NotificationService notificationService,
-                      CustomerService customerService,
+                      CustomerService customerService, TournamentService tournamentService,
+                      BlackoutService blackoutService, DayStoryService dayStoryService,
+                      TenantStoryTemplateRepository storyTemplates, AppProperties properties,
                       AuthenticationContext authenticationContext, Clock clock) {
         this.tenantService = tenantService;
         this.bookingService = bookingService;
@@ -110,6 +183,11 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         this.phoneNumbers = phoneNumbers;
         this.notificationService = notificationService;
         this.customerService = customerService;
+        this.tournamentService = tournamentService;
+        this.blackoutService = blackoutService;
+        this.dayStoryService = dayStoryService;
+        this.storyTemplates = storyTemplates;
+        this.properties = properties;
         this.authenticationContext = authenticationContext;
         this.clock = clock;
 
@@ -129,13 +207,79 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         fixedList.setOpened(true);
         fixedList.addClassName("agenda-fixed-details");
 
-        add(header(), fixedList, board, legend());
+        add(header(), fixedList, board, legend(), tournamentBar());
         addClassNames(LumoUtility.Gap.MEDIUM);
+        setMarking(false);
 
         this.club = tenantService.requireCurrent();
         // El value-change listener de dayPicker() ya quedo registrado por add(header()...)
         // de arriba, asi que este setValue dispara el primer refresh() solo.
         datePicker.setValue(LocalDate.now(club.zoneId()));
+    }
+
+    static QueryParameters showing(UUID bookingId) {
+        return QueryParameters.of(BOOKING_PARAM, bookingId.toString());
+    }
+
+    /**
+     * Viniendo de un aviso, salta al dia del turno y lo marca. La reserva se busca en
+     * el club de la sesion ({@code @TenantId}): un id de otro club no encuentra nada.
+     */
+    @Override
+    public void beforeEnter(BeforeEnterEvent event) {
+        event.getLocation().getQueryParameters().getSingleParameter(BOOKING_PARAM)
+                .flatMap(AgendaView::parseUuid)
+                .flatMap(bookingService::findByIdWithDetails)
+                .ifPresent(this::spotlight);
+    }
+
+    private static Optional<UUID> parseUuid(String text) {
+        try {
+            return Optional.of(UUID.fromString(text));
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
+    }
+
+    private void spotlight(Booking booking) {
+        spotlight = new Spotlight(booking.getCourt().getId(), booking.getStartTime());
+        LocalDate day = booking.getStartTime().atZone(club.zoneId()).toLocalDate();
+        if (day.equals(datePicker.getValue())) {
+            // Mismo dia: el DatePicker no dispara el cambio, y el tablero hay que
+            // redibujarlo igual para que aparezca la marca.
+            setMarking(false);
+            refresh();
+        } else {
+            datePicker.setValue(day);
+        }
+        spotlight = null;
+        // Con muchas canchas u horarios la tarjeta puede quedar fuera de la
+        // pantalla, sobre todo en el celular. En el cuadro siguiente: entrando de
+        // cero (desde el aviso del celular) el tablero todavia no tiene alto.
+        getElement().executeJs("""
+                requestAnimationFrame(() => requestAnimationFrame(() => {
+                  const card = this.querySelector('.agenda-card--spotlight');
+                  if (card) card.scrollIntoView({block: 'center', inline: 'center'});
+                }));
+                return new Promise((resolve) => setTimeout(resolve, $0));
+                """, SPOTLIGHT_MILLIS).then(ignored -> forgetBookingLink(booking.getId()));
+    }
+
+    /**
+     * Pasada la marca, el link vuelve a ser el de la agenda: si no, recargar la pagina
+     * (o volver a abrir la app instalada) marcaria el mismo turno otra vez. Solo si
+     * todavia se esta en la agenda de ese turno: en esos segundos se pudo haber ido a
+     * otra pantalla, o a otro turno desde un aviso nuevo.
+     */
+    private void forgetBookingLink(UUID bookingId) {
+        getUI().ifPresent(ui -> {
+            Location location = ui.getInternals().getActiveViewLocation();
+            boolean stillHere = location.getPath().isEmpty() && location.getQueryParameters()
+                    .getSingleParameter(BOOKING_PARAM).filter(bookingId.toString()::equals).isPresent();
+            if (stillHere) {
+                ui.getPage().getHistory().replaceState(null, "");
+            }
+        });
     }
 
     // --------------------------------------------------------------- header
@@ -164,7 +308,11 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
 
     private HorizontalLayout dayPicker() {
         datePicker.setI18n(SpanishDates.datePicker());
-        datePicker.addValueChangeListener(event -> refresh());
+        datePicker.addValueChangeListener(event -> {
+            // Un torneo se elige dia por dia: cambiar de dia descarta lo elegido.
+            setMarking(false);
+            refresh();
+        });
 
         Button previous = new Button(VaadinIcon.ANGLE_LEFT.create(),
                 event -> datePicker.setValue(datePicker.getValue().minusDays(1)));
@@ -180,12 +328,38 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
                 event -> datePicker.setValue(LocalDate.now(club.zoneId())));
         today.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
 
+        // Lleno y con el violeta de los torneos, no terciario como "Hoy": al lado
+        // de las flechas del dia pasaba por un control mas y no se encontraba.
+        markTournament.addClassName("agenda-tournament-toggle");
+        markTournament.addClickListener(event -> {
+            setMarking(!marking);
+            refresh();
+        });
+
+        // Para un torneo de varios dias: se marca el primero y los demas se copian
+        // del anterior. Solo se muestra si el dia anterior tiene algo que copiar.
+        copyPreviousDay.setIcon(VaadinIcon.COPY_O.create());
+        copyPreviousDay.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        copyPreviousDay.setTooltipText("Copia a este día los torneos y suspensiones del día anterior");
+        copyPreviousDay.addClickListener(event -> openCopyPreviousDay());
+        copyPreviousDay.setVisible(false);
+
+        // La historia de Instagram con lo que queda libre del dia que se esta mirando.
+        Button story = new Button("Historia", VaadinIcon.PICTURE.create(), event -> new StoryDialog(
+                datePicker.getValue(), dayStoryService, tenantService, storyTemplates,
+                properties.getBaseUrl() + "/club/" + club.getSlug()).open());
+        story.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        story.setTooltipText("Armar la historia de Instagram con los turnos libres del día");
+
         // Sin label, el campo ya no tiene un renglon extra arriba: las flechas
         // se alinean al centro con el resto del control de un solo bloque.
-        HorizontalLayout dayPicker = new HorizontalLayout(previous, datePicker, next, today);
+        HorizontalLayout dayPicker = new HorizontalLayout(previous, datePicker, next, today, story,
+                markTournament, copyPreviousDay);
         dayPicker.setAlignItems(Alignment.CENTER);
         dayPicker.setPadding(false);
-        dayPicker.addClassNames(LumoUtility.Gap.XSMALL);
+        // En el celular "Marcar torneo" baja a otro renglon: en uno solo no
+        // entra y corria toda la pagina de costado.
+        dayPicker.addClassNames(LumoUtility.Gap.XSMALL, LumoUtility.FlexWrap.WRAP);
         return dayPicker;
     }
 
@@ -202,7 +376,8 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
                 legendItem("pending", "Sin confirmar"),
                 legendItem("neutral", "Falta cobrar"),
                 legendItem("success", "Cobrado"),
-                legendItem("suspended", "Suspendido"));
+                legendItem("suspended", "Suspendido"),
+                legendItem("tournament", "Torneo"));
         legend.addClassName("agenda-legend");
         return legend;
     }
@@ -213,6 +388,132 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         Div item = new Div(dot, new Span(label));
         item.addClassName("agenda-legend__item");
         return item;
+    }
+
+    // ---------------------------------------------------------- modo torneo
+
+    /**
+     * La barra del modo torneo, pegada al pie de la pantalla como la de Guardar de
+     * Configuracion: con muchos horarios el tablero es mas alto que la pantalla, y
+     * el boton tiene que estar a mano mientras se eligen los de abajo.
+     */
+    private HorizontalLayout tournamentBar() {
+        tournamentCount.addClassName("agenda-tournament-bar__count");
+        tournamentName.setPlaceholder("Nombre del torneo");
+        tournamentName.setAriaLabel("Nombre del torneo");
+        tournamentName.setMaxLength(160);
+        tournamentName.addValueChangeListener(event -> tournamentName.setInvalid(false));
+
+        Button cancel = new Button("Cancelar", event -> {
+            setMarking(false);
+            refresh();
+        });
+        cancel.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        Button save = new Button("Guardar torneo", event -> saveTournament());
+        save.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+
+        tournamentBar.add(tournamentCount, tournamentName, cancel, save);
+        tournamentBar.setFlexGrow(1, tournamentName);
+        tournamentBar.setAlignItems(Alignment.CENTER);
+        tournamentBar.setWidthFull();
+        tournamentBar.addClassName("agenda-tournament-bar");
+        return tournamentBar;
+    }
+
+    /** Entra o sale del modo torneo, siempre sin nada elegido. No redibuja el tablero. */
+    private void setMarking(boolean on) {
+        marking = on;
+        marked.clear();
+        tournamentName.clear();
+        tournamentName.setInvalid(false);
+        markTournament.setText(on ? "Salir del modo torneo" : "Marcar torneo");
+        markTournament.setIcon((on ? VaadinIcon.CLOSE_SMALL : VaadinIcon.TROPHY).create());
+        markTournament.getClassNames().set("agenda-tournament-toggle--on", on);
+        board.getElement().getClassList().set("agenda-board--marking", on);
+        tournamentBar.setVisible(on);
+        updateTournamentCount();
+    }
+
+    private void toggle(TournamentSlot slot) {
+        if (!marked.remove(slot)) {
+            marked.add(slot);
+        }
+        paint(slot);
+        updateTournamentCount();
+    }
+
+    /** Elige la fila o la columna entera; si ya estaba toda elegida, la suelta. */
+    private void toggleAll(List<TournamentSlot> slots) {
+        if (slots.isEmpty()) {
+            return;
+        }
+        if (marked.containsAll(slots)) {
+            slots.forEach(marked::remove);
+        } else {
+            marked.addAll(slots);
+        }
+        slots.forEach(this::paint);
+        updateTournamentCount();
+    }
+
+    private void paint(TournamentSlot slot) {
+        MarkableCard markableCard = markable.get(slot);
+        if (markableCard == null) {
+            return;
+        }
+        boolean picked = marked.contains(slot);
+        markableCard.card().getClassNames().set("agenda-card--picked", picked);
+        markableCard.button().setText(picked ? "✓ Torneo" : "Libre");
+    }
+
+    private void updateTournamentCount() {
+        long courtCount = marked.stream().map(TournamentSlot::courtId).distinct().count();
+        tournamentCount.setText("%d %s en %d %s".formatted(
+                marked.size(), marked.size() == 1 ? "turno" : "turnos",
+                courtCount, courtCount == 1 ? "cancha" : "canchas"));
+    }
+
+    private void saveTournament() {
+        MarkResult result;
+        try {
+            result = tournamentService.mark(club, tournamentName.getValue(), marked);
+        } catch (BusinessRuleException ex) {
+            // El mensaje ya viene escrito para leerse en pantalla.
+            Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+        String name = tournamentName.getValue().strip();
+        setMarking(false);
+        refresh();
+
+        if (result.marked() == 0) {
+            Notification.show("No se guardó ningún turno: ya no estaban libres.")
+                    .addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+        String saved = "%s: %d %s.".formatted(name, result.marked(), result.marked() == 1 ? "turno" : "turnos");
+        if (result.leftOut().isEmpty()) {
+            Notification.show(saved).addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+            return;
+        }
+        // Entre que se eligieron y se guardaron, alguien pudo reservar uno: el club
+        // tiene que saber cual, porque en el tablero ya no lo va a ver como torneo.
+        Notification notice = Notification.show("%s %s se %s mientras marcabas y %s afuera.".formatted(
+                saved, describe(result.leftOut()),
+                result.leftOut().size() == 1 ? "ocupó" : "ocuparon",
+                result.leftOut().size() == 1 ? "quedó" : "quedaron"), 8000, Notification.Position.BOTTOM_START);
+        notice.addThemeVariants(NotificationVariant.LUMO_WARNING);
+    }
+
+    /** "Cancha 2 18:30 y Cancha 3 20:00", para decir que turnos quedaron afuera. */
+    private String describe(List<TournamentSlot> slots) {
+        Map<UUID, String> names = courts.stream().collect(Collectors.toMap(Court::getId, Court::getName));
+        List<String> parts = slots.stream()
+                .map(slot -> "%s %s".formatted(names.getOrDefault(slot.courtId(), "Una cancha"),
+                        HH_MM.format(slot.startsAt().atZone(club.zoneId()))))
+                .toList();
+        return parts.size() == 1 ? parts.getFirst()
+                : String.join(", ", parts.subList(0, parts.size() - 1)) + " y " + parts.getLast();
     }
 
     // ---------------------------------------------------------------- datos
@@ -265,14 +566,41 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         renderBoard(rows);
         summary.setText(summaryOf(rows));
         renderFixedList(bookings);
+        dropWhatIsNoLongerFree();
+
+        BlackoutService.DayCopy copy = blackoutService.previewCopyFromPreviousDay(club, date);
+        copyPreviousDay.setText("Copiar del " + WEEKDAY.format(copy.source()));
+        copyPreviousDay.setVisible(!marking && !copy.isEmpty());
     }
 
     /**
-     * Redibuja el dia que se esta mirando, sea o no el de la reserva nueva: es
-     * una consulta por reserva que entra, y asi no hay que adivinar que dia toca.
+     * Si entra una reserva mientras se elige un torneo, el tablero se redibuja con
+     * lo elegido, menos lo que ya no esta libre: se avisa para que no se pierda de
+     * vista.
+     */
+    private void dropWhatIsNoLongerFree() {
+        if (!marking) {
+            return;
+        }
+        int before = marked.size();
+        marked.retainAll(markable.keySet());
+        int dropped = before - marked.size();
+        if (dropped > 0) {
+            Notification.show(dropped == 1
+                            ? "Uno de los turnos que elegiste se ocupó y quedó afuera."
+                            : "%d de los turnos que elegiste se ocuparon y quedaron afuera.".formatted(dropped),
+                    6000, Notification.Position.BOTTOM_START)
+                    .addThemeVariants(NotificationVariant.LUMO_WARNING);
+        }
+        updateTournamentCount();
+    }
+
+    /**
+     * Redibuja el dia que se esta mirando, sea o no el de la reserva nueva o la
+     * cancelada: es una consulta por aviso, y asi no hay que adivinar que dia toca.
      */
     @Override
-    public void newBookingsArrived() {
+    public void webBookingsChanged() {
         refresh();
     }
 
@@ -338,7 +666,16 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         long total = courts.stream().mapToLong(plan::slotsOpenIn).sum();
         // Distintos: con canchas de turnos corridos, un turno cruza dos filas.
         long taken = rows.stream().flatMap(row -> row.byCourt().values().stream()).distinct().count();
-        return "%d de %d turnos vendidos".formatted(taken, total);
+        // Los turnos de un torneo no estan a la venta: no cuentan como turnos por
+        // vender, y se nombran aparte para que el total no parezca un dia flojo.
+        long tournament = rows.stream()
+                .mapToLong(row -> courts.stream()
+                        .filter(court -> plan.opens(court, row.slot()) && row.at(court).isEmpty()
+                                && suspensionFor(row, court).filter(Blackout::isTournament).isPresent())
+                        .count())
+                .sum();
+        String sold = "%d de %d turnos vendidos".formatted(taken, total - tournament);
+        return tournament == 0 ? sold : "%s · %d de torneo".formatted(sold, tournament);
     }
 
     /** Reconstruye el tablero entero: una celda de esquina, un encabezado por
@@ -347,6 +684,7 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
      * dimensiones que fija grid-template-columns/-rows mas abajo. */
     private void renderBoard(List<AgendaRow> rows) {
         board.removeAll();
+        markable.clear();
         if (courts.isEmpty()) {
             board.add(new Span("Todavia no cargaste ninguna cancha."));
             return;
@@ -366,8 +704,21 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         courts.forEach(court -> board.add(courtHeader(court)));
         for (AgendaRow row : rows) {
             board.add(timeLabel(row));
-            courts.forEach(court -> board.add(slotCard(row, court)));
+            courts.forEach(court -> board.add(spotlit(slotCard(row, court), row, court)));
         }
+    }
+
+    /**
+     * La tarjeta del turno que se vino a ver late con un anillo naranja unos segundos
+     * y vuelve a ser una tarjeta mas (la animacion termina sola, ver styles.css).
+     */
+    private Component spotlit(Component card, AgendaRow row, Court court) {
+        boolean here = spotlight != null && spotlight.courtId().equals(court.getId())
+                && spotlight.startsAt().equals(row.slot().startsAt());
+        if (here && card instanceof Div div && div.hasClassName("agenda-card")) {
+            div.addClassName("agenda-card--spotlight");
+        }
+        return card;
     }
 
     private Component corner() {
@@ -377,15 +728,37 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
     }
 
     private Component courtHeader(Court court) {
-        Div header = new Div(new Span(court.getName()));
+        Div header = new Div(marking
+                ? markAllButton(court.getName(), "Elegir toda la columna",
+                        slot -> slot.courtId().equals(court.getId()))
+                : new Span(court.getName()));
         header.addClassNames("agenda-board__court-header", "agenda-board__header-cell");
         return header;
     }
 
     private Component timeLabel(AgendaRow row) {
-        Div label = new Div(new Span(row.start().toString()));
+        Div label = new Div(marking
+                ? markAllButton(row.start().toString(), "Elegir toda la fila",
+                        slot -> slot.startsAt().equals(row.slot().startsAt()))
+                : new Span(row.start().toString()));
         label.addClassNames("agenda-board__time-label", "agenda-board__header-cell", "tabular");
         return label;
+    }
+
+    /**
+     * En modo torneo, el nombre de la cancha y el horario eligen su columna o su fila.
+     * Lo que se elige se mira al tocar, no al dibujar: las tarjetas de esa fila
+     * todavia no existen cuando se dibuja su horario.
+     */
+    private Button markAllButton(String text, String tooltip,
+                                 Predicate<TournamentSlot> belongs) {
+        Button button = new Button(text, event -> toggleAll(markable.keySet().stream()
+                .filter(belongs)
+                .toList()));
+        button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+        button.addClassName("agenda-board__mark-all");
+        button.setTooltipText(tooltip);
+        return button;
     }
 
     // --------------------------------------------------------------- celdas
@@ -410,8 +783,8 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         button.addClassName("agenda-card__button");
         button.setWidthFull();
-        button.setEnabled(row.slot().startsAt().isAfter(clock.instant()));
-        button.getElement().setAttribute("title", "Podés cargar un turno manual como excepción");
+        button.setEnabled(!marking && row.slot().startsAt().isAfter(clock.instant()));
+        button.setTooltipText("Podés cargar un turno manual como excepción");
         Div wrapper = card(button, "agenda-card--suspended");
         if (!button.isEnabled()) {
             wrapper.addClassName("agenda-card--disabled");
@@ -429,7 +802,7 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
                 event -> openDetail(booking));
         button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         button.addClassName("agenda-card__button");
-        button.getElement().setAttribute("title", otherName
+        button.setTooltipText(otherName
                 ? "Reservó como %s · el teléfono es de %s".formatted(
                         booking.displayName(), booking.getCustomer().getFullName())
                 : booking.displayName());
@@ -439,7 +812,13 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
         // saca ancho al nombre, que es el dato que hace falta leer de un vistazo.
         // Que color es cada estado se explica una sola vez en la referencia de
         // abajo del tablero, no repetido en cada tarjeta.
-        return card(button, "agenda-card--booked", "agenda-card--" + tone.modifier());
+        Div wrapper = card(button, "agenda-card--booked", "agenda-card--" + tone.modifier());
+        if (marking) {
+            // En modo torneo solo se tocan los huecos: lo demas queda atenuado.
+            button.setEnabled(false);
+            wrapper.addClassName("agenda-card--disabled");
+        }
+        return wrapper;
     }
 
     /**
@@ -484,30 +863,60 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
     private Component freeCard(AgendaRow row, Court court) {
         Optional<Blackout> suspension = suspensionFor(row, court);
         boolean blocked = suspension.isPresent();
+        boolean tournament = suspension.filter(Blackout::isTournament).isPresent();
         // Un turno que ya empezo no se puede cargar hacia atras. Una suspension
         // futura si admite una carga administrativa, con confirmacion explicita.
-        boolean enabled = row.slot().startsAt().isAfter(clock.instant());
+        boolean future = row.slot().startsAt().isAfter(clock.instant());
+        if (marking && future && !blocked) {
+            return markableCard(row, court);
+        }
+        boolean enabled = future && !marking;
 
         String exception = suspension.map(blackout -> {
             String reason = blackout.getReason();
+            if (blackout.isTournament()) {
+                return "La cancha está reservada para el torneo «%s».".formatted(reason);
+            }
             return reason == null || reason.isBlank()
                     ? "La cancha está suspendida en este horario."
                     : "La cancha está suspendida por «%s».".formatted(reason);
         }).orElse(null);
-        Button button = new Button(blocked ? "Suspendido" : "Libre",
-                event -> openManualBooking(row, court, exception));
+        // El torneo se nombra en la tarjeta: es lo que el mostrador busca con la
+        // vista ("¿donde juega el torneo?"), no un aviso de que algo anda mal.
+        String label = tournament ? suspension.get().getReason() : blocked ? "Suspendido" : "Libre";
+        Button button = new Button(label, event -> {
+            if (blocked) {
+                openSuspendedSlot(row, court, exception);
+            } else {
+                openManualBooking(row, court, null);
+            }
+        });
         button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
         button.addClassName("agenda-card__button");
         button.setWidthFull();
         button.setEnabled(enabled);
-        suspension.map(Blackout::getReason)
+        suspension.map(blackout -> blackout.isTournament() ? "Torneo: " + blackout.getReason() : blackout.getReason())
                 .filter(reason -> reason != null && !reason.isBlank())
-                .ifPresent(reason -> button.getElement().setAttribute("title", reason));
+                .ifPresent(button::setTooltipText);
 
-        Div wrapper = card(button, blocked ? "agenda-card--suspended" : "agenda-card--free");
+        Div wrapper = card(button, tournament ? "agenda-card--tournament"
+                : blocked ? "agenda-card--suspended" : "agenda-card--free");
         if (!enabled) {
             wrapper.addClassName("agenda-card--disabled");
         }
+        return wrapper;
+    }
+
+    /** Un hueco en modo torneo: tocarlo lo elige o lo suelta. */
+    private Component markableCard(AgendaRow row, Court court) {
+        TournamentSlot slot = new TournamentSlot(court.getId(), row.slot().startsAt());
+        Button button = new Button("Libre", event -> toggle(slot));
+        button.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+        button.addClassName("agenda-card__button");
+        button.setWidthFull();
+        Div wrapper = card(button, "agenda-card--free", "agenda-card--markable");
+        markable.put(slot, new MarkableCard(wrapper, button));
+        paint(slot);
         return wrapper;
     }
 
@@ -526,6 +935,113 @@ public class AgendaView extends VerticalLayout implements RefreshesOnNewBookings
                 .orElse(null);
         new BookingDetailDialog(booking, club, bookingService, paymentService, productService,
                 productRepository, phoneNumbers, notificationService, userId, this::refresh).open();
+    }
+
+    /**
+     * Un turno suspendido o de torneo: se puede liberar (vuelve a estar a la venta,
+     * recortando la suspension) o cargar un turno igual, como excepcion. Antes el
+     * toque iba directo a la carga del turno, y la unica forma de abrir un horario
+     * era borrar la suspension entera y volver a cargarla sin ese turno.
+     */
+    private void openSuspendedSlot(AgendaRow row, Court court, String exception) {
+        ConfirmDialog dialog = new ConfirmDialog();
+        dialog.setHeader("%s · %s".formatted(court.getName(), row.start()));
+        dialog.setText(exception + " Podés liberar este horario para que se pueda reservar, "
+                + "o cargar un turno igual.");
+        dialog.setCancelable(true);
+        dialog.setCancelText("Volver");
+        dialog.setRejectable(true);
+        dialog.setRejectText("Cargar turno igual");
+        dialog.addRejectListener(event -> openManualBooking(row, court, exception));
+        dialog.setConfirmText("Liberar este horario");
+        dialog.addConfirmListener(event -> release(row, court));
+        dialog.open();
+    }
+
+    private void release(AgendaRow row, Court court) {
+        BlackoutService.Released released;
+        try {
+            released = blackoutService.release(club, court.getId(), row.slot().startsAt());
+        } catch (BusinessRuleException ex) {
+            Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+            refresh();
+            return;
+        }
+        refresh();
+        Notification.show("%s de %s a %s quedó libre para reservar.".formatted(court.getName(),
+                        HH_MM.format(released.startsAt().atZone(club.zoneId())),
+                        HH_MM.format(released.endsAt().atZone(club.zoneId()))))
+                .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+    }
+
+    /**
+     * Muestra que se va a copiar del dia anterior antes de copiarlo: una copia que
+     * no se ve hasta despues es la que se descubre cuando un jugador no encuentra
+     * turno.
+     */
+    private void openCopyPreviousDay() {
+        LocalDate date = datePicker.getValue();
+        BlackoutService.DayCopy copy = blackoutService.previewCopyFromPreviousDay(club, date);
+        String sourceDay = WEEKDAY.format(copy.source());
+        if (copy.isEmpty()) {
+            Notification.show("No queda nada del %s para copiar.".formatted(sourceDay));
+            refresh();
+            return;
+        }
+
+        VerticalLayout content = new VerticalLayout();
+        content.setPadding(false);
+        content.setSpacing(false);
+        content.addClassNames(LumoUtility.Gap.XSMALL);
+        content.add(new Span("Se copian a este día, con la misma cancha y el mismo horario:"));
+        copy.blackouts().forEach(blackout -> {
+            Span line = new Span("• " + describe(blackout));
+            line.addClassNames(LumoUtility.FontWeight.MEDIUM);
+            content.add(line);
+        });
+        if (copy.bookingsInside() > 0) {
+            Span warning = new Span(copy.bookingsInside() == 1
+                    ? "Hay un turno ya reservado en esos horarios: sigue vigente, revisalo."
+                    : "Hay %d turnos ya reservados en esos horarios: siguen vigentes, revisalos."
+                            .formatted(copy.bookingsInside()));
+            warning.addClassNames(LumoUtility.TextColor.ERROR, LumoUtility.FontSize.SMALL);
+            content.add(warning);
+        }
+
+        ConfirmDialog dialog = new ConfirmDialog();
+        dialog.setHeader("Copiar del " + sourceDay);
+        dialog.setText(content);
+        dialog.setCancelable(true);
+        dialog.setCancelText("Volver");
+        dialog.setConfirmText("Copiar");
+        dialog.addConfirmListener(event -> copyFromPreviousDay(date, sourceDay));
+        dialog.open();
+    }
+
+    private void copyFromPreviousDay(LocalDate date, String sourceDay) {
+        List<Blackout> copied;
+        try {
+            copied = blackoutService.copyFromPreviousDay(club, date);
+        } catch (BusinessRuleException ex) {
+            Notification.show(ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+            return;
+        }
+        refresh();
+        Notification.show(copied.isEmpty()
+                        ? "No quedaba nada del %s para copiar.".formatted(sourceDay)
+                        : "Listo: se copió lo del %s.".formatted(sourceDay))
+                .addThemeVariants(NotificationVariant.LUMO_SUCCESS);
+    }
+
+    /** "Torneo «Apertura» · Cancha 1 · 17:00 a 21:30". */
+    private String describe(Blackout blackout) {
+        String what = blackout.getReason() == null || blackout.getReason().isBlank()
+                ? blackout.getKind().label()
+                : "%s «%s»".formatted(blackout.getKind().label(), blackout.getReason());
+        String where = blackout.getCourt() == null ? "Todas las canchas" : blackout.getCourt().getName();
+        return "%s · %s · %s a %s".formatted(what, where,
+                HH_MM.format(blackout.getStartTime().atZone(club.zoneId())),
+                HH_MM.format(blackout.getEndTime().atZone(club.zoneId())));
     }
 
     private void openManualBooking(AgendaRow row, Court court, String availabilityException) {

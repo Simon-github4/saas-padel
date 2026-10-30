@@ -6,21 +6,27 @@ import static org.assertj.core.api.Assertions.tuple;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.BuffetOrder;
+import ar.com.padelnec.domain.Payment;
 import ar.com.padelnec.domain.Product;
 import ar.com.padelnec.domain.ProductSale;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.PaymentMethod;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.BuffetOrderRepository;
+import ar.com.padelnec.repository.PaymentRepository;
 import ar.com.padelnec.service.BuffetOrderService;
+import ar.com.padelnec.service.BuffetOrderService.Charge;
 import ar.com.padelnec.service.BuffetOrderService.Checkout;
 import ar.com.padelnec.service.BuffetOrderService.NewItem;
 import ar.com.padelnec.service.BuffetOrderService.OrderWithItems;
 import ar.com.padelnec.service.PaymentService;
 import ar.com.padelnec.service.ProductService;
+import ar.com.padelnec.support.BuffetCoverage;
 import ar.com.padelnec.web.BusinessRuleException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,13 +45,14 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class})
 class BuffetOrderServiceTest {
 
     @Autowired private BuffetOrderService buffetOrderService;
     @Autowired private BuffetOrderRepository buffetOrderRepository;
     @Autowired private ProductService productService;
     @Autowired private PaymentService paymentService;
+    @Autowired private PaymentRepository paymentRepository;
     @Autowired private ClubFixture fixture;
     @Autowired private JdbcTemplate jdbc;
 
@@ -259,6 +266,133 @@ class BuffetOrderServiceTest {
     }
 
     @Test
+    @DisplayName("Una parte en efectivo y otra por transferencia se cobran juntas: un cobro por medio")
+    void cashAndTransferInOneCheckout() {
+        Checkout result = buffetOrderService.checkout(null, null, List.of(
+                new NewItem(agua.getId(), 2), new NewItem(cafe.getId(), 1)),
+                Charge.split(new BigDecimal("3000"), new BigDecimal("2000")), Map.of(), Map.of(), null);
+
+        assertThat(result.cash()).isEqualByComparingTo("3000");
+        assertThat(result.transfer()).isEqualByComparingTo("2000");
+        assertThat(reload(result.order()).balanceDue()).isEqualByComparingTo("0");
+        assertThat(paymentRepository.findAllByBuffetOrderIdOrderByCreatedAtAsc(result.order().getId()))
+                .extracting(Payment::getMethod, payment -> payment.getAmount().intValue())
+                .containsExactlyInAnyOrder(tuple(PaymentMethod.CASH, 3000), tuple(PaymentMethod.TRANSFER, 2000));
+        assertThat(productService.salesOfOrder(result.order().getId())).allMatch(ProductSale::isPaid);
+    }
+
+    @Test
+    @DisplayName("Un monto menor a lo que debe cubre los productos en el orden de carga y deja uno a medio pagar")
+    void anAmountCoversInOrderAndLeavesOneHalfPaid() {
+        Product milanesa = productService.createProduct("Milanesa", new BigDecimal("12000"));
+        Product gaseosa = productService.createProduct("Gaseosa", new BigDecimal("3000"));
+        UUID orderId = buffetOrderService.checkout(null, "Mesa 4", List.of(
+                new NewItem(milanesa.getId(), 2), new NewItem(gaseosa.getId(), 2)), null, null).order().getId();
+
+        Checkout part = buffetOrderService.checkout(orderId, null, List.of(),
+                Charge.split(new BigDecimal("20000"), BigDecimal.ZERO), Map.of(), Map.of(), null);
+
+        assertThat(part.charged()).isEqualByComparingTo("20000");
+        assertThat(reload(part.order()).balanceDue()).isEqualByComparingTo("10000");
+        List<ProductSale> lines = productService.salesOfOrder(orderId);
+        assertThat(lines)
+                .extracting(ProductSale::getProductName, ProductSale::getQuantity, ProductSale::isPaid)
+                .containsExactlyInAnyOrder(tuple("Milanesa", 1, true), tuple("Milanesa", 1, false),
+                        tuple("Gaseosa", 2, false));
+        // Lo pendiente no se mueve de lugar: la milanesa a medio pagar sigue primera, con $8.000 a cuenta.
+        ProductSale halfPaid = lines.getFirst();
+        assertThat(halfPaid.isPaid()).isFalse();
+        assertThat(halfPaid.getProductName()).isEqualTo("Milanesa");
+        assertThat(coveredOf(lines, reload(part.order())).getFirst()).isEqualTo(8000);
+        // La milanesa cobrada se vendió cuando se vendió la otra: la caja no la mueve de día.
+        ProductSale paidOne = lines.stream().filter(ProductSale::isPaid).findFirst().orElseThrow();
+        assertThat(paidOne.getCreatedAt()).isEqualTo(halfPaid.getCreatedAt());
+    }
+
+    @Test
+    @DisplayName("Elegir la milanesa a medio pagar cobra solo lo que le falta, y después F9 cobra lo que queda")
+    void pickingTheHalfPaidLineThenPayingTheRest() {
+        Product milanesa = productService.createProduct("Milanesa", new BigDecimal("12000"));
+        Product gaseosa = productService.createProduct("Gaseosa", new BigDecimal("3000"));
+        UUID orderId = buffetOrderService.checkout(null, "Mesa 4", List.of(
+                new NewItem(milanesa.getId(), 2), new NewItem(gaseosa.getId(), 2)), null, null).order().getId();
+        buffetOrderService.checkout(orderId, null, List.of(),
+                Charge.split(new BigDecimal("20000"), BigDecimal.ZERO), Map.of(), Map.of(), null);
+        ProductSale halfPaid = productService.salesOfOrder(orderId).getFirst();
+
+        Checkout milanesaPart = buffetOrderService.checkout(orderId, null, List.of(),
+                Charge.all(PaymentMethod.CASH), Map.of(halfPaid.getId(), 1), Map.of(), null);
+        assertThat(milanesaPart.cash()).isEqualByComparingTo("4000");
+        assertThat(reload(milanesaPart.order()).balanceDue()).isEqualByComparingTo("6000");
+
+        Checkout rest = buffetOrderService.checkout(orderId, null, List.of(),
+                Charge.all(PaymentMethod.TRANSFER), Map.of(), Map.of(), null);
+        assertThat(rest.transfer()).isEqualByComparingTo("6000");
+        assertThat(reload(rest.order()).balanceDue()).isEqualByComparingTo("0");
+        assertThat(productService.salesOfOrder(orderId)).allMatch(ProductSale::isPaid);
+    }
+
+    @Test
+    @DisplayName("Se cobran algunas unidades de un producto: la línea se parte y las otras siguen pendientes")
+    void someUnitsOfALine() {
+        Product milanesa = productService.createProduct("Milanesa", new BigDecimal("12000"));
+
+        Checkout three = buffetOrderService.checkout(null, "Mesa 2", List.of(new NewItem(milanesa.getId(), 5)),
+                Charge.all(PaymentMethod.CASH), Map.of(), Map.of(milanesa.getId(), 3), null);
+
+        UUID orderId = three.order().getId();
+        assertThat(three.cash()).isEqualByComparingTo("36000");
+        List<ProductSale> lines = productService.salesOfOrder(orderId);
+        assertThat(lines)
+                .extracting(ProductSale::getQuantity, ProductSale::isPaid)
+                .containsExactly(tuple(2, false), tuple(3, true));
+        assertThat(reload(three.order()).getTotalPrice()).isEqualByComparingTo("60000");
+
+        Checkout two = buffetOrderService.checkout(orderId, null, List.of(), Charge.all(PaymentMethod.TRANSFER),
+                Map.of(lines.getFirst().getId(), 2), Map.of(), null);
+        assertThat(two.transfer()).isEqualByComparingTo("24000");
+        assertThat(reload(two.order()).balanceDue()).isEqualByComparingTo("0");
+    }
+
+    @Test
+    @DisplayName("Lo elegido se paga justo, un monto no se pasa de lo que debe, y nada de eso deja cobros a medias")
+    void wrongAmountsAreRejected() {
+        UUID orderId = buffetOrderService.checkout(null, "Marta", List.of(new NewItem(agua.getId(), 2)), null, null)
+                .order().getId();
+        ProductSale water = productService.salesOfOrder(orderId).getFirst();
+
+        assertThatThrownBy(() -> buffetOrderService.checkout(orderId, null, List.of(),
+                Charge.split(new BigDecimal("1000"), BigDecimal.ZERO), Map.of(water.getId(), 1), Map.of(), null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("justo lo elegido");
+        assertThatThrownBy(() -> buffetOrderService.checkout(orderId, null, List.of(),
+                Charge.split(new BigDecimal("2000"), new BigDecimal("2000")), Map.of(), Map.of(), null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("más de lo que debe");
+        assertThatThrownBy(() -> buffetOrderService.checkout(orderId, null, List.of(),
+                Charge.all(PaymentMethod.CASH), Map.of(water.getId(), 3), Map.of(), null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("tantas unidades");
+
+        assertThat(buffetOrderService.require(orderId).getPaidAmount()).isEqualByComparingTo("0");
+        assertThat(paymentRepository.findAllByBuffetOrderIdOrderByCreatedAtAsc(orderId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Una venta rápida que deja algo pendiente pide a nombre de quién queda")
+    void aQuickSaleThatLeavesABalanceNeedsAName() {
+        assertThatThrownBy(() -> buffetOrderService.checkout(null, null, List.of(new NewItem(agua.getId(), 2)),
+                Charge.split(new BigDecimal("1000"), BigDecimal.ZERO), Map.of(), Map.of(), null))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("a nombre de quién");
+        assertThat(buffetOrderRepository.findAll()).isEmpty();
+
+        Checkout named = buffetOrderService.checkout(null, "Juan", List.of(new NewItem(agua.getId(), 2)),
+                Charge.split(new BigDecimal("1000"), BigDecimal.ZERO), Map.of(), Map.of(), null);
+        assertThat(reload(named.order()).balanceDue()).isEqualByComparingTo("2000");
+    }
+
+    @Test
     @DisplayName("Las cuentas abiertas son las que deben o tienen plata a favor, y las vacías solo de hoy")
     void unsettledOrdersAreTheOnesWithABalance() {
         buffetOrderService.checkout(null, "Pagó", List.of(new NewItem(agua.getId(), 1)), PaymentMethod.CASH, null);
@@ -274,5 +408,14 @@ class BuffetOrderServiceTest {
 
     private BuffetOrder reload(BuffetOrder order) {
         return buffetOrderService.require(order.getId());
+    }
+
+    private static List<Integer> coveredOf(List<ProductSale> lines, BuffetOrder order) {
+        return BuffetCoverage.covered(lines.stream()
+                        .map(sale -> new BuffetCoverage.Line(sale.getUnitPrice(), sale.getQuantity(), sale.isPaid()))
+                        .toList(), order.getPaidAmount())
+                .stream()
+                .map(BigDecimal::intValue)
+                .toList();
     }
 }

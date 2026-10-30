@@ -2,6 +2,28 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "backend-historias",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--server.port=8091 --app.base-url=http://localhost:8091"
+      ],
+      "env": { "DEV_DB_PORT": "54660", "DEV_DB_DIR": "target/devdb-historias" },
+      "port": 8091
+    },
+    {
+      "name": "backend-ver-reserva",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5174"
+      ],
+      "env": { "DEV_DB_PORT": "45432", "DEV_DB_DIR": "target/devdb-ver-reserva" },
+      "port": 8080
+    },
+    {
       "name": "player-app",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "player-app"],
@@ -24,6 +46,39 @@
       "port": 8080
     },
     {
+      "name": "backend-pases",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5175"
+      ],
+      "env": { "DEV_DB_PORT": "54430", "DEV_DB_DIR": "target/devdb-pases" },
+      "port": 8080
+    },
+    {
+      "name": "backend-tope-mensual",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5175"
+      ],
+      "env": { "DEV_DB_PORT": "54440", "DEV_DB_DIR": "target/devdb-tope-mensual" },
+      "port": 8080
+    },
+    {
+      "name": "backend-torneos",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--server.port=8090 --app.base-url=http://localhost:8090"
+      ],
+      "env": { "DEV_DB_PORT": "54450", "DEV_DB_DIR": "target/devdb-torneos" },
+      "port": 8090
+    },
+    {
       "name": "backend",
       "runtimeExecutable": "mvn",
       "runtimeArgs": [
@@ -33,6 +88,48 @@
       ],
       "port": 8080,
       "autoPort": false
+    },
+    {
+      "name": "backend-portada-logo",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--app.base-url=http://localhost:5174"
+      ],
+      "env": { "DEV_DB_PORT": "54470", "DEV_DB_DIR": "target/devdb-portada-logo" },
+      "port": 8080
+    },
+    {
+      "name": "backend-recordarme",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--app.dev-auto-login=false --server.servlet.session.timeout=1m"
+      ],
+      "env": { "DEV_DB_PORT": "54410", "DEV_DB_DIR": "target/devdb-recordarme" },
+      "port": 8080
+    },
+    {
+      "name": "backend-sonidos",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev"
+      ],
+      "env": { "DEV_DB_PORT": "54460", "DEV_DB_DIR": "target/devdb-sonidos" },
+      "port": 8080
+    },
+    {
+      "name": "backend-avisos",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev"
+      ],
+      "env": { "DEV_DB_PORT": "54420", "DEV_DB_DIR": "target/devdb-avisos" },
+      "port": 8080
     },
     {
       "name": "backend-verificacion-whatsapp",

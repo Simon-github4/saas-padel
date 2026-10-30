@@ -2,6 +2,7 @@ package ar.com.padelnec.gym;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymClubConfig;
 import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.domain.PayMethod;
@@ -12,6 +13,7 @@ import ar.com.padelnec.gym.service.GymMembershipService;
 import ar.com.padelnec.gym.service.GymMembershipService.Sale;
 import ar.com.padelnec.gym.service.GymSedeService;
 import ar.com.padelnec.gym.service.GymSedeService.SedeData;
+import ar.com.padelnec.gym.service.GymSettingsService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Arrays;
@@ -35,6 +37,7 @@ public class GymFixture {
     private final GymSedeService sedeService;
     private final GymMemberService memberService;
     private final GymMembershipService membershipService;
+    private final GymSettingsService settingsService;
 
     /** Prende el modulo para el club, como lo haria el INSERT documentado: entran solo con el DNI. */
     public void enable(Tenant club) {
@@ -48,6 +51,14 @@ public class GymFixture {
             config.setPasswordRequired(passwordRequired);
             configRepository.save(config);
         });
+    }
+
+    /**
+     * Cambia como cuenta el club el tope de dias por semana, como lo hace el dueño en «Cuotas»: para
+     * lo que se cobre desde ahora y las cuotas que todavia no empezaron (segun el reloj).
+     */
+    public void entryLimit(Tenant club, EntryLimit entryLimit) {
+        TenantContext.runAs(club.getId(), () -> settingsService.setEntryLimit(entryLimit));
     }
 
     public GymSede sede(Tenant club, String name) {

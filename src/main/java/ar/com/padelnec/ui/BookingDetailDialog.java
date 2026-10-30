@@ -15,8 +15,11 @@ import ar.com.padelnec.support.PhoneNumbers;
 import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
+import com.vaadin.flow.component.Svg;
 import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Span;
 import com.vaadin.flow.component.notification.Notification;
@@ -210,11 +213,7 @@ class BookingDetailDialog extends Dialog {
             layout.add(row);
         }
 
-        List<Product> catalog = productRepository.findAllByActiveTrueOrderByNameAsc();
-        Select<Product> product = new Select<>();
-        product.setLabel("Producto");
-        product.setItems(catalog);
-        product.setItemLabelGenerator(p -> "%s (%s)".formatted(p.getName(), money(p.getUnitPrice())));
+        ComboBox<Product> product = ProductCombo.create(productRepository.findAllByActiveTrueOrderByNameAsc());
 
         IntegerField quantity = new IntegerField("Cantidad");
         quantity.setValue(1);
@@ -238,7 +237,9 @@ class BookingDetailDialog extends Dialog {
         HorizontalLayout addRow = new HorizontalLayout(product, quantity, add);
         addRow.setAlignItems(HorizontalLayout.Alignment.END);
         addRow.setPadding(false);
-        addRow.addClassNames(LumoUtility.Gap.SMALL);
+        // Con wrap, como las filas de cobro: en el celular la cantidad y el boton
+        // bajan de renglon en vez de salirse del dialogo.
+        addRow.addClassNames(LumoUtility.Gap.SMALL, LumoUtility.FlexWrap.WRAP);
 
         layout.addClassNames(LumoUtility.Border.TOP, LumoUtility.BorderColor.CONTRAST_10,
                 LumoUtility.Padding.Top.MEDIUM, LumoUtility.Margin.Top.MEDIUM);
@@ -296,7 +297,7 @@ class BookingDetailDialog extends Dialog {
         HorizontalLayout row = new HorizontalLayout(amount, method, charge);
         row.setAlignItems(HorizontalLayout.Alignment.END);
         row.setPadding(false);
-        row.addClassNames(LumoUtility.Gap.SMALL);
+        row.addClassNames(LumoUtility.Gap.SMALL, LumoUtility.FlexWrap.WRAP);
         return row;
     }
 
@@ -326,7 +327,7 @@ class BookingDetailDialog extends Dialog {
         HorizontalLayout row = new HorizontalLayout(amount, method, refund);
         row.setAlignItems(HorizontalLayout.Alignment.END);
         row.setPadding(false);
-        row.addClassNames(LumoUtility.Gap.SMALL);
+        row.addClassNames(LumoUtility.Gap.SMALL, LumoUtility.FlexWrap.WRAP);
         return row;
     }
 
@@ -349,6 +350,9 @@ class BookingDetailDialog extends Dialog {
         HorizontalLayout actions = new HorizontalLayout(close);
         actions.setWidthFull();
         actions.setAlignItems(HorizontalLayout.Alignment.CENTER);
+        // En el celular no entran los cuatro en una linea: sin esto "Dar de baja"
+        // quedaba cortado contra el borde del dialogo.
+        actions.addClassNames(LumoUtility.FlexWrap.WRAP, LumoUtility.Gap.Column.SMALL, LumoUtility.Gap.Row.XSMALL);
 
         if (booking.getStatus() == BookingStatus.CONFIRMED) {
             // WhatsApp esta en stand by: nada se manda solo. Este link arma el
@@ -356,20 +360,23 @@ class BookingDetailDialog extends Dialog {
             // pueda mandar a mano, con su propio WhatsApp. Una vez que el turno
             // arranco, un recordatorio ya no tiene sentido.
             if (booking.getStartTime().isAfter(Instant.now())) {
+                // El icono dice "por WhatsApp" sin el texto, que en el celular hacia
+                // el pie demasiado ancho.
+                Svg whatsapp = new Svg(BookingDetailDialog.class.getResourceAsStream("/brand/whatsapp.svg"));
+                whatsapp.setClassName("whatsapp-glyph");
+                whatsapp.getElement().setAttribute("aria-hidden", "true");
                 Anchor remind = new Anchor(
                         phoneNumbers.whatsappLink(booking.getCustomer().getPhoneNumber(),
                                 notificationService.reminderMessage(club, booking)),
-                        "Recordatorio por WhatsApp");
+                        new Span("Recordatorio"), whatsapp);
                 remind.setTarget("_blank");
+                remind.getElement().setAttribute("aria-label", "Recordatorio por WhatsApp");
+                remind.addClassName("whatsapp-reminder");
                 remind.getElement().getThemeList().add("button");
                 actions.add(remind);
             }
 
-            Button noShow = new Button("No se presentó", event -> run(() -> {
-                bookingService.markNoShow(booking.getId());
-                // Libera la franja: si todavia queda tiempo, el club puede revenderla.
-                Notification.show("Marcado como ausente");
-            }));
+            Button noShow = new Button("No se presentó", event -> confirmNoShow());
             noShow.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
             actions.add(noShow);
         }
@@ -398,6 +405,25 @@ class BookingDetailDialog extends Dialog {
         }
 
         return actions;
+    }
+
+    /**
+     * No se deshace y le suma una falta al jugador, asi que antes se dice que pasa: al
+     * lado de "Dar de baja", un toque de mas se confundia con dar de baja el turno.
+     */
+    private void confirmNoShow() {
+        ConfirmDialog confirm = new ConfirmDialog();
+        confirm.setHeader("¿%s no se presentó?".formatted(booking.displayName()));
+        confirm.setText("El turno queda como ausente y la cancha vuelve a estar libre para "
+                + "reservar. Al jugador se le suma una falta, que se ve en Jugadores. No se puede deshacer.");
+        confirm.setCancelable(true);
+        confirm.setCancelText("Volver");
+        confirm.setConfirmText("Marcar ausente");
+        confirm.addConfirmListener(event -> run(() -> {
+            bookingService.markNoShow(booking.getId());
+            Notification.show("Marcado como ausente");
+        }));
+        confirm.open();
     }
 
     /** Ejecuta la accion, avisa si una regla la rechaza y refresca la agenda. */

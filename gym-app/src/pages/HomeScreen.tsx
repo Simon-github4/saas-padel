@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ApiError, gymApi, type Me } from '../api/gymClient';
+import { ApiError, gymApi, type DateRange, type Me } from '../api/gymClient';
 import { useGymAuth } from '../auth/GymAuthContext';
-import { Alert, Badge, Button, Card, Loading, WeekDots } from '../components/ui';
-import { firstName, longDay, money, shortDay, weekUsage } from '../format';
+import { Alert, Badge, Button, Card, Loading, UsageMeter } from '../components/ui';
+import { passState } from '../billing';
+import { firstName, longDay, money, shortDay, usage, usageTitle, usageUntil } from '../format';
 
-/** "Mi estado": si la cuota vale, hasta cuando, cuantos dias de la semana usó, y el boton de escanear. */
+/** "Mi estado": si la cuota vale, hasta cuando, cuantos ingresos usó (de la semana o del mes), y el boton de escanear. */
 export function HomeScreen({ onScan }: { onScan: () => void }) {
   const { slug, session, expire, requirePasswordChange } = useGymAuth();
   const [me, setMe] = useState<Me | null>(null);
@@ -79,6 +80,19 @@ export function HomeScreen({ onScan }: { onScan: () => void }) {
   );
 }
 
+/** Un nuevo inicio de mes dejó días sin cuota entre lo que paga hoy y lo que ya tiene pago más adelante. */
+function GapNotice({ gap, paidAhead }: { gap: DateRange; paidAhead: DateRange }) {
+  const days =
+    gap.start === gap.end
+      ? `El ${longDay(gap.start)} no tenés cuota: ese día no vas a poder entrar.`
+      : `Del ${longDay(gap.start)} al ${longDay(gap.end)} no tenés cuota: esos días no vas a poder entrar.`;
+  return (
+    <Alert tone="info">
+      {days} Ya tenés pago del {longDay(paidAhead.start)} al {longDay(paidAhead.end)}.
+    </Alert>
+  );
+}
+
 /** La tarjeta de la cuota: al día, deber la corriente (con gracia) o estar bloqueado. */
 function BillingCard({ me }: { me: Me }) {
   if (me.membership && me.monthsLate >= 2) {
@@ -89,6 +103,19 @@ function BillingCard({ me }: { me: Me }) {
           {me.owedTotal > 0
             ? `Son ${money(me.owedTotal)} en total. Para volver a entrar, pasá por el mostrador a regularizar las cuotas impagas.`
             : 'Para volver a entrar, pasá por el mostrador a regularizar las cuotas impagas.'}
+        </p>
+      </div>
+    );
+  }
+
+  // El pase vencido no es deuda: va antes de "todavía no arranca", que es para el que espera su cuota.
+  const pass = passState(me);
+  if (pass === 'vencido') {
+    return (
+      <div className="space-y-2">
+        <Badge tone="warning">Tu pase venció</Badge>
+        <p className="text-sm text-ink-soft">
+          Venció el {longDay(me.periodEnd)}. Pasá por el mostrador para renovar.
         </p>
       </div>
     );
@@ -112,8 +139,8 @@ function BillingCard({ me }: { me: Me }) {
       <div className="space-y-2">
         <Badge tone="warning">Tu cuota todavía no arranca</Badge>
         <p className="text-sm text-ink-soft">
-          Tu mes va del {longDay(me.periodStart)} al {longDay(me.periodEnd)}. Cuando arranque, vas a poder
-          registrar tus ingresos.
+          {me.membership.planLength === 'FIFTEEN_DAYS' ? 'Tu pase va' : 'Tu mes va'} del {longDay(me.periodStart)} al{' '}
+          {longDay(me.periodEnd)}. Cuando arranque, vas a poder registrar tus ingresos.
         </p>
       </div>
     );
@@ -122,7 +149,13 @@ function BillingCard({ me }: { me: Me }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
-        {me.paidCurrent ? <Badge tone="success">Al día</Badge> : <Badge tone="warning">Te falta el mes</Badge>}
+        {me.membership.planLength === 'FIFTEEN_DAYS' ? (
+          <Badge tone="success">Pase de 15 días</Badge>
+        ) : me.paidCurrent ? (
+          <Badge tone="success">Al día</Badge>
+        ) : (
+          <Badge tone="warning">Te falta el mes</Badge>
+        )}
         {me.paidCurrent ? (
           <p className="text-sm text-ink-soft">tu cuota está paga hasta el {longDay(me.paidUntil ?? me.periodEnd)}</p>
         ) : (
@@ -136,12 +169,16 @@ function BillingCard({ me }: { me: Me }) {
           Podés entrar igual, pero pasá por el mostrador a pagar la cuota de este mes.
         </p>
       )}
+      {me.gap && me.paidAhead && <GapNotice gap={me.gap} paidAhead={me.paidAhead} />}
       <div>
-        <p className="eyebrow text-ink-soft">Esta semana</p>
+        <p className="eyebrow text-ink-soft">{usageTitle(me.limitPeriod)}</p>
         <div className="mt-2 flex items-center justify-between gap-3">
-          <WeekDots used={me.weekUsed} limit={me.weekLimit} />
-          <p className="text-sm font-semibold">{weekUsage(me.weekUsed, me.weekLimit)}</p>
+          <UsageMeter used={me.used} limit={me.limit} period={me.limitPeriod} />
+          <p className="shrink-0 text-sm font-semibold">{usage(me.used, me.limit, me.limitPeriod)}</p>
         </div>
+        {usageUntil(me.limitPeriod, me.windowEnd) && (
+          <p className="mt-1 text-xs text-ink-soft">{usageUntil(me.limitPeriod, me.windowEnd)}</p>
+        )}
       </div>
       {me.membership.sedes.length > 0 && (
         <p className="text-xs text-ink-soft">Vale en: {me.membership.sedes.join(', ')}</p>

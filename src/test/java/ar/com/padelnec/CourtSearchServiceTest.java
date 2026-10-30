@@ -13,6 +13,7 @@ import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.CourtRoof;
 import ar.com.padelnec.domain.enums.CourtSurface;
 import ar.com.padelnec.domain.enums.CourtWall;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.BookingRepository;
 import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.CustomerRepository;
@@ -36,10 +37,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
@@ -52,7 +50,7 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, CourtSearchServiceTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class CourtSearchServiceTest {
 
     /** Martes 01/09/2026, 07:00 hora de Necochea (10:00 UTC): el club acaba de abrir. */
@@ -62,15 +60,6 @@ class CourtSearchServiceTest {
 
     private static final LocalTime TODO_EL_DIA_DESDE = LocalTime.of(0, 0);
     private static final LocalTime TODO_EL_DIA_HASTA = LocalTime.of(23, 59);
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at(NOW);
-        }
-    }
 
     @Autowired private CourtSearchService courtSearchService;
     @Autowired private ClubFixture fixture;

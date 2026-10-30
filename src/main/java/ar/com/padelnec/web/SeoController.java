@@ -35,9 +35,18 @@ public class SeoController {
      * cuando la subio como archivo: se libera esa ruta puntual porque sin ella los
      * buscadores no pueden bajar la imagen que el propio club muestra como portada.
      * Gana la regla mas especifica, asi que el resto de {@code /api/} sigue cerrado.
+     *
+     * <p>Con {@code app.seo.indexable} en {@code false} (staging) cierra todo y no
+     * ofrece el sitemap.
      */
     @GetMapping(value = "/robots.txt", produces = MediaType.TEXT_PLAIN_VALUE)
     public String robots() {
+        if (!properties.getSeo().isIndexable()) {
+            return """
+                    User-agent: *
+                    Disallow: /
+                    """;
+        }
         return """
                 User-agent: *
                 Allow: /

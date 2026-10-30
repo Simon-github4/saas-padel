@@ -1,7 +1,10 @@
 package ar.com.padelnec.domain;
 
+import ar.com.padelnec.domain.enums.BlackoutKind;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
@@ -28,8 +31,17 @@ public class Blackout extends TenantScopedEntity {
     @Column(name = "end_time", nullable = false)
     private Instant endTime;
 
+    /** En un torneo, {@code reason} es el nombre del torneo. */
     @Column(length = 160)
     private String reason;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private BlackoutKind kind = BlackoutKind.SUSPENSION;
+
+    public boolean isTournament() {
+        return kind == BlackoutKind.TOURNAMENT;
+    }
 
     public boolean appliesTo(Court candidate) {
         return court == null || court.getId().equals(candidate.getId());

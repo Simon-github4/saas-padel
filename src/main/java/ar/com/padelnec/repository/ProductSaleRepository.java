@@ -13,7 +13,11 @@ public interface ProductSaleRepository extends JpaRepository<ProductSale, UUID> 
 
     List<ProductSale> findAllByBookingIdOrderByCreatedAtAsc(UUID bookingId);
 
-    List<ProductSale> findAllByBuffetOrderIdInOrderByCreatedAtAsc(Collection<UUID> buffetOrderIds);
+    /**
+     * En el orden en que se cargaron, que es el orden en que un pago por monto
+     * cubre la cuenta. El id desempata dos líneas con la misma fecha.
+     */
+    List<ProductSale> findAllByBuffetOrderIdInOrderByCreatedAtAscIdAsc(Collection<UUID> buffetOrderIds);
 
     /**
      * Lo vendido en el buffet dentro de una ventana, por fecha de venta: en turnos
@@ -31,4 +35,27 @@ public interface ProductSaleRepository extends JpaRepository<ProductSale, UUID> 
             WHERE ps.createdAt >= :from AND ps.createdAt < :until
             """)
     List<BuffetSaleRow> findSalesBetween(@Param("from") Instant from, @Param("until") Instant until);
+
+    /**
+     * Lo vendido en pedidos de buffet sin turno dentro de una ventana, por fecha
+     * de venta.
+     *
+     * <p>Solo los pedidos: lo que se consume en un turno ya esta en el total del
+     * turno, y las estadisticas lo facturan por ahi.
+     */
+    @Query("""
+            SELECT new ar.com.padelnec.repository.SaleAmountRow(ps.createdAt, ps.quantity, ps.unitPrice)
+            FROM ProductSale ps
+            WHERE ps.buffetOrder IS NOT NULL AND ps.createdAt >= :from AND ps.createdAt < :until
+            """)
+    List<SaleAmountRow> findOrderSalesBetween(@Param("from") Instant from, @Param("until") Instant until);
+
+    /** Lo consumido en cada uno de estos turnos, sumado. Un turno sin consumiciones no aparece. */
+    @Query("""
+            SELECT new ar.com.padelnec.repository.BookingConsumptionRow(ps.booking.id, SUM(ps.unitPrice * ps.quantity))
+            FROM ProductSale ps
+            WHERE ps.booking.id IN :bookingIds
+            GROUP BY ps.booking.id
+            """)
+    List<BookingConsumptionRow> sumByBooking(@Param("bookingIds") Collection<UUID> bookingIds);
 }

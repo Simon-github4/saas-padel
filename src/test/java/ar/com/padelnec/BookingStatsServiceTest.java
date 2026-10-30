@@ -6,10 +6,14 @@ import static org.assertj.core.api.Assertions.tuple;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Booking;
+import ar.com.padelnec.domain.BuffetOrder;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Payment;
 import ar.com.padelnec.domain.PlayerAccount;
+import ar.com.padelnec.domain.Product;
+import ar.com.padelnec.domain.ProductSale;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.domain.enums.BlackoutKind;
 import ar.com.padelnec.domain.enums.BookingStatus;
 import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.repository.BlackoutRepository;
@@ -25,7 +29,9 @@ import ar.com.padelnec.service.BookingStatsService.HourlyStat;
 import ar.com.padelnec.service.BookingStatsService.PaymentMethodStat;
 import ar.com.padelnec.service.BookingStatsService.PeriodStats;
 import ar.com.padelnec.service.BookingStatsService.Periodo;
+import ar.com.padelnec.service.BuffetOrderService;
 import ar.com.padelnec.service.PaymentService;
+import ar.com.padelnec.service.ProductService;
 import ar.com.padelnec.service.SlotGenerator;
 import jakarta.persistence.EntityManagerFactory;
 import java.math.BigDecimal;
@@ -47,10 +53,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
@@ -62,7 +65,7 @@ import org.springframework.test.context.TestPropertySource;
 @SpringBootTest
 @ActiveProfiles("test")
 @TestPropertySource(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
-@Import({TestDatabaseConfig.class, ClubFixture.class, BookingStatsServiceTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, TestClockConfig.class})
 class BookingStatsServiceTest {
 
     /** Martes 01/09/2026, misma fecha base que el resto de la suite. */
@@ -71,18 +74,11 @@ class BookingStatsServiceTest {
     private static final LocalDate MONDAY = TUESDAY.minusDays(1);
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at(NOW);
-        }
-    }
-
     @Autowired private BookingStatsService statsService;
     @Autowired private BookingService bookingService;
     @Autowired private PaymentService paymentService;
+    @Autowired private ProductService productService;
+    @Autowired private BuffetOrderService buffetOrderService;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private BookingRepository bookingRepository;
     @Autowired private PlayerAccountRepository playerAccountRepository;
@@ -268,6 +264,55 @@ class BookingStatsServiceTest {
     }
 
     @Test
+    @DisplayName("Los turnos de un torneo cuentan como ocupados, sin contar dos veces uno con turno cargado")
+    void tournamentSlotsCountAsOccupied() {
+        // Torneo de 17:00 a 21:30: tres turnos de la unica cancha.
+        Blackout tournament = new Blackout();
+        tournament.setCourt(court);
+        tournament.setKind(BlackoutKind.TOURNAMENT);
+        tournament.setStartTime(TUESDAY.atTime(17, 0).atZone(ZONE).toInstant());
+        tournament.setEndTime(TUESDAY.atTime(21, 30).atZone(ZONE).toInstant());
+        tournament.setReason("Torneo Apertura");
+        blackoutRepository.save(tournament);
+        // Una suspension comun de una franja sigue como antes: ni ocupa ni resta.
+        Blackout repair = new Blackout();
+        repair.setCourt(court);
+        repair.setStartTime(TUESDAY.atTime(8, 0).atZone(ZONE).toInstant());
+        repair.setEndTime(TUESDAY.atTime(9, 30).atZone(ZONE).toInstant());
+        repair.setReason("Arreglo de la red");
+        blackoutRepository.save(repair);
+        markCompleted(reserve(LocalTime.of(12, 30), "2262415000", "Cliente A"));
+        // El club cargo igual un turno en el torneo, como excepcion.
+        bookingService.createManual(club, court.getId(), TUESDAY.atTime(18, 30).atZone(ZONE).toInstant(),
+                "Cliente C", "2262415222", null, null, true);
+
+        PeriodStats summary = statsService.summary(club, TUESDAY, TUESDAY);
+
+        // 2 turnos cargados + los 2 del torneo que quedaron sin turno.
+        assertThat(summary.slotsPosibles()).isEqualTo(10);
+        assertThat(summary.slotsOcupados()).isEqualTo(4);
+        assertThat(summary.slotsTorneo()).isEqualTo(2);
+        assertThat(summary.ocupacionPromedio()).isEqualByComparingTo("40.0");
+    }
+
+    @Test
+    @DisplayName("Un torneo de todo el club el dia entero es el dia lleno, no un dia cerrado")
+    void clubWideTournamentFillsTheDay() {
+        Blackout tournament = new Blackout();
+        tournament.setKind(BlackoutKind.TOURNAMENT);
+        tournament.setStartTime(slotGenerator.dayStart(club, TUESDAY));
+        tournament.setEndTime(slotGenerator.dayEnd(club, TUESDAY));
+        tournament.setReason("Torneo de la ciudad");
+        blackoutRepository.save(tournament);
+
+        PeriodStats summary = statsService.summary(club, TUESDAY, TUESDAY);
+
+        assertThat(summary.slotsPosibles()).isEqualTo(10);
+        assertThat(summary.slotsOcupados()).isEqualTo(10);
+        assertThat(summary.slotsTorneo()).isEqualTo(10);
+    }
+
+    @Test
     @DisplayName("El numero de consultas de statsFor no crece con el largo del rango")
     void queryCountDoesNotScaleWithRangeLength() {
         // Antes del fix, cada bucket de DIA disparaba su propio findBetween() y su
@@ -327,7 +372,44 @@ class BookingStatsServiceTest {
                 .containsExactly(tuple(PaymentMethod.CASH, new BigDecimal("10000.00")));
     }
 
+    @Test
+    @DisplayName("Lo vendido en un pedido de buffet sin turno suma al facturado del dia en que se vendio")
+    void aBuffetOrderCountsAsBilledOnTheDayItWasSold() {
+        Product cafe = productService.createProduct("Café", new BigDecimal("2000"));
+        BuffetOrder order = buffetOrderService.open("Juan", null);
+        ProductSale sale = productService.registerSale(order, cafe, 3, null);
+        backdate("product_sale", sale.getId(), MONDAY.atTime(18, 0));
+
+        assertThat(statsService.summary(club, MONDAY, MONDAY).facturado()).isEqualByComparingTo("6000");
+        assertThat(statsService.summary(club, TUESDAY, TUESDAY).facturado()).isEqualByComparingTo("0");
+        // La tabla por periodo cuenta lo mismo que la tarjeta.
+        assertThat(statsService.statsFor(club, Periodo.DIA, MONDAY, TUESDAY))
+                .extracting(PeriodStats::facturado)
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(new BigDecimal("6000"), BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("Lo consumido en un turno factura una sola vez, con el turno")
+    void aConsumptionInABookingIsBilledOnce() {
+        Booking booking = reserve(LocalTime.of(12, 30), "2262415000", "Cliente A");
+        confirm(booking);
+        Product agua = productService.createProduct("Agua", new BigDecimal("1500"));
+        ProductSale sale = productService.registerSale(
+                bookingService.findByIdWithDetails(booking.getId()).orElseThrow(), agua, 2, null);
+        // El mismo dia que el turno: si se sumara por los dos lados, se veria aca.
+        backdate("product_sale", sale.getId(), TUESDAY.atTime(13, 0));
+
+        // 20000 de la cancha y 3000 de las dos aguas: no 26000.
+        assertThat(statsService.summary(club, TUESDAY, TUESDAY).facturado()).isEqualByComparingTo("23000");
+    }
+
     // ------------------------------------------------------------ utilidades
+
+    private void backdate(String table, java.util.UUID id, java.time.LocalDateTime at) {
+        jdbc.update("UPDATE " + table + " SET created_at = ? WHERE id = ?",
+                OffsetDateTime.ofInstant(at.atZone(ZONE).toInstant(), ZoneOffset.UTC), id);
+    }
 
     private Booking reserve(LocalTime time, String phone, String name) {
         return reserve(TUESDAY, time, phone, name);

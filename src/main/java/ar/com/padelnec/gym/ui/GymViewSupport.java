@@ -5,6 +5,7 @@ import ar.com.padelnec.security.ClubUserPrincipal;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
+import com.vaadin.flow.component.datepicker.DatePicker;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.html.Span;
@@ -18,6 +19,7 @@ import com.vaadin.flow.theme.lumo.LumoUtility;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -67,6 +69,24 @@ final class GymViewSupport {
         NumberFormat format = NumberFormat.getNumberInstance(AR);
         format.setMaximumFractionDigits(2);
         return format.format(value);
+    }
+
+    /**
+     * Los selectores de fecha en castellano, con la semana arrancando el lunes y la fecha como
+     * dd/MM/yyyy: Vaadin viene en ingles y sigue el idioma del navegador. Es una copia de la del
+     * panel de padel, que el modulo no puede usar.
+     */
+    static DatePicker.DatePickerI18n spanishDates() {
+        return new DatePicker.DatePickerI18n()
+                .setMonthNames(List.of("enero", "febrero", "marzo", "abril", "mayo", "junio",
+                        "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"))
+                .setWeekdays(List.of("domingo", "lunes", "martes", "miércoles", "jueves",
+                        "viernes", "sábado"))
+                .setWeekdaysShort(List.of("do", "lu", "ma", "mi", "ju", "vi", "sá"))
+                .setFirstDayOfWeek(1)
+                .setToday("Hoy")
+                .setCancel("Cancelar")
+                .setDateFormat("dd/MM/yyyy");
     }
 
     static Span badge(String text, String theme) {

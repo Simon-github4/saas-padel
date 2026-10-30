@@ -4,6 +4,7 @@ import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymMember;
 import ar.com.padelnec.gym.domain.GymMembership;
 import ar.com.padelnec.gym.domain.GymSede;
+import ar.com.padelnec.gym.domain.PlanLength;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
 import ar.com.padelnec.gym.repository.GymMemberRepository;
 import ar.com.padelnec.service.TenantService;
@@ -29,7 +30,8 @@ public class GymStatusService {
     private final TenantService tenantService;
     private final Clock clock;
 
-    public record MembershipView(LocalDate startsOn, LocalDate endsOn, int daysPerWeek, List<String> sedes) {
+    public record MembershipView(LocalDate startsOn, LocalDate endsOn, int daysPerWeek, List<String> sedes,
+                                 PlanLength planLength) {
     }
 
     public record RecentCheckin(LocalDate date, String sedeName) {
@@ -39,13 +41,23 @@ public class GymStatusService {
      * {@code membership} es la cuota que rige hoy (la que cubre hoy, o la ultima que ya empezo,
      * o la primera que va a empezar), o null si
      * nunca pago. {@code valid} y {@code canEnter} dicen si puede entrar hoy:
-     * con la corriente impaga entra (gracia); con dos o mas cuotas, no.
+     * con la corriente impaga entra (gracia); con dos o mas cuotas, no. {@code onPasses}: su
+     * ultima cuota es un pase de 15 dias, que vence sin deuda ni gracia.
+     *
+     * <p>{@code used} y {@code limit} son los ingresos de la semana, del mes de la cuota o del pase
+     * ({@code window}, ver {@link GymAllowance}), que termina el {@code windowEnd}.
+     *
+     * <p>{@code gap} son los dias sin cuota que dejo un nuevo inicio de mes (o un pase que arranca
+     * mas adelante) despues de lo que paga hoy: esos dias no entra. {@code paidAhead} es lo que ya
+     * tiene pago despues del hueco; los dos null si no hay hueco.
      */
-    public record Status(String fullName, MembershipView membership, boolean valid, int weekUsed,
-                         int weekLimit, boolean checkedInToday, List<RecentCheckin> recent,
+    public record Status(String fullName, MembershipView membership, boolean valid, int used,
+                         int limit, GymAllowance.Window window, LocalDate windowEnd,
+                         boolean checkedInToday, List<RecentCheckin> recent,
                          LocalDate cycleStart, LocalDate periodStart, LocalDate periodEnd,
                          LocalDate paidUntil, boolean paidCurrent, int monthsLate, boolean canEnter,
-                         BigDecimal owedTotal) {
+                         BigDecimal owedTotal, boolean onPasses, GymBillingService.Period gap,
+                         GymBillingService.Period paidAhead) {
     }
 
     @Transactional(readOnly = true)
@@ -57,9 +69,9 @@ public class GymStatusService {
         // La que rige hoy, no la ultima cobrada: un adelanto con otro plan no cambia el tope de hoy.
         GymMembership plan = billing.active();
 
-        GymWeek week = GymWeek.of(today);
-        int weekUsed = (int) checkinRepository.countByMemberIdAndLocalDateBetween(
-                memberId, week.monday(), week.sunday());
+        GymAllowance allowance = GymAllowance.of(billing, today);
+        int used = (int) checkinRepository.countByMemberIdAndLocalDateBetween(
+                memberId, allowance.from(), allowance.to());
         boolean checkedInToday = checkinRepository.findByMemberIdAndLocalDate(memberId, today).isPresent();
         List<RecentCheckin> recent = checkinRepository.findTop10ByMemberIdOrderByLocalDateDesc(memberId).stream()
                 .map(checkin -> new RecentCheckin(checkin.getLocalDate(), checkin.getSede().getName()))
@@ -67,10 +79,11 @@ public class GymStatusService {
 
         boolean canEnter = billing.canEnter();
         return new Status(member.getFullName(),
-                plan == null ? null : view(plan), canEnter, weekUsed,
-                plan == null ? 0 : plan.getDaysPerWeek(), checkedInToday, recent,
+                plan == null ? null : view(plan), canEnter, used, allowance.limit(), allowance.window(),
+                allowance.to(), checkedInToday, recent,
                 billing.anchor(), billing.periodStart(), billing.periodEnd(), billing.paidUntil(),
-                billing.paidCurrent(), billing.monthsLate(), canEnter, billing.owedTotal());
+                billing.paidCurrent(), billing.monthsLate(), canEnter, billing.owedTotal(), billing.onPasses(),
+                billing.gap(), billing.paidAhead());
     }
 
     private static MembershipView view(GymMembership membership) {
@@ -79,6 +92,6 @@ public class GymStatusService {
                 .sorted(Comparator.naturalOrder())
                 .toList();
         return new MembershipView(membership.getStartsOn(), membership.getEndsOn(),
-                membership.getDaysPerWeek(), sedes);
+                membership.getDaysPerWeek(), sedes, membership.getPlanLength());
     }
 }

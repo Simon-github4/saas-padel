@@ -32,6 +32,8 @@ public class AppProperties {
     private final Mail mail = new Mail();
     private final Analytics analytics = new Analytics();
     private final Mercadopago mercadopago = new Mercadopago();
+    private final Push push = new Push();
+    private final Seo seo = new Seo();
 
     @Getter
     @Setter
@@ -165,6 +167,42 @@ public class AppProperties {
          * la tabla tenant en V1__initial_schema.sql).
          */
         private String webhookSecret;
+    }
+
+    @Getter
+    @Setter
+    public static class Push {
+        /**
+         * Clave publica VAPID en Base64 URL (punto P-256 sin comprimir), la que
+         * genera {@code npx web-push generate-vapid-keys}. Sin esta y la privada no
+         * hay avisos al celular y la opcion no aparece en el panel. En dev se
+         * generan solas.
+         */
+        private String vapidPublicKey;
+
+        /**
+         * Su pareja privada. Cambiarlas deja sin efecto todas las suscripciones:
+         * cada persona tiene que volver a activar los avisos.
+         */
+        private String vapidPrivateKey;
+
+        /**
+         * Contacto que ven los servicios de push si algo anda mal: {@code mailto:} o
+         * {@code https:}. Vacio, {@code mailto:} con {@link Mail#getFrom()}.
+         */
+        private String vapidSubject;
+    }
+
+    @Getter
+    @Setter
+    public static class Seo {
+        /**
+         * Dejar que los buscadores recorran el sitio. En {@code false} (staging),
+         * {@code robots.txt} cierra todo: si no, Google indexaria los clubes de
+         * prueba con la URL de Render, que ahi es la base publica y por eso
+         * {@code CanonicalHost} no la redirige a ningun lado.
+         */
+        private boolean indexable = true;
     }
 
     @Getter

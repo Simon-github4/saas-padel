@@ -14,10 +14,14 @@ import java.util.UUID;
  * la caja sale como un renglon propio y resta del total del metodo.
  *
  * <p>Uno de {@code bookingId} y {@code buffetOrderId} es nulo. En un cobro de
- * buffet, {@code courtName} y {@code bookingStartTime} tambien: no hay turno, y
- * {@code customerFullName} es el "a nombre de" del pedido.
+ * buffet, {@code courtName}, {@code bookingStartTime} y
+ * {@code bookingTotalPrice} tambien: no hay turno, y {@code customerFullName} es
+ * el "a nombre de" del pedido. {@code bookingTotalPrice} es el total del turno
+ * con sus consumiciones, el que hace falta para repartir el cobro entre la
+ * cancha y el buffet.
  */
-public record CashMovementRow(Instant createdAt, PaymentMethod method, BigDecimal amount,
+public record CashMovementRow(UUID paymentId, Instant createdAt, PaymentMethod method, BigDecimal amount,
                               UUID registeredBy, UUID bookingId, UUID buffetOrderId,
-                              String customerFullName, String courtName, Instant bookingStartTime) {
+                              String customerFullName, String courtName, Instant bookingStartTime,
+                              BigDecimal bookingTotalPrice) {
 }

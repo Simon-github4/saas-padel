@@ -7,15 +7,18 @@ import ar.com.padelnec.TestDatabaseConfig;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.gym.domain.GymSede;
+import ar.com.padelnec.gym.domain.PayMethod;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
 import ar.com.padelnec.gym.service.GymMemberService;
 import ar.com.padelnec.gym.service.GymMemberService.CreatedMember;
+import ar.com.padelnec.gym.service.GymMembershipService;
 import ar.com.padelnec.gym.service.GymRateLimits;
 import ar.com.padelnec.gym.service.GymSettingsService;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +55,7 @@ class GymDniOnlyApiIntegrationTest {
     @Autowired private GymMemberService memberService;
     @Autowired private GymSettingsService settingsService;
     @Autowired private GymCheckinRepository checkinRepository;
+    @Autowired private GymMembershipService membershipService;
     @MockitoBean private GymRateLimits rateLimits;
 
     private RestTestClient client;
@@ -284,5 +288,29 @@ class GymDniOnlyApiIntegrationTest {
         TenantContext.runAs(club.getId(), () -> assertThat(
                 checkinRepository.findByMemberIdAndLocalDate(beto.id(), today).orElseThrow().getDistanceMeters())
                 .isNull());
+    }
+
+    // ------------------------------------------------------- pase de 15 dias
+
+    @Test
+    @DisplayName("El /me dice si el socio esta con pases y de que tipo es su cuota")
+    void meTellsWhetherTheMemberIsOnAPass() {
+        CreatedMember tomas = gym.member(club, "39111222", "Tomás Paso");
+        LocalDate today = LocalDate.now(ZONE);
+        TenantContext.runAs(club.getId(), () -> membershipService.chargePass(tomas.id(), null,
+                new java.math.BigDecimal("18000"), 3, PayMethod.CASH, located.getId(), Set.of(located.getId()),
+                null, today, null, false));
+
+        String token = post("/login", null, Map.of("dni", tomas.dni()), 200).get("token").asText();
+        JsonNode me = get("/me", token, 200);
+        assertThat(me.get("onPasses").asBoolean()).isTrue();
+        assertThat(me.get("canEnter").asBoolean()).isTrue();
+        assertThat(me.get("monthsLate").asInt()).isZero();
+        assertThat(me.get("membership").get("planLength").asText()).isEqualTo("FIFTEEN_DAYS");
+        assertThat(me.get("paidUntil").asText()).isEqualTo(today.plusDays(14).toString());
+
+        JsonNode monthly = get("/me", loginWithDniOnly(), 200);
+        assertThat(monthly.get("onPasses").asBoolean()).isFalse();
+        assertThat(monthly.get("membership").get("planLength").asText()).isEqualTo("MONTH");
     }
 }

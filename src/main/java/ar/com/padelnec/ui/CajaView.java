@@ -5,7 +5,6 @@ import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.service.CashRegisterService;
 import ar.com.padelnec.service.CashRegisterService.BuffetLine;
 import ar.com.padelnec.service.CashRegisterService.DayCash;
-import ar.com.padelnec.service.CashRegisterService.MethodTotal;
 import ar.com.padelnec.service.CashRegisterService.Movement;
 import ar.com.padelnec.service.TenantService;
 import com.vaadin.flow.component.Component;
@@ -30,12 +29,15 @@ import com.vaadin.flow.theme.lumo.LumoUtility;
 import jakarta.annotation.security.PermitAll;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.function.Predicate;
 
 /**
- * La caja de un dia: los movimientos de plata y a cuanto tienen que sumar.
+ * La caja de un dia: los movimientos de plata y a cuanto tienen que sumar,
+ * repartidos entre los turnos y el buffet.
  *
  * <p>Es la pantalla del cierre, y por eso vive del lado del mostrador y no en
  * Estadisticas: el que cuenta los billetes a la noche es el que atiende, no el
@@ -55,17 +57,42 @@ public class CajaView extends VerticalLayout {
             DateTimeFormatter.ofPattern("EEEE d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es-AR"));
     private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
 
+    /**
+     * Que movimientos lista la tabla. Un cobro de turno con consumiciones es de
+     * las dos partes, y aparece en los dos filtros.
+     */
+    private enum Part {
+        TODO("Todo", movement -> true, "No hubo movimientos de caja este día."),
+        TURNOS("Turnos", movement -> movement.turnosAmount().signum() != 0,
+                "No hubo cobros de turnos este día."),
+        BUFFET("Buffet", movement -> movement.buffetAmount().signum() != 0,
+                "No hubo cobros del buffet este día.");
+
+        private final String label;
+        private final Predicate<Movement> includes;
+        private final String emptyText;
+
+        Part(String label, Predicate<Movement> includes, String emptyText) {
+            this.label = label;
+            this.includes = includes;
+            this.emptyText = emptyText;
+        }
+    }
+
     private final TenantService tenantService;
     private final CashRegisterService cashRegisterService;
 
     private final DatePicker datePicker = new DatePicker();
     private final H2 dateHeading = new H2();
     private final Span summary = new Span();
-    private final Div kpis = new Div();
+    private final Div top = new Div();
     private final Grid<Movement> movementsGrid = new Grid<>();
     private final Grid<BuffetLine> buffetGrid = new Grid<>();
+    private final Map<Part, Button> partButtons = new EnumMap<>(Part.class);
 
     private Tenant club;
+    private DayCash caja;
+    private Part part = Part.TODO;
 
     public CajaView(TenantService tenantService, CashRegisterService cashRegisterService) {
         this.tenantService = tenantService;
@@ -74,19 +101,12 @@ public class CajaView extends VerticalLayout {
         setSizeFull();
         this.club = tenantService.requireCurrent();
 
-        // auto-fit y no un numero fijo de columnas: son cinco tarjetas, y en un
-        // ancho donde no entran las cinco es preferible que se acomoden solas a
-        // que la ultima quede sola en su fila.
-        kpis.setWidth("100%");
-        kpis.getStyle()
-                .set("display", "grid")
-                .set("grid-template-columns", "repeat(auto-fit, minmax(11rem, 1fr))")
-                .set("gap", "var(--lumo-space-m)");
+        top.addClassName("caja-top");
 
         buildMovementsColumns();
         buildBuffetColumns();
 
-        add(header(), kpis, movementsSection(), buffetSection());
+        add(header(), top, movementsSection(), buffetSection());
         addClassNames(LumoUtility.Gap.LARGE);
 
         // El value-change listener de dayPicker() ya quedo registrado por el add()
@@ -145,7 +165,7 @@ public class CajaView extends VerticalLayout {
         if (date == null) {
             return;
         }
-        DayCash caja = cashRegisterService.of(club, date);
+        caja = cashRegisterService.of(club, date);
 
         dateHeading.setText(DATE_HEADING.format(date));
         summary.setText(caja.movements().isEmpty()
@@ -154,67 +174,65 @@ public class CajaView extends VerticalLayout {
                         caja.movements().size() == 1 ? "movimiento" : "movimientos",
                         Money.format(caja.total())));
 
-        refreshKpis(caja);
-        movementsGrid.setItems(caja.movements());
+        top.removeAll();
+        top.add(new RepartoCard(caja));
+        showMovements();
         buffetGrid.setItems(caja.buffet());
-    }
-
-    private void refreshKpis(DayCash caja) {
-        kpis.removeAll();
-        // El efectivo primero y con su aclaracion: de las cinco tarjetas es la
-        // unica que se contrasta contra algo fisico.
-        kpis.add(new KpiCard("Efectivo", Money.format(caja.cash()))
-                .footnote("Lo que tiene que haber en el cajón"));
-        for (MethodTotal entry : caja.byMethod()) {
-            if (entry.method() == PaymentMethod.CASH) {
-                continue;
-            }
-            KpiCard card = new KpiCard(readable(entry.method()), Money.format(entry.total()));
-            if (entry.method() == PaymentMethod.MERCADOPAGO) {
-                card.footnote("No pasa por el cajón");
-            }
-            kpis.add(card);
-        }
-        kpis.add(new KpiCard("Total cobrado", Money.format(caja.total()))
-                .footnote("Por fecha del cobro"));
-        kpis.add(pendingCard(caja));
-    }
-
-    /**
-     * Lo que falta cobrar de los turnos y los pedidos de buffet del dia.
-     *
-     * <p>Va en rojo solo si hay algo: en cero es una buena noticia, no una
-     * advertencia, y pintarlo igual entrena a ignorar el color.
-     */
-    private KpiCard pendingCard(DayCash caja) {
-        KpiCard card = new KpiCard("Pendiente de cobro", Money.format(caja.pending()));
-        if (caja.pending().signum() > 0) {
-            List<String> parts = new ArrayList<>();
-            if (caja.pendingBookings() > 0) {
-                parts.add(caja.pendingBookings() == 1 ? "1 turno" : caja.pendingBookings() + " turnos");
-            }
-            if (caja.pendingOrders() > 0) {
-                parts.add(caja.pendingOrders() == 1 ? "1 pedido" : caja.pendingOrders() + " pedidos");
-            }
-            card.alert().footnote(String.join(" y ", parts) + " con saldo");
-        } else {
-            card.footnote("Los turnos y pedidos están al día");
-        }
-        return card;
     }
 
     // --------------------------------------------------------------- tablas
 
     private VerticalLayout movementsSection() {
         movementsGrid.setAllRowsVisible(true);
-        return section("Movimientos del día", movementsGrid, null);
+        VerticalLayout block = section("Movimientos del día", movementsGrid, null);
+        // El filtro va en el renglon del titulo y no arriba de todo: filtra esta
+        // tabla, no el reparto, que siempre muestra las dos partes.
+        Component heading = block.getComponentAt(0);
+        Div headingRow = new Div(heading, partFilter());
+        headingRow.addClassName("caja-section-heading");
+        block.addComponentAsFirst(headingRow);
+        return block;
+    }
+
+    /**
+     * Todo · Turnos · Buffet, como un control segmentado.
+     *
+     * <p>Botones con aria-pressed y no pestañas: no cambian de panel, filtran la
+     * misma tabla.
+     */
+    private Div partFilter() {
+        Div group = new Div();
+        group.addClassName("caja-filter");
+        group.getElement().setAttribute("role", "group");
+        group.getElement().setAttribute("aria-label", "Mostrar movimientos de");
+        for (Part option : Part.values()) {
+            Button button = new Button(option.label, event -> {
+                part = option;
+                showMovements();
+            });
+            // Sin LUMO_TERTIARY: esa variante fija el fondo transparente por encima
+            // del tema, y el elegido tiene que poder levantarse con su fondo.
+            button.addThemeVariants(ButtonVariant.LUMO_SMALL);
+            button.addClassName("caja-filter__option");
+            partButtons.put(option, button);
+            group.add(button);
+        }
+        return group;
+    }
+
+    private void showMovements() {
+        partButtons.forEach((option, button) ->
+                button.getElement().setAttribute("aria-pressed", String.valueOf(option == part)));
+        movementsGrid.setEmptyStateText(part.emptyText);
+        movementsGrid.setItems(caja == null ? List.of()
+                : caja.movements().stream().filter(part.includes).toList());
     }
 
     private VerticalLayout buffetSection() {
         buffetGrid.setAllRowsVisible(true);
         VerticalLayout block = section("Buffet del día", buffetGrid,
-                "Lo vendido en turnos y pedidos, no lo cobrado: una consumición se suma al total "
-                        + "del turno o del pedido y puede cobrarse otro día.");
+                "Lo vendido, no lo cobrado: una consumición se suma al total del turno o del pedido "
+                        + "y puede cobrarse otro día. Lo cobrado del buffet está en el reparto de arriba.");
         // Los pedidos sin turno se cargan y se cobran en su propia pantalla; aca
         // solo se suman.
         RouterLink toBuffet = new RouterLink("Cargar y cobrar pedidos en Buffet", BuffetView.class);
@@ -248,13 +266,18 @@ public class CajaView extends VerticalLayout {
         movementsGrid.addColumn(Movement::customerName).setHeader("A nombre de")
                 .setAutoWidth(true).setFlexGrow(1);
         movementsGrid.addColumn(this::turnoOf).setHeader("Turno").setAutoWidth(true);
+        movementsGrid.addComponentColumn(this::partCell).setHeader("Parte").setAutoWidth(true);
         movementsGrid.addColumn(this::conceptOf).setHeader("Concepto").setAutoWidth(true);
         movementsGrid.addColumn(movement -> readable(movement.method())).setHeader("Método")
                 .setAutoWidth(true);
         movementsGrid.addComponentColumn(this::amountCell).setHeader("Importe")
                 .setAutoWidth(true).setTextAlign(ColumnTextAlign.END);
-        movementsGrid.addColumn(this::registeredByOf).setHeader("Cargó").setAutoWidth(true);
-        movementsGrid.setEmptyStateText("No hubo movimientos de caja este día.");
+        // Sin autoWidth: con la columna "Parte" la tabla ya no entraba en una
+        // laptop con el menu abierto, y el nombre de quien cargo es lo que mejor
+        // tolera cortarse. Crece si hay lugar, y entero queda en el tooltip.
+        movementsGrid.addColumn(this::registeredByOf).setHeader("Cargó").setWidth("9rem")
+                .setFlexGrow(1).setTooltipGenerator(this::registeredByOf);
+        movementsGrid.setEmptyStateText(Part.TODO.emptyText);
     }
 
     private void buildBuffetColumns() {
@@ -269,6 +292,33 @@ public class CajaView extends VerticalLayout {
         buffetGrid.setEmptyStateText("No se vendió nada del buffet este día.");
     }
 
+    /**
+     * De que parte es el movimiento. Un cobro de turno que tambien pago
+     * consumiciones lleva las dos etiquetas con lo que le toca a cada una; si es
+     * de una sola parte, el importe ya esta en su columna y no se repite.
+     */
+    private Component partCell(Movement movement) {
+        Div cell = new Div();
+        cell.addClassName("caja-parts");
+        boolean turnos = movement.turnosAmount().signum() != 0;
+        boolean buffet = movement.buffetAmount().signum() != 0;
+        if (turnos && buffet) {
+            cell.add(partTag("Turno " + Money.format(movement.turnosAmount()), "turnos"),
+                    partTag("Buffet " + Money.format(movement.buffetAmount()), "buffet"));
+        } else if (buffet || movement.buffetOrder()) {
+            cell.add(partTag("Buffet", "buffet"));
+        } else {
+            cell.add(partTag("Turno", "turnos"));
+        }
+        return cell;
+    }
+
+    private Span partTag(String text, String part) {
+        Span tag = new Span(text);
+        tag.addClassNames("caja-part", "caja-part--" + part, "tabular");
+        return tag;
+    }
+
     /** La devolucion se lee distinto del cobro: es plata que salio, no que entro. */
     private Component amountCell(Movement movement) {
         Span span = new Span(Money.format(movement.amount()));
@@ -279,9 +329,10 @@ public class CajaView extends VerticalLayout {
         return span;
     }
 
+    /** Un pedido de buffet no tiene turno; que es del buffet ya lo dice la columna de al lado. */
     private String turnoOf(Movement movement) {
-        if (movement.buffet()) {
-            return "Buffet";
+        if (movement.buffetOrder()) {
+            return "—";
         }
         return "%s · %s".formatted(movement.courtName(),
                 HH_MM.format(movement.bookingStartTime().atZone(club.zoneId())));
@@ -307,7 +358,7 @@ public class CajaView extends VerticalLayout {
         return movement.method() == PaymentMethod.MERCADOPAGO ? "MercadoPago" : "—";
     }
 
-    private String readable(PaymentMethod method) {
+    static String readable(PaymentMethod method) {
         return switch (method) {
             case CASH -> "Efectivo";
             case TRANSFER -> "Transferencia";

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import ar.com.padelnec.ClubFixture;
 import ar.com.padelnec.MutableClock;
+import ar.com.padelnec.TestClockConfig;
 import ar.com.padelnec.TestDatabaseConfig;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
@@ -21,28 +22,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 
 /** El job diario borra las sesiones que ya no sirven y deja las que si. */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, GymSessionRetentionTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class GymSessionRetentionTest {
 
     private static final Instant START = Instant.parse("2026-09-14T13:00:00Z");
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at("2026-09-14T13:00:00Z");
-        }
-    }
 
     @Autowired private GymAuthService authService;
     @Autowired private GymSessionRepository sessionRepository;

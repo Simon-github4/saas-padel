@@ -7,15 +7,20 @@ import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.PaymentMethod;
 import ar.com.padelnec.repository.ProductRepository;
 import ar.com.padelnec.service.BuffetOrderService;
+import ar.com.padelnec.service.BuffetOrderService.Charge;
 import ar.com.padelnec.service.PaymentService;
 import ar.com.padelnec.service.ProductService;
+import ar.com.padelnec.support.BuffetCoverage;
 import ar.com.padelnec.web.BusinessRuleException;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
-import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.combobox.ComboBox;
+import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
 import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.formlayout.FormLayout;
 import com.vaadin.flow.component.html.Span;
+import com.vaadin.flow.component.icon.Icon;
+import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.notification.Notification;
 import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
@@ -26,10 +31,9 @@ import com.vaadin.flow.component.textfield.IntegerField;
 import com.vaadin.flow.theme.lumo.LumoUtility;
 import java.math.BigDecimal;
 import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -40,6 +44,9 @@ import java.util.UUID;
  * transferencia, y si sacar un producto deja plata a favor se devuelve desde acá.
  * Queda abierto después de cada acción, porque un pedido se va armando de a poco:
  * el que pidió una gaseosa vuelve por un café.
+ *
+ * <p>Acá se cobra un monto, que cubre los productos en el orden en que se
+ * cargaron; elegir qué productos paga cada uno se hace en la pantalla del buffet.
  */
 class BuffetOrderDialog extends Dialog {
 
@@ -54,9 +61,6 @@ class BuffetOrderDialog extends Dialog {
     private final ProductRepository productRepository;
     private final UUID currentUserId;
     private final Runnable onChange;
-
-    /** Productos tildados para cobrar ahora, ej. lo que se lleva uno del grupo. */
-    private final Set<UUID> selectedForCharge = new LinkedHashSet<>();
 
     BuffetOrderDialog(BuffetOrder order, Tenant club, BuffetOrderService buffetOrderService,
                       ProductService productService, PaymentService paymentService,
@@ -80,8 +84,7 @@ class BuffetOrderDialog extends Dialog {
         removeAll();
         getFooter().removeAll();
         List<ProductSale> sales = productService.salesOfOrder(order.getId());
-        selectedForCharge.retainAll(sales.stream().map(ProductSale::getId).toList());
-        add(details(), items(sales), payments(sales));
+        add(details(), items(sales), payments());
         getFooter().add(actions());
     }
 
@@ -136,14 +139,34 @@ class BuffetOrderDialog extends Dialog {
             empty.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY);
             layout.add(empty);
         }
-        boolean canPickForCharge = order.balanceDue().signum() > 0;
-        for (ProductSale sale : sales) {
-            Span label = new Span("%dx %s".formatted(sale.getQuantity(), sale.getProductName()));
+        // Lo cobrado lleva la marca, y lo que un pago por monto dejó a medio
+        // pagar dice cuánto le falta: la misma cuenta que la pantalla del buffet.
+        List<BigDecimal> covered = BuffetCoverage.covered(sales.stream()
+                .map(sale -> new BuffetCoverage.Line(sale.getUnitPrice(), sale.getQuantity(), sale.isPaid()))
+                .toList(), order.getPaidAmount());
+        for (int i = 0; i < sales.size(); i++) {
+            ProductSale sale = sales.get(i);
+            BigDecimal coveredOfLine = covered.get(i);
+            boolean done = sale.isPaid()
+                    || (sale.subtotal().signum() > 0 && coveredOfLine.compareTo(sale.subtotal()) >= 0);
+            String text = "%dx %s".formatted(sale.getQuantity(), sale.getProductName());
+            if (!done && coveredOfLine.signum() > 0) {
+                text += " · quedan " + Money.format(sale.subtotal().subtract(coveredOfLine));
+            }
+            Span label = new Span(text);
             Span subtotal = amount(sale.subtotal(), false);
-            Button remove = new Button("Quitar", event -> runKeepOpen(() -> {
+            Runnable removeIt = () -> runKeepOpen(() -> {
                 productService.removeSale(sale.getId());
                 Notification.show("Producto quitado");
-            }));
+            });
+            Button remove = new Button("Quitar", event -> {
+                if (done || coveredOfLine.signum() > 0) {
+                    confirmPaidRemoval(order, "%dx %s".formatted(sale.getQuantity(), sale.getProductName()),
+                            sale.subtotal(), done ? sale.subtotal() : coveredOfLine, removeIt).open();
+                } else {
+                    removeIt.run();
+                }
+            });
             remove.addThemeVariants(ButtonVariant.LUMO_ERROR, ButtonVariant.LUMO_TERTIARY);
 
             HorizontalLayout row = new HorizontalLayout(label, subtotal, remove);
@@ -151,35 +174,16 @@ class BuffetOrderDialog extends Dialog {
             row.setAlignItems(HorizontalLayout.Alignment.CENTER);
             row.expand(label);
             row.addClassNames(LumoUtility.Gap.SMALL);
-
-            // Tildar productos arma el monto a cobrar solo: para cuando uno del
-            // grupo se va y paga lo suyo, y el resto de la cuenta sigue abierta.
-            // Lo ya cobrado queda tildado y no se puede destildar: ese cobro ya
-            // se hizo, no hay nada que rearmar.
-            if (canPickForCharge || sale.isPaid()) {
-                Checkbox pick = new Checkbox();
-                pick.setValue(sale.isPaid() || selectedForCharge.contains(sale.getId()));
-                pick.setEnabled(!sale.isPaid());
-                if (sale.isPaid()) {
-                    pick.setTooltipText("Ya cobrado");
-                }
-                pick.addValueChangeListener(event -> {
-                    if (Boolean.TRUE.equals(event.getValue())) {
-                        selectedForCharge.add(sale.getId());
-                    } else {
-                        selectedForCharge.remove(sale.getId());
-                    }
-                    rebuild();
-                });
-                row.addComponentAsFirst(pick);
+            if (done) {
+                Icon paid = VaadinIcon.CHECK.create();
+                paid.addClassNames(LumoUtility.TextColor.SUCCESS, LumoUtility.IconSize.SMALL);
+                paid.setTooltipText("Ya cobrado");
+                row.addComponentAsFirst(paid);
             }
             layout.add(row);
         }
 
-        Select<Product> product = new Select<>();
-        product.setLabel("Producto");
-        product.setItems(productRepository.findAllByActiveTrueOrderByNameAsc());
-        product.setItemLabelGenerator(p -> "%s (%s)".formatted(p.getName(), Money.format(p.getUnitPrice())));
+        ComboBox<Product> product = ProductCombo.create(productRepository.findAllByActiveTrueOrderByNameAsc());
 
         IntegerField quantity = new IntegerField("Cantidad");
         quantity.setValue(1);
@@ -209,32 +213,17 @@ class BuffetOrderDialog extends Dialog {
         return layout;
     }
 
-    private VerticalLayout payments(List<ProductSale> sales) {
+    private VerticalLayout payments() {
         VerticalLayout layout = new VerticalLayout();
         layout.setPadding(false);
 
         HorizontalLayout row;
         if (order.balanceDue().signum() > 0) {
-            BigDecimal selectedSubtotal = sales.stream()
-                    .filter(sale -> selectedForCharge.contains(sale.getId()))
-                    .map(ProductSale::subtotal)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal suggested = selectedSubtotal.signum() > 0
-                    ? selectedSubtotal.min(order.balanceDue())
-                    : order.balanceDue();
-            row = moneyRow("Cobrar en mostrador", suggested, "Registrar cobro", (value, method) -> {
-                paymentService.registerManualPayment(order, value, method, currentUserId);
-                // Lo tildado queda marcado como cobrado; sin nada tildado, se cobró
-                // todo el saldo y lo que faltaba pagar también queda cubierto.
-                if (!selectedForCharge.isEmpty()) {
-                    productService.markPaid(selectedForCharge);
-                } else {
-                    productService.markPaid(sales.stream()
-                            .filter(sale -> !sale.isPaid())
-                            .map(ProductSale::getId)
-                            .toList());
-                }
-                selectedForCharge.clear();
+            // Por el mismo camino que la pantalla del buffet: un monto menor a lo
+            // que debe cubre los productos en orden y deja marcado qué se pagó.
+            row = moneyRow("Cobrar en mostrador", order.balanceDue(), "Registrar cobro", (value, method) -> {
+                buffetOrderService.checkout(order.getId(), null, List.of(), Charge.of(method, value),
+                        Map.of(), Map.of(), currentUserId);
                 Notification.show("Cobro registrado");
             });
         } else if (order.creditBalance().signum() > 0) {
@@ -250,6 +239,39 @@ class BuffetOrderDialog extends Dialog {
                 LumoUtility.Padding.Top.MEDIUM, LumoUtility.Margin.Top.MEDIUM);
         layout.add(row);
         return layout;
+    }
+
+    /**
+     * Antes de sacar algo cobrado, entero o en parte: esa plata ya entró a la
+     * caja, y sacarlo la deja a favor del cliente o la pasa a lo que sigue
+     * debiendo. El mensaje dice cómo queda la cuenta.
+     *
+     * @param paidOfIt cuánto de eso ya está pagado
+     */
+    static ConfirmDialog confirmPaidRemoval(BuffetOrder order, String what, BigDecimal subtotal,
+                                            BigDecimal paidOfIt, Runnable then) {
+        BigDecimal after = order.getPaidAmount().subtract(order.getTotalPrice().subtract(subtotal));
+        String outcome;
+        if (after.signum() > 0) {
+            outcome = "La cuenta queda con %s a favor del cliente, que se le devuelve desde Detalle."
+                    .formatted(Money.format(after));
+        } else if (after.signum() < 0) {
+            outcome = "La cuenta queda debiendo %s.".formatted(Money.format(after.negate()));
+        } else {
+            outcome = "La cuenta queda saldada.";
+        }
+        ConfirmDialog dialog = new ConfirmDialog();
+        dialog.setHeader("¿Sacar " + what + "?");
+        String already = paidOfIt.compareTo(subtotal) >= 0
+                ? "Ya está cobrado."
+                : "Ya tiene %s pagos.".formatted(Money.format(paidOfIt));
+        dialog.setText(already + " " + outcome);
+        dialog.setCancelable(true);
+        dialog.setCancelText("Dejarlo");
+        dialog.setConfirmText("Sacar");
+        dialog.setConfirmButtonTheme("error primary");
+        dialog.addConfirmListener(event -> then.run());
+        return dialog;
     }
 
     private interface MoneyAction {

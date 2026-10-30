@@ -236,9 +236,11 @@ public class DashboardView extends VerticalLayout {
                 // Las dos tarjetas de plata dicen con que criterio cuentan, porque
                 // no tienen por que dar lo mismo y la diferencia no es un error:
                 // una sena cobrada hoy por un turno del mes que viene esta en el
-                // cobrado de hoy y en el facturado del mes que viene.
+                // cobrado de hoy y en el facturado del mes que viene. El facturado
+                // incluye el buffet: lo consumido en un turno va con el turno, y un
+                // pedido sin turno por el dia en que se vendio.
                 new KpiCard("Facturado", money(summary.facturado()))
-                        .footnote("Por fecha del turno"),
+                        .footnote("Turnos y buffet, por fecha del turno o de la venta"),
                 new KpiCard("Cobrado", money(summary.cobrado()))
                         .footnote("Por fecha del cobro"),
                 occupancyCard(summary));
@@ -266,10 +268,18 @@ public class DashboardView extends VerticalLayout {
         return card.detail(desglose);
     }
 
-    /** "10/125" (turnos ocupados sobre turnos posibles) y el porcentaje debajo. */
+    /**
+     * "10/125" (turnos ocupados sobre turnos posibles) y el porcentaje debajo. Los
+     * turnos de torneo cuentan como ocupados, y se dice cuantos fueron: no son
+     * turnos vendidos, y sin la aclaracion el numero no coincide con Jugados.
+     */
     private KpiCard occupancyCard(PeriodStats summary) {
-        return new KpiCard("Turnos", summary.slotsOcupados() + "/" + summary.slotsPosibles())
+        KpiCard card = new KpiCard("Turnos", summary.slotsOcupados() + "/" + summary.slotsPosibles())
                 .emphasis(summary.ocupacionPromedio() + "% de ocupación");
+        if (summary.slotsTorneo() > 0) {
+            card.footnote("Incluye %d de torneo".formatted(summary.slotsTorneo()));
+        }
+        return card;
     }
 
     // ------------------------------------------------------------ tablas

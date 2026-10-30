@@ -3,7 +3,7 @@ import type { Slot } from '../../api/client';
 import { InstagramGlyph, type ClubInstagram } from '../../components/Ui';
 import { clockTime, money } from '../../format';
 
-/** Texto del botón cuando el club no cargó uno propio. Compartido por los tres diseños de portada. */
+/** Texto del botón cuando el club no cargó uno propio. Compartido por todos los diseños de portada. */
 export const DEFAULT_CTA = 'Ver horarios';
 
 /** Oscurecido de la foto cuando el club no lo definio. Igual al del panel. */
@@ -13,7 +13,7 @@ const DEFAULT_OVERLAY = 55;
 const QUICK_SLOTS = 4;
 
 /**
- * Alto de las tres portadas: justo la pantalla menos la barra de arriba (h-14,
+ * Alto de todas las portadas: justo la pantalla menos la barra de arriba (h-14,
  * md:h-16, y su borde de 1px). Con svh y no vh: en el teléfono, vh cuenta la
  * barra de direcciones y la portada quedaba cortada por abajo.
  *
@@ -228,7 +228,7 @@ export function HeroClassic({
  * Los primeros horarios libres de hoy, como fichas que se tocan. Cada una
  * lleva lo que pone cada jugador, que es lo que se pregunta antes de decidir.
  */
-function TodaySlots({
+export function TodaySlots({
   slots,
   timeZone,
   playersPerCourt,
@@ -318,7 +318,7 @@ function TodaySlots({
   );
 }
 
-function PinGlyph() {
+export function PinGlyph() {
   return (
     <svg
       viewBox="0 0 24 24"

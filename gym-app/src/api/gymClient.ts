@@ -34,7 +34,15 @@ export interface Membership {
   endsOn: string;
   daysPerWeek: number;
   sedes: string[];
+  /** Mensual, o pase de 15 días (vence sin deuda). */
+  planLength: 'MONTH' | 'FIFTEEN_DAYS';
 }
+
+/**
+ * Donde se cuenta el tope de ingresos: de lunes a domingo, en el mes de su cuota (del 15 al 14 si
+ * arrancó el 15) o en su pase de 15 días. El club elige semana o mes.
+ */
+export type LimitPeriod = 'WEEK' | 'MONTH' | 'PASS';
 
 export interface RecentCheckin {
   date: string;
@@ -47,8 +55,11 @@ export interface Me {
   membership: Membership | null;
   /** Si la cuota vale hoy. */
   valid: boolean;
-  weekUsed: number;
-  weekLimit: number;
+  /** Los ingresos que usó y los que tiene en `limitPeriod`, que termina el `windowEnd`. */
+  used: number;
+  limit: number;
+  limitPeriod: LimitPeriod;
+  windowEnd: string;
   checkedInToday: boolean;
   recent: RecentCheckin[];
   /** El día del mes en que arrancó su ciclo. Null si todavía no pagó ninguna cuota. */
@@ -66,14 +77,32 @@ export interface Me {
   canEnter: boolean;
   /** Lo que debe, a valor de la tarifa de su plan. */
   owedTotal: number;
+  /** Su última cuota es un pase de 15 días: lo pago vence sin deuda ni gracia. */
+  onPasses: boolean;
+  /**
+   * Los días sin cuota que dejó un nuevo inicio de mes (o un pase que arranca más adelante)
+   * después de lo que paga hoy: esos días no entra. Null si no hay hueco.
+   */
+  gap: DateRange | null;
+  /** Lo que ya tiene pago después del hueco. Null si no hay hueco. */
+  paidAhead: DateRange | null;
+}
+
+/** Del día `start` al día `end`, inclusive. */
+export interface DateRange {
+  start: string;
+  end: string;
 }
 
 export interface CheckInResult {
   sedeName: string;
   /** Ya tenia el ingreso de hoy: escanear dos veces no es un error. */
   alreadyRegistered: boolean;
-  weekUsed: number;
-  weekLimit: number;
+  /** Como en `Me`. */
+  used: number;
+  limit: number;
+  limitPeriod: LimitPeriod;
+  windowEnd: string;
   validUntil: string;
 }
 

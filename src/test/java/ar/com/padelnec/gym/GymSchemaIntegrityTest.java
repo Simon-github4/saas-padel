@@ -3,6 +3,7 @@ package ar.com.padelnec.gym;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import ar.com.padelnec.ClubFixture;
 import ar.com.padelnec.TestDatabaseConfig;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -27,12 +28,13 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import(TestDatabaseConfig.class)
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class})
 class GymSchemaIntegrityTest {
 
     private static final LocalDate SEPT_1 = LocalDate.of(2026, 9, 1);
 
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private ClubFixture clubFixture;
 
     private UUID clubId;
     private UUID sedeId;
@@ -40,7 +42,9 @@ class GymSchemaIntegrityTest {
 
     @BeforeEach
     void setUp() {
-        jdbc.update("DELETE FROM tenant");
+        // El contexto es compartido con los tests del club: sus turnos y cobros no se
+        // van con un DELETE de los clubes, como las tablas del gimnasio.
+        clubFixture.reset();
         clubId = newClub("los-troncos");
         sedeId = newSede(clubId, "Necochea", "qr-necochea");
         memberId = newMember(clubId, "30111222");

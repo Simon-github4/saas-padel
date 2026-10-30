@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import ar.com.padelnec.domain.ClubUser;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.domain.enums.UserRole;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.repository.ClubUserRepository;
 import ar.com.padelnec.security.ClubUserDetailsService;
 import org.junit.jupiter.api.BeforeEach;
@@ -22,7 +23,7 @@ import org.springframework.test.context.ActiveProfiles;
 /** Login del panel: entra con el nombre de usuario o con el mail, lo que sea mas comodo. */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class})
 class ClubUserDetailsServiceTest {
 
     @Autowired private ClubUserDetailsService detailsService;

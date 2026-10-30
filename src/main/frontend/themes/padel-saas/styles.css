@@ -157,6 +157,21 @@ vaadin-app-layout::part(drawer) {
   width: 14.4rem;
 }
 
+/* "Recordatorio" + el logo de WhatsApp en su verde, que se reconoce antes de
+   leer: reemplaza el texto "por WhatsApp", que en el celular no entraba. */
+.whatsapp-reminder {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lumo-space-xs);
+}
+
+.whatsapp-glyph {
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  color: #25d366;
+}
+
 /* La marca encabeza el menu y se separa de los items con una linea, no con
    aire: el drawer es angosto y el espacio en blanco solo no alcanza para
    leerlo como un bloque aparte. */
@@ -269,6 +284,10 @@ vaadin-side-nav-item[current]::part(item) {
   border-radius: var(--lumo-border-radius-l);
   padding: var(--lumo-space-xs);
   width: 100%;
+  /* Los z-index de las celdas sticky (y del turno marcado) quedan adentro del
+     tablero: sin esto competian con el menu lateral, que en el celular flota
+     sobre el contenido, y los nombres de las canchas le pasaban por encima. */
+  isolation: isolate;
 }
 
 /* grid-template-columns/-rows los completa AgendaView en tiempo de
@@ -430,6 +449,167 @@ vaadin-side-nav-item[current]::part(item) {
   color: var(--lumo-success-text-color);
 }
 
+/* Torneo: violeta, que no es ninguno de los colores de la plata ni el rojo de
+   una suspension. Un torneo no es un problema: es la cancha ocupada en otra
+   cosa, y el mostrador la tiene que encontrar de un vistazo. Hex propio, como
+   el amarillo y el azul de arriba, porque Lumo no trae ese matiz. */
+.agenda-board {
+  --agenda-tournament-color: #7c3aed;
+  --agenda-tournament-text: #5b21b6;
+}
+
+.agenda-card--tournament {
+  background: rgba(124, 58, 237, 0.1);
+  border-left: 3px solid var(--agenda-tournament-color);
+}
+
+.agenda-card--tournament .agenda-card__button {
+  color: var(--agenda-tournament-text);
+  font-weight: 600;
+}
+
+/* El turno que se vino a ver desde el aviso de una reserva o una cancelacion
+   (?reserva=<id>): un anillo con el naranja de TurnosPadel (el ladrillo de la
+   landing, no el del panel, que tira a rojo) que late como un corazon -un golpe
+   fuerte y uno mas suave- tres veces y se apaga. Son ~4 s: AgendaView limpia el
+   link al terminar (SPOTLIGHT_MILLIS). El anillo va en outline y el resplandor en
+   box-shadow para que las dos animaciones no se pisen. */
+.agenda-card--spotlight {
+  --agenda-spotlight-color: #ea580c;
+  position: relative;
+  z-index: 1;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  animation:
+    agenda-heartbeat 1.1s ease-in-out 0.2s 3,
+    agenda-spotlight-ring 3.8s linear forwards;
+}
+
+@keyframes agenda-heartbeat {
+  0%, 70%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(234, 88, 12, 0);
+  }
+  14% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 6px rgba(234, 88, 12, 0.3);
+  }
+  28% {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.15);
+  }
+  42% {
+    transform: scale(1.03);
+    box-shadow: 0 0 0 4px rgba(234, 88, 12, 0.22);
+  }
+}
+
+@keyframes agenda-spotlight-ring {
+  0%, 85% {
+    outline-color: var(--agenda-spotlight-color);
+  }
+  100% {
+    outline-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agenda-card--spotlight {
+    animation: agenda-spotlight-ring 3.8s linear forwards;
+  }
+}
+
+/* Modo torneo: los huecos que se pueden elegir llevan borde punteado; lo demas
+   queda atenuado con .agenda-card--disabled. Elegido, el hueco toma el violeta
+   del torneo, mas fuerte que el de un torneo ya guardado para que se distinga
+   lo que se esta por guardar. */
+.agenda-card--markable {
+  border-style: dashed;
+  border-color: var(--lumo-contrast-30pct);
+  cursor: pointer;
+}
+
+.agenda-card--markable:hover {
+  border-color: var(--agenda-tournament-color);
+}
+
+.agenda-card--picked {
+  background: rgba(124, 58, 237, 0.2);
+  border-style: solid;
+  border-color: var(--agenda-tournament-color);
+}
+
+.agenda-card--picked .agenda-card__button {
+  color: var(--agenda-tournament-text);
+  font-weight: 600;
+}
+
+/* En modo torneo, la cancha y el horario eligen su columna o su fila. */
+.agenda-board__mark-all {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.agenda-board--marking .agenda-board__court-header:hover,
+.agenda-board--marking .agenda-board__time-label:hover {
+  outline: 1px dashed var(--agenda-tournament-color);
+  outline-offset: -1px;
+}
+
+/* «Marcar torneo»: lleno, con el violeta de los torneos, para que se encuentre
+   entre los controles del dia (terciario, como "Hoy", pasaba de largo). Con el
+   modo prendido baja a un violeta suave con borde: ahi ya avisan la barra de
+   abajo y el tablero atenuado, y "Salir" no tiene por que gritar. El borde va
+   como sombra interna para no cambiarle el alto respecto de las flechas. */
+vaadin-button.agenda-tournament-toggle {
+  margin-inline-start: var(--lumo-space-s);
+  padding-inline: var(--lumo-space-m);
+  background-color: #7c3aed;
+  color: #fff;
+  font-weight: 600;
+}
+
+vaadin-button.agenda-tournament-toggle:hover {
+  background-color: #6d28d9;
+}
+
+vaadin-button.agenda-tournament-toggle--on {
+  background-color: rgba(124, 58, 237, 0.1);
+  color: #5b21b6;
+  box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.45);
+}
+
+vaadin-button.agenda-tournament-toggle--on:hover {
+  background-color: rgba(124, 58, 237, 0.18);
+}
+
+/* Barra del modo torneo, pegada al pie como la de Guardar de Configuracion. */
+.agenda-tournament-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  flex-wrap: wrap;
+  gap: var(--lumo-space-s) var(--lumo-space-m);
+  padding: var(--lumo-space-s) var(--lumo-space-m);
+  border: 1px solid #7c3aed;
+  border-radius: var(--lumo-border-radius-l);
+  background: var(--lumo-base-color);
+  box-shadow: var(--lumo-box-shadow-m);
+}
+
+.agenda-tournament-bar__count {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.agenda-tournament-bar vaadin-text-field {
+  min-width: 12rem;
+}
+
 /* Referencia de colores: una linea chica abajo del tablero, no una insignia
    repetida en cada tarjeta. Mismos cuatro tonos, como puntos en vez de
    franjas para no confundirse con las tarjetas de arriba. */
@@ -469,6 +649,16 @@ vaadin-side-nav-item[current]::part(item) {
 
 .agenda-legend__dot--suspended {
   background: var(--lumo-error-color);
+}
+
+.agenda-legend__dot--tournament {
+  background: #7c3aed;
+}
+
+/* Insignia de torneo en la lista de Suspensiones, con el violeta de la agenda. */
+.blackout-kind--tournament {
+  background: rgba(124, 58, 237, 0.12);
+  color: #5b21b6;
 }
 
 /* Encabezado del dia: la fecha como titulo, no como una etiqueta mas de
@@ -744,32 +934,69 @@ vaadin-side-nav-item[current]::part(item) {
   color: var(--lumo-tertiary-text-color);
 }
 
+/* La primera columna es la del check para elegir la línea, o la marca de
+   cobrada: siempre está, aunque vacía, así los nombres quedan alineados. */
 .buffet-line {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: 1.75rem auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: var(--lumo-space-s);
+  column-gap: var(--lumo-space-s);
   min-height: 2.5rem;
 }
 
 .buffet-line--new {
-  grid-template-columns: auto minmax(0, 1fr) auto;
-}
-
-.buffet-line--pickable {
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
-}
-
-.buffet-line--new.buffet-line--pickable {
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: 1.75rem auto minmax(0, 1fr) auto;
 }
 
 .buffet-line--saved {
   color: var(--lumo-secondary-text-color);
 }
 
+.buffet-line--paid .buffet-line__qty,
+.buffet-line--paid .buffet-line__name,
+.buffet-line--paid .buffet-line__amount {
+  color: var(--lumo-tertiary-text-color);
+}
+
 .buffet-line__pick {
   margin: 0;
+}
+
+.buffet-line__paid-mark {
+  display: inline-flex;
+  justify-content: center;
+  color: var(--lumo-success-text-color);
+}
+
+.buffet-line__paid-mark vaadin-icon {
+  width: var(--lumo-icon-size-s);
+  height: var(--lumo-icon-size-s);
+}
+
+.buffet-line__label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Lo que le falta a un producto que un pago por monto dejo a medio pagar. */
+.buffet-line__left {
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 700;
+  color: var(--lumo-error-text-color);
+}
+
+/* Cuantas unidades de la linea entran en esta parte: debajo, desde la
+   columna de la cantidad, para que se lea como parte de esa linea. */
+.buffet-line__units {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--lumo-space-s);
+  padding-bottom: var(--lumo-space-xs);
+  font-size: var(--lumo-font-size-s);
+  font-weight: 600;
+  color: var(--lumo-body-text-color);
 }
 
 .buffet-line__qty {
@@ -826,26 +1053,54 @@ vaadin-side-nav-item[current]::part(item) {
   color: var(--lumo-success-text-color);
 }
 
-.buffet-cash {
+.buffet-due__meta {
+  margin-top: calc(var(--lumo-space-xs) * -1);
+  text-align: end;
+  font-size: var(--lumo-font-size-s);
+  color: var(--lumo-secondary-text-color);
+}
+
+/* Efectivo y transferencia lado a lado, cada uno con su «el resto» abajo. */
+.buffet-tender {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 var(--lumo-space-s);
+}
+
+.buffet-tender__field {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--lumo-space-m);
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
 }
 
-.buffet-cash vaadin-big-decimal-field {
-  width: 9rem;
+.buffet-tender__field vaadin-big-decimal-field {
+  width: 100%;
+  padding-bottom: 0;
 }
 
-.buffet-change {
-  padding-bottom: var(--lumo-space-s);
+.buffet-tender__field vaadin-button {
+  margin: 0;
+}
+
+.buffet-tender__summary {
+  grid-column: 1 / -1;
+  padding-top: var(--lumo-space-xs);
+  font-weight: 700;
+  color: var(--lumo-success-text-color);
+}
+
+/* El vuelto, grande: el billete todavia esta en la mano. */
+.buffet-tender__summary--change {
   font-size: var(--lumo-font-size-xl);
   font-weight: 800;
-  color: var(--lumo-success-text-color);
-  white-space: nowrap;
 }
 
-.buffet-change--short {
+.buffet-tender__summary--left {
+  color: var(--lumo-body-text-color);
+}
+
+.buffet-tender__summary--problem {
   color: var(--lumo-error-text-color);
 }
 
@@ -989,4 +1244,435 @@ vaadin-side-nav-item[current]::part(item) {
 
 .settings-save-bar[dirty] .settings-save-bar__hint {
   display: inline;
+}
+
+/* =====================================================================
+   Caja: el reparto entre los turnos y el buffet
+   =====================================================================
+
+   Dos colores propios para las dos partes, y ninguno de los que ya dicen
+   algo en el panel: el naranja es la marca y las acciones, el rojo lo que
+   falta cobrar o se devolvio, el azul y el amarillo son estados de la
+   agenda. Verde azulado por la cancha y violeta para el buffet: se
+   distinguen tambien sin ver bien los colores, porque difieren en claridad
+   y no solo en tono. */
+html {
+  --caja-turnos-color: #0f766e;
+  --caja-turnos-text-color: #115e59;
+  --caja-buffet-color: #7c3aed;
+  --caja-buffet-text-color: #5b21b6;
+}
+
+.caja-top {
+  width: 100%;
+}
+
+/* Una sola tarjeta a todo el ancho, como la tabla de movimientos de abajo:
+   la planilla a la izquierda y lo pendiente en una columna al costado, con
+   el mismo rotulo que los encabezados de la tabla. Antes lo pendiente era
+   una tarjeta suelta, con otro alto y otra letra, y a la derecha sobraba
+   pantalla. Cuando parte la tarjeta lo decide su propio ancho (container
+   query) y no la ventana: el menu lateral abierto o cerrado cambia cuanto
+   lugar le queda. */
+.caja-reparto {
+  container-type: inline-size;
+  box-sizing: border-box;
+  width: 100%;
+  padding: var(--lumo-space-m);
+  border: 1px solid var(--lumo-contrast-10pct);
+  border-radius: var(--lumo-border-radius-m);
+  background: var(--lumo-base-color);
+}
+
+.caja-reparto__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--lumo-space-m);
+}
+
+.caja-reparto__aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumo-space-m);
+  padding-top: var(--lumo-space-m);
+  border-top: 1px solid var(--lumo-contrast-10pct);
+}
+
+/* Facturado arriba y pendiente abajo, separados con la misma linea fina que
+   los renglones de la planilla. */
+.caja-reparto__stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumo-space-xs);
+}
+
+.caja-reparto__stat + .caja-reparto__stat {
+  padding-top: var(--lumo-space-m);
+  border-top: 1px solid var(--lumo-contrast-10pct);
+}
+
+.caja-reparto__aside-label {
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lumo-secondary-text-color);
+}
+
+.caja-reparto__aside-value {
+  font-size: var(--lumo-font-size-xl);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.caja-reparto__stat--due .caja-reparto__aside-value {
+  color: var(--lumo-error-text-color);
+}
+
+/* A lo ancho, los importes se agrupan contra la columna de lo pendiente
+   (width: 1% achica cada columna de numeros a su contenido y el rotulo se
+   queda con el resto), como en una planilla de cierre: el renglon se sigue
+   con la linea, y las cifras quedan juntas para compararlas. */
+@container (min-width: 44rem) {
+  .caja-reparto__layout {
+    grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem);
+    gap: var(--lumo-space-l);
+  }
+
+  .caja-reparto__aside {
+    padding-top: 0;
+    padding-inline-start: var(--lumo-space-l);
+    border-top: none;
+    border-inline-start: 1px solid var(--lumo-contrast-10pct);
+  }
+
+  .caja-reparto__table thead th:not(.caja-reparto__corner) {
+    width: 1%;
+  }
+
+  .caja-reparto__table th,
+  .caja-reparto__table td {
+    padding-inline-start: 2.5rem;
+  }
+}
+
+.caja-reparto__title {
+  margin: 0;
+  font-size: var(--lumo-font-size-m);
+}
+
+.caja-reparto__proportion {
+  margin-top: var(--lumo-space-s);
+}
+
+.caja-reparto__bar {
+  display: flex;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--lumo-contrast-5pct);
+}
+
+.caja-reparto__bar-part--turnos {
+  background: var(--caja-turnos-color);
+}
+
+.caja-reparto__bar-part--buffet {
+  background: var(--caja-buffet-color);
+}
+
+.caja-reparto__legend {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--lumo-space-xs);
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 600;
+}
+
+.caja-reparto__legend span:first-child {
+  color: var(--caja-turnos-text-color);
+}
+
+.caja-reparto__legend span:last-child {
+  color: var(--caja-buffet-text-color);
+}
+
+.caja-reparto__table {
+  width: 100%;
+  margin-top: var(--lumo-space-s);
+  border-collapse: collapse;
+  font-size: var(--lumo-font-size-m);
+}
+
+.caja-reparto__table th,
+.caja-reparto__table td {
+  padding: 0.5rem 0 0.5rem 0.75rem;
+  text-align: end;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--lumo-contrast-10pct);
+}
+
+.caja-reparto__table th[scope="row"] {
+  padding-inline-start: 0;
+  text-align: start;
+  font-weight: 500;
+  white-space: normal;
+}
+
+/* Mismo rotulo que el encabezado de las grillas, y cada columna subrayada
+   con el color de su parte: es lo que ata la columna a la barra de arriba. */
+.caja-reparto__table thead th {
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--lumo-secondary-text-color);
+  border-bottom-width: 2px;
+}
+
+.caja-reparto__table thead .caja-reparto__col--turnos {
+  color: var(--caja-turnos-text-color);
+  border-bottom-color: var(--caja-turnos-color);
+}
+
+.caja-reparto__table thead .caja-reparto__col--buffet {
+  color: var(--caja-buffet-text-color);
+  border-bottom-color: var(--caja-buffet-color);
+}
+
+.caja-reparto__table thead .caja-reparto__col--total {
+  border-bottom-color: var(--lumo-contrast-30pct);
+}
+
+.caja-reparto__table tbody td:last-child {
+  font-weight: 600;
+}
+
+.caja-reparto__note {
+  display: block;
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 400;
+  color: var(--lumo-tertiary-text-color);
+}
+
+.caja-reparto__table tbody tr:last-child > * {
+  border-bottom: none;
+}
+
+.caja-reparto__table tfoot th,
+.caja-reparto__table tfoot td {
+  border-top: 2px solid var(--lumo-contrast-20pct);
+  border-bottom: none;
+  font-weight: 700;
+}
+
+.caja-reparto__table tfoot td:last-child {
+  font-size: var(--lumo-font-size-l);
+}
+
+.caja-reparto__table .caja-reparto__amount--negative {
+  color: var(--lumo-error-text-color);
+}
+
+/* En el celular entran las cuatro columnas sin scroll lateral: un punto
+   mas chico y menos aire entre importes. */
+@media (max-width: 480px) {
+  .caja-reparto__table {
+    font-size: var(--lumo-font-size-s);
+  }
+
+  .caja-reparto__table th,
+  .caja-reparto__table td {
+    padding-inline-start: 0.5rem;
+  }
+
+  .caja-reparto__table tfoot td:last-child {
+    font-size: var(--lumo-font-size-m);
+  }
+
+}
+
+.caja-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lumo-space-s);
+  width: 100%;
+}
+
+/* Todo · Turnos · Buffet: un control segmentado, el elegido levantado
+   sobre el riel como una tecla apretada. */
+.caja-filter {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--lumo-border-radius-m);
+  background: var(--lumo-contrast-5pct);
+}
+
+.caja-filter__option {
+  margin: 0;
+  background: transparent;
+  color: var(--lumo-secondary-text-color);
+}
+
+.caja-filter__option[aria-pressed="true"] {
+  background: var(--lumo-base-color);
+  color: var(--lumo-body-text-color);
+  box-shadow: 0 0 0 1px var(--lumo-contrast-10pct);
+}
+
+/* Una etiqueta debajo de la otra y no en fila: la grilla mide el ancho de la
+   columna por su contenido, y en fila un cobro mixto la ensanchaba lo
+   suficiente como para sacar la tabla de pantalla. */
+.caja-parts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.caja-part {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--lumo-border-radius-s);
+  font-size: var(--lumo-font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.caja-part--turnos {
+  color: var(--caja-turnos-text-color);
+  background: color-mix(in srgb, var(--caja-turnos-color) 12%, var(--lumo-base-color));
+}
+
+.caja-part--buffet {
+  color: var(--caja-buffet-text-color);
+  background: color-mix(in srgb, var(--caja-buffet-color) 12%, var(--lumo-base-color));
+}
+
+/* =====================================================================
+   Tooltips
+   ===================================================================== */
+
+/* Oscuros y con aire. El de Lumo es gris claro sobre el fondo claro del
+   panel, en letra chica y pegado al texto: se pierde. Este se lee de un
+   vistazo, con la tipografia y el radio del resto, y la franja naranja de
+   la seccion activa del menu como unico acento. Lumo pinta el overlay desde
+   adentro del Shadow DOM; ::part() desde afuera le gana. */
+vaadin-tooltip::part(overlay) {
+  max-width: 36ch;
+  background: #1c1917;
+  color: #fafaf9;
+  border-radius: var(--lumo-border-radius-l);
+  box-shadow:
+    inset 3px 0 0 var(--lumo-primary-color),
+    0 8px 24px -6px rgba(28, 25, 23, 0.45),
+    0 2px 6px -2px rgba(28, 25, 23, 0.25);
+  font-size: var(--lumo-font-size-s);
+  font-weight: 450;
+  line-height: 1.45;
+}
+
+vaadin-tooltip::part(content) {
+  padding: 0.5rem 0.75rem 0.5rem 0.875rem;
+}
+
+/* El aviso que dispara un tooltip: se nota que tiene algo para leer. */
+.gap-warning {
+  display: inline-flex;
+  cursor: help;
+}
+
+.gap-warning vaadin-icon {
+  width: var(--lumo-icon-size-s);
+  height: var(--lumo-icon-size-s);
+}
+
+/* Historia de turnos libres: la vista previa al lado de los controles, y arriba de
+   todo en el celular. El canvas mide 1080 x 1920; aca se ve achicado. */
+.story-dialog__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lumo-space-l);
+  align-items: flex-start;
+}
+
+/* Fija mientras se scrollea: la franja se ajusta abajo de todo y hay que ver como
+   queda. En el celular va arriba y mas chica, para que entren los controles. */
+.story-dialog__preview {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: min(17rem, 100%);
+  margin-inline: auto;
+  background: var(--lumo-base-color);
+}
+
+@media (max-width: 40rem) {
+  .story-dialog__preview {
+    width: 10rem;
+    padding-bottom: var(--lumo-space-s);
+  }
+}
+
+canvas.story-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: var(--lumo-border-radius-l);
+  background: var(--lumo-contrast-10pct);
+  box-shadow: var(--lumo-box-shadow-s);
+}
+
+.story-dialog__controls {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.story-dialog__status,
+.story-dialog__help {
+  margin: 0;
+  color: var(--lumo-secondary-text-color);
+  font-size: var(--lumo-font-size-s);
+}
+
+.story-dialog__design {
+  gap: var(--lumo-space-s);
+}
+
+.story-dialog__template-only {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumo-space-s);
+  width: 100%;
+}
+
+.story-dialog__range {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumo-space-xs);
+  font-size: var(--lumo-font-size-s);
+  color: var(--lumo-secondary-text-color);
+}
+
+.story-dialog__range input[type="range"] {
+  width: 100%;
+  accent-color: var(--lumo-primary-color);
+}
+
+.story-dialog__share-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--lumo-font-size-xs);
+  color: var(--lumo-secondary-text-color);
+}
+
+/* "Instalar app" en la barra: en el celular queda solo el icono, como "Copiar link". */
+@media (max-width: 40rem) {
+  vaadin-button.install-app--compact::part(label) {
+    display: none;
+  }
 }

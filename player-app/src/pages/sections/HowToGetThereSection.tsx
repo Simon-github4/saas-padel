@@ -62,7 +62,7 @@ export function HowToGetThereSection({
               className="block h-64 w-full border-0"
               loading="lazy"
               referrerPolicy="no-referrer"
-              src={embedUrl(mapsEmbedQuery ?? `${latitude},${longitude}`)}
+              src={embedUrl(mapsEmbedQuery ?? `${latitude},${longitude}`, latitude, longitude)}
             />
           ) : (
             <button
@@ -109,6 +109,11 @@ export function HowToGetThereSection({
  * en vez de un pin pelado en el medio de la nada. Cae a las coordenadas solas
  * cuando no hay nombre -ver {@code Tenant.mapsEmbedQuery()}.
  *
+ * <p>El nombre solo no alcanza: Google lo busca en todo el mundo y se queda con
+ * el mas conocido -"SANSET CLUB" de Necochea mostraba el Sunset Club de Mar del
+ * Plata-. {@code ll} centra la busqueda en las coordenadas del club, y con eso
+ * Google elige el negocio de ese nombre que esta ahi.
+ *
  * <p>No hay API key de por medio: {@code output=embed} es el mismo formato que
  * uso Google Maps durante años para el boton "Insertar un mapa" antes de la
  * Embed API paga, y sigue andando para cualquiera que arme la URL a mano -con
@@ -117,8 +122,8 @@ export function HowToGetThereSection({
  * deja de mostrar el mapa -pero el boton "Abrir en Google Maps" de abajo sigue
  * andando siempre, no depende de este iframe.
  */
-function embedUrl(query: string): string {
-  return `https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`;
+function embedUrl(query: string, latitude: number, longitude: number): string {
+  return `https://maps.google.com/maps?q=${encodeURIComponent(query)}&ll=${latitude},${longitude}&z=16&output=embed`;
 }
 
 function PinGlyph({ className = 'size-4' }: { className?: string }) {

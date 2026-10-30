@@ -26,6 +26,11 @@ import org.springframework.util.FileSystemUtils;
  * {@code DEV_DB_RESET=true} (o borra la carpeta a mano) con la app parada:
  * borrarla con el motor todavia corriendo la corrompe.
  *
+ * <p>{@code DEV_DB_DIR} usa otra carpeta: para levantar una rama con migraciones
+ * propias sin pisar la base de la otra. Dos ramas con migraciones distintas no
+ * pueden compartir la base: la que arranca segunda no valida contra la historia
+ * que dejo la primera.
+ *
  * <p>Si preferis tu PostgreSQL local (hay uno escuchando en el 5432 de esta
  * maquina), corre sin el perfil {@code dev} y defini {@code DB_URL},
  * {@code DB_USER} y {@code DB_PASSWORD}.
@@ -46,22 +51,23 @@ public class EmbeddedPostgresConfig {
      * son los mismos con cualquier puerto.
      */
     private static final int DEFAULT_PORT = 54329;
-    private static final Path DATA_DIR = Path.of("target", "devdb");
+    private static final Path DEFAULT_DATA_DIR = Path.of("target", "devdb");
 
     @Bean(destroyMethod = "close")
     public EmbeddedPostgres embeddedPostgres() throws IOException {
+        Path dataDir = dataDir();
         if (Boolean.parseBoolean(System.getenv("DEV_DB_RESET"))) {
             log.info("DEV_DB_RESET=true: borrando {} para arrancar con una base vacia",
-                    DATA_DIR.toAbsolutePath());
-            FileSystemUtils.deleteRecursively(DATA_DIR);
+                    dataDir.toAbsolutePath());
+            FileSystemUtils.deleteRecursively(dataDir);
         }
         int port = port();
         log.info("Iniciando PostgreSQL embebido en el puerto {} (datos en {})", port,
-                DATA_DIR.toAbsolutePath());
+                dataDir.toAbsolutePath());
         // Por defecto el builder limpia el directorio en cada arranque (initdb de
         // nuevo cada vez); hay que pedirle explicitamente que no lo haga para que
         // los datos sobrevivan de una corrida a la siguiente.
-        return EmbeddedPostgres.builder().setPort(port).setDataDirectory(DATA_DIR)
+        return EmbeddedPostgres.builder().setPort(port).setDataDirectory(dataDir)
                 .setCleanDataDirectory(false).start();
     }
 
@@ -74,5 +80,10 @@ public class EmbeddedPostgresConfig {
     private static int port() {
         String configured = System.getenv("DEV_DB_PORT");
         return configured == null || configured.isBlank() ? DEFAULT_PORT : Integer.parseInt(configured.trim());
+    }
+
+    private static Path dataDir() {
+        String configured = System.getenv("DEV_DB_DIR");
+        return configured == null || configured.isBlank() ? DEFAULT_DATA_DIR : Path.of(configured.trim());
     }
 }

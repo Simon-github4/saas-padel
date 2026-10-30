@@ -41,10 +41,17 @@ public abstract class BaseEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /**
+     * Respeta una fecha ya puesta: una línea del buffet que se parte al cobrar
+     * una parte conserva la fecha de venta de la original (ver
+     * {@link ProductSale#splitOff}).
+     */
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();
-        this.createdAt = now;
+        if (this.createdAt == null) {
+            this.createdAt = now;
+        }
         this.updatedAt = now;
     }
 

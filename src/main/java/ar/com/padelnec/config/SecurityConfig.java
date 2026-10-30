@@ -1,5 +1,6 @@
 package ar.com.padelnec.config;
 
+import ar.com.padelnec.security.PanelRememberMeServices;
 import ar.com.padelnec.ui.LoginView;
 import com.vaadin.flow.spring.security.VaadinSecurityConfigurer;
 import org.springframework.beans.factory.ObjectProvider;
@@ -136,6 +137,9 @@ public class SecurityConfig {
                         // inicio del celular. Misma razon: el navegador los pide sin sesion.
                         "/manifest.webmanifest", "/sw.js", "/icon-192.png", "/icon-512.png",
                         "/icon-maskable-512.png",
+                        // El panel instalable y su service worker de avisos
+                        // (PanelPwaController): el navegador los pide sin sesion.
+                        "/panel.webmanifest", "/panel-sw.js", "/panel/icons/**",
                         // Logos de otras marcas que muestra la landing (Mercado Pago):
                         // misma razon, sin esto la imagen llega como el login del panel.
                         "/marcas/**",
@@ -170,13 +174,23 @@ public class SecurityConfig {
      * <p>El filtro de auto-login solo existe bajo el perfil {@code dev}; en
      * cualquier otro perfil el ObjectProvider viene vacio y la cadena queda tal
      * cual, con su login normal.
+     *
+     * <p>El "recordarme" ({@link PanelRememberMeServices}) tambien se suma como
+     * handler de logout: Vaadin le pasa a su {@code AuthenticationContext} los
+     * handlers de esta cadena, asi que el "Salir" del menu olvida el dispositivo.
      */
     @Bean
     public SecurityFilterChain adminChain(HttpSecurity http,
-                                          ObjectProvider<DevAutoLoginFilter> devAutoLogin)
+                                          ObjectProvider<DevAutoLoginFilter> devAutoLogin,
+                                          PanelRememberMeServices rememberMe)
             throws Exception {
+        // La historia de turnos libres baja su dibujo y la plantilla del club fuera de
+        // /admin/ (PanelStoryController). Vaadin niega todo lo que no es suyo aunque haya
+        // sesion, asi que se habilita aca, antes de sus reglas: con la sesion del panel.
+        http.authorizeHttpRequests(auth -> auth.requestMatchers("/panel/historia/**").authenticated());
         http.with(VaadinSecurityConfigurer.vaadin(),
                 configurer -> configurer.loginView(LoginView.class, "/"));
+        http.rememberMe(remember -> remember.rememberMeServices(rememberMe));
         devAutoLogin.ifAvailable(filter -> http.addFilterBefore(filter, AuthorizationFilter.class));
         http.headers(headers -> headers
                 .frameOptions(frame -> frame.deny())

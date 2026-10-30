@@ -17,6 +17,8 @@ import ar.com.padelnec.repository.CourtScheduleRepository;
 import ar.com.padelnec.repository.PaymentCashRow;
 import ar.com.padelnec.repository.PaymentRepository;
 import ar.com.padelnec.repository.PlayerAccountRepository;
+import ar.com.padelnec.repository.ProductSaleRepository;
+import ar.com.padelnec.repository.SaleAmountRow;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
@@ -62,6 +64,7 @@ public class BookingStatsService {
     private final PaymentRepository paymentRepository;
     private final BlackoutRepository blackoutRepository;
     private final PlayerAccountRepository playerAccountRepository;
+    private final ProductSaleRepository productSaleRepository;
     private final SlotGenerator slotGenerator;
 
     public enum Periodo {
@@ -73,7 +76,9 @@ public class BookingStatsService {
      *
      * <p>Ojo con las dos columnas de plata, porque no se cuentan igual y no tienen
      * por que dar lo mismo. {@code facturado} es lo que valen los turnos que caen
-     * en el periodo: responde "cuanto vendio la cancha". {@code cobrado} es la
+     * en el periodo, con lo que se consumio en ellos, mas lo vendido en pedidos de
+     * buffet sin turno, por fecha de venta: responde "cuanto vendio el club".
+     * {@code cobrado} es la
      * plata que entro dentro del periodo, sin importar para cuando era el turno ni
      * si despues se cancelo: responde "cuanto paso por la caja". Una sena cobrada
      * hoy por un turno del mes que viene suma al cobrado de hoy y al facturado del
@@ -82,7 +87,8 @@ public class BookingStatsService {
     public record PeriodStats(String label, LocalDate from, LocalDate to, int jugados,
                               Duration horasJugadas, int reservados, BigDecimal facturado,
                               BigDecimal cobrado, int cancelados, int noShows,
-                              int slotsOcupados, int slotsPosibles, BigDecimal ocupacionPromedio) {
+                              int slotsOcupados, int slotsPosibles, BigDecimal ocupacionPromedio,
+                              int slotsTorneo) {
     }
 
     public record HourlyStat(java.time.LocalTime hour, int turnos, BigDecimal facturado) {
@@ -123,14 +129,17 @@ public class BookingStatsService {
         // caer en un bucket distinto al del turno que lo origino.
         List<PaymentCashRow> allPayments = paymentRepository.findCashBetween(
                 rangeFromInstant, rangeUntilInstant, PaymentStatus.APPROVED);
+        List<SaleAmountRow> allSales = productSaleRepository.findOrderSalesBetween(
+                rangeFromInstant, rangeUntilInstant);
 
-        return buildPeriods(club, courts, periodo, from, to, rangeEnd, allBookings, allPayments, blackouts);
+        return buildPeriods(club, courts, periodo, from, to, rangeEnd, allBookings, allPayments, allSales,
+                blackouts);
     }
 
     /** El cuerpo de {@link #statsFor}, sobre datos ya traidos: lo reusa {@link #dashboardFor}. */
     private List<PeriodStats> buildPeriods(Tenant club, Courts courts, Periodo periodo,
             LocalDate from, LocalDate to, LocalDate rangeEnd, List<BookingStatsRow> allBookings,
-            List<PaymentCashRow> allPayments, List<Blackout> blackouts) {
+            List<PaymentCashRow> allPayments, List<SaleAmountRow> allSales, List<Blackout> blackouts) {
         List<PeriodStats> result = new ArrayList<>();
         for (LocalDate bucketStart = bucketStart(periodo, from); !bucketStart.isAfter(to);
                 bucketStart = nextBucketStart(periodo, bucketStart)) {
@@ -148,7 +157,11 @@ public class BookingStatsService {
                     .filter(p -> !p.createdAt().isBefore(bucketFromInstant)
                             && p.createdAt().isBefore(bucketUntilInstant))
                     .toList();
-            result.add(summarize(club, courts, queryFrom, queryTo, bookings, payments, blackouts,
+            List<SaleAmountRow> sales = allSales.stream()
+                    .filter(s -> !s.createdAt().isBefore(bucketFromInstant)
+                            && s.createdAt().isBefore(bucketUntilInstant))
+                    .toList();
+            result.add(summarize(club, courts, queryFrom, queryTo, bookings, payments, sales, blackouts,
                     label(periodo, bucketStart)));
         }
         return result;
@@ -170,8 +183,26 @@ public class BookingStatsService {
         List<BookingStatsRow> bookings = bookingRepository.findStatsBetween(fromInstant, untilInstant);
         List<PaymentCashRow> payments = paymentRepository.findCashBetween(
                 fromInstant, untilInstant, PaymentStatus.APPROVED);
+        List<SaleAmountRow> sales = productSaleRepository.findOrderSalesBetween(fromInstant, untilInstant);
         List<Blackout> blackouts = blackoutRepository.findOverlapping(fromInstant, untilInstant);
-        return summarize(club, courts, from, toExclusive, bookings, payments, blackouts, "Total");
+        return summarize(club, courts, from, toExclusive, bookings, payments, sales, blackouts, "Total");
+    }
+
+    /**
+     * Lo facturado en un rango, y nada mas: el mismo numero que
+     * {@link PeriodStats#facturado}, sin la ocupacion ni los cobros que arma
+     * {@link #summary}.
+     *
+     * <p>Lo usa la caja del dia para mostrar el facturado del dia. Pregunta aca y
+     * no lo recalcula por su cuenta para que las dos pantallas den siempre lo
+     * mismo: una regla copiada en dos lugares es como empiezan a no coincidir.
+     */
+    @Transactional(readOnly = true)
+    public BigDecimal facturado(Tenant club, LocalDate from, LocalDate to) {
+        Instant fromInstant = from.atStartOfDay(club.zoneId()).toInstant();
+        Instant untilInstant = to.plusDays(1).atStartOfDay(club.zoneId()).toInstant();
+        return facturadoOf(bookingRepository.findStatsBetween(fromInstant, untilInstant),
+                productSaleRepository.findOrderSalesBetween(fromInstant, untilInstant));
     }
 
     /** Todo lo que pinta el Dashboard de una sola pasada: ver {@link #dashboardFor}. */
@@ -203,10 +234,13 @@ public class BookingStatsService {
         List<Blackout> blackouts = blackoutRepository.findOverlapping(rangeFromInstant, rangeUntilInstant);
         List<PaymentCashRow> allPayments = paymentRepository.findCashBetween(
                 rangeFromInstant, rangeUntilInstant, PaymentStatus.APPROVED);
+        List<SaleAmountRow> allSales = productSaleRepository.findOrderSalesBetween(
+                rangeFromInstant, rangeUntilInstant);
 
-        PeriodStats summary = summarize(club, courts, from, rangeEnd, allBookings, allPayments, blackouts, "Total");
-        List<PeriodStats> periods =
-                buildPeriods(club, courts, periodo, from, to, rangeEnd, allBookings, allPayments, blackouts);
+        PeriodStats summary = summarize(club, courts, from, rangeEnd, allBookings, allPayments, allSales,
+                blackouts, "Total");
+        List<PeriodStats> periods = buildPeriods(club, courts, periodo, from, to, rangeEnd, allBookings,
+                allPayments, allSales, blackouts);
         List<BookingStatsRow> occupying =
                 allBookings.stream().filter(b -> b.status().occupiesSlot()).toList();
 
@@ -375,13 +409,13 @@ public class BookingStatsService {
 
     private PeriodStats summarize(Tenant club, Courts courts, LocalDate bucketStart,
                                   LocalDate bucketEndExclusive, List<BookingStatsRow> bookings,
-                                  List<PaymentCashRow> payments, List<Blackout> blackouts,
-                                  String label) {
+                                  List<PaymentCashRow> payments, List<SaleAmountRow> sales,
+                                  List<Blackout> blackouts, String label) {
         int jugados = 0;
         int reservados = 0;
         int cancelados = 0;
         int noShows = 0;
-        BigDecimal facturado = BigDecimal.ZERO;
+        BigDecimal facturado = facturadoOf(bookings, sales);
         // Lo cobrado sale de los pagos del periodo, no de sumar paid_amount de los
         // turnos: ese campo dice cuanto lleva pago un turno, no cuando entro esa
         // plata, y ademas se perdia entero si el turno terminaba cancelado.
@@ -390,6 +424,7 @@ public class BookingStatsService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         Duration horas = Duration.ZERO;
         Map<LocalDate, Integer> occupiedByDay = new HashMap<>();
+        List<BookingStatsRow> occupying = new ArrayList<>();
 
         for (BookingStatsRow booking : bookings) {
             switch (booking.status()) {
@@ -404,20 +439,24 @@ public class BookingStatsService {
             }
             if (booking.status().occupiesSlot()) {
                 horas = horas.plus(booking.duration());
-                facturado = facturado.add(booking.totalPrice());
                 LocalDate day = booking.startTime().atZone(club.zoneId()).toLocalDate();
                 occupiedByDay.merge(day, 1, Integer::sum);
+                occupying.add(booking);
             }
         }
 
-        Occupancy occupancy = occupancy(club, courts, bucketStart, bucketEndExclusive, occupiedByDay, blackouts);
+        Occupancy occupancy = occupancy(club, courts, bucketStart, bucketEndExclusive, occupiedByDay,
+                occupying, blackouts);
         return new PeriodStats(label, bucketStart, bucketEndExclusive.minusDays(1), jugados, horas,
                 reservados, facturado, cobrado, cancelados, noShows,
-                occupancy.occupied(), occupancy.capacity(), occupancy.percentage());
+                occupancy.occupied(), occupancy.capacity(), occupancy.percentage(), occupancy.tournament());
     }
 
-    /** Turnos ocupados, turnos posibles y el porcentaje entre los dos, ya redondeado. */
-    private record Occupancy(int occupied, int capacity, BigDecimal percentage) {
+    /**
+     * Turnos ocupados, turnos posibles y el porcentaje entre los dos, ya redondeado.
+     * {@code tournament} son los ocupados por un torneo, ya incluidos en {@code occupied}.
+     */
+    private record Occupancy(int occupied, int capacity, BigDecimal percentage, int tournament) {
     }
 
     /**
@@ -440,12 +479,13 @@ public class BookingStatsService {
 
     private Occupancy occupancy(Tenant club, Courts courts, LocalDate from,
                                 LocalDate toExclusive, Map<LocalDate, Integer> occupiedByDay,
-                                List<Blackout> blackouts) {
+                                List<BookingStatsRow> occupying, List<Blackout> blackouts) {
         if (courts.active().isEmpty()) {
-            return new Occupancy(0, 0, BigDecimal.ZERO);
+            return new Occupancy(0, 0, BigDecimal.ZERO, 0);
         }
         int totalOccupied = 0;
         int totalCapacity = 0;
+        int totalTournament = 0;
         for (LocalDate day = from; day.isBefore(toExclusive); day = day.plusDays(1)) {
             SlotGenerator.DayPlan plan = slotGenerator.plan(club, day, courts.active(), courts.schedules());
             // Un dia suspendido para todas las canchas no suma capacidad: nadie
@@ -456,26 +496,73 @@ public class BookingStatsService {
             // cancha si cuenta: un turno en que la cancha no abre no es posible.
             if (!dayFullyBlocked(plan, blackouts)) {
                 totalCapacity += (int) courts.active().stream().mapToLong(plan::slotsOpenIn).sum();
+                totalTournament += tournamentSlots(plan, courts.active(), blackouts, occupying);
             }
             totalOccupied += occupiedByDay.getOrDefault(day, 0);
         }
+        // Un turno de torneo es la cancha ocupada, aunque no se haya vendido: suma
+        // a los ocupados, y la tarjeta dice aparte cuantos fueron de torneo.
+        totalOccupied += totalTournament;
         BigDecimal percentage = totalCapacity == 0
                 ? BigDecimal.ZERO
                 : BigDecimal.valueOf(totalOccupied)
                         .divide(BigDecimal.valueOf(totalCapacity), 4, RoundingMode.HALF_UP)
                         .multiply(BigDecimal.valueOf(100))
                         .setScale(1, RoundingMode.HALF_UP);
-        return new Occupancy(totalOccupied, totalCapacity, percentage);
+        return new Occupancy(totalOccupied, totalCapacity, percentage, totalTournament);
     }
 
-    /** Si hay un blackout de club entero que cubre todo el dia operativo. */
+    /**
+     * Cuantos turnos del dia, cancha por cancha, ocupa un torneo. El que igual
+     * tiene un turno cargado (una excepcion del club) ya cuenta como reserva y no
+     * se cuenta dos veces.
+     */
+    private static int tournamentSlots(SlotGenerator.DayPlan plan, List<Court> courts, List<Blackout> blackouts,
+                                       List<BookingStatsRow> occupying) {
+        List<Blackout> tournaments = blackouts.stream().filter(Blackout::isTournament).toList();
+        if (tournaments.isEmpty()) {
+            return 0;
+        }
+        return (int) courts.stream()
+                .mapToLong(court -> plan.slots().stream()
+                        .filter(slot -> plan.opens(court, slot)
+                                && tournaments.stream().anyMatch(blackout -> blackout.appliesTo(court)
+                                        && blackout.overlaps(slot.startsAt(), slot.endsAt()))
+                                && occupying.stream().noneMatch(booking -> court.getId().equals(booking.courtId())
+                                        && booking.startTime().isBefore(slot.endsAt())
+                                        && booking.endTime().isAfter(slot.startsAt())))
+                        .count())
+                .sum();
+    }
+
+    /**
+     * Si hay un blackout de club entero que cubre todo el dia operativo. Un torneo
+     * de todo el club no cuenta: la cancha se usa, y sus turnos suman como ocupados.
+     */
     private boolean dayFullyBlocked(SlotGenerator.DayPlan plan, List<Blackout> blackouts) {
         Instant dayStart = plan.start();
         Instant dayEnd = plan.end();
         return blackouts.stream()
-                .anyMatch(blackout -> blackout.getCourt() == null
+                .anyMatch(blackout -> !blackout.isTournament() && blackout.getCourt() == null
                         && !blackout.getStartTime().isAfter(dayStart)
                         && !blackout.getEndTime().isBefore(dayEnd));
+    }
+
+    /**
+     * La regla de lo facturado, en un solo lugar: lo que valen los turnos que
+     * ocupan la cancha, con lo consumido en ellos, mas lo vendido en pedidos de
+     * buffet sin turno.
+     *
+     * <p>Los pedidos facturan por el dia en que se vendieron: no tienen turno al
+     * que pegarse. Lo consumido en un turno no se suma de las ventas porque ya
+     * viene dentro de su total_price.
+     */
+    private static BigDecimal facturadoOf(List<BookingStatsRow> bookings, List<SaleAmountRow> sales) {
+        BigDecimal turnos = bookings.stream()
+                .filter(booking -> booking.status().occupiesSlot())
+                .map(BookingStatsRow::totalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sales.stream().map(SaleAmountRow::subtotal).reduce(turnos, BigDecimal::add);
     }
 
     private BigDecimal facturado(List<BookingStatsRow> bookings) {

@@ -20,10 +20,13 @@ import org.springframework.test.web.servlet.client.RestTestClient;
  * version anterior despues de un deploy. Los archivos que se piden viven en
  * {@code src/test/resources/static}, porque el build de la app del jugador no corre
  * en los tests del backend.
+ *
+ * <p>No usa {@link ClubFixture}: lo importa para compartir el contexto con
+ * {@link PublicApiIntegrationTest} y los demas tests HTTP sin mocks.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
-@Import(TestDatabaseConfig.class)
+@Import({TestDatabaseConfig.class, ClubFixture.class})
 class PlayerAssetsCacheIntegrationTest {
 
     @LocalServerPort private int port;

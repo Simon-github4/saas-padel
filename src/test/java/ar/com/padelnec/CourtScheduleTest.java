@@ -7,6 +7,7 @@ import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.gym.GymFixture;
 import ar.com.padelnec.service.AvailabilityService;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.BookingService.NewBooking;
@@ -27,10 +28,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
@@ -42,7 +40,7 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, CourtScheduleTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class CourtScheduleTest {
 
     /** Martes 01/09/2026, 07:00 hora de Necochea (10:00 UTC): el club todavia no abrio. */
@@ -50,15 +48,6 @@ class CourtScheduleTest {
     private static final LocalDate TUESDAY = LocalDate.of(2026, 9, 1);
     private static final LocalDate WEDNESDAY = TUESDAY.plusDays(1);
     private static final ZoneId ZONE = ZoneId.of("America/Argentina/Buenos_Aires");
-
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at(NOW);
-        }
-    }
 
     @Autowired private AvailabilityService availabilityService;
     @Autowired private BookingService bookingService;

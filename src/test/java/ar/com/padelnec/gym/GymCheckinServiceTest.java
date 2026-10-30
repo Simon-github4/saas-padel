@@ -5,33 +5,43 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import ar.com.padelnec.ClubFixture;
 import ar.com.padelnec.MutableClock;
+import ar.com.padelnec.TestClockConfig;
 import ar.com.padelnec.TestDatabaseConfig;
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
 import ar.com.padelnec.gym.domain.GymCheckin;
 import ar.com.padelnec.gym.domain.GymSede;
+import ar.com.padelnec.gym.domain.PayMethod;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
+import ar.com.padelnec.gym.service.GymBillingService;
+import ar.com.padelnec.gym.service.GymCheckinFeed;
 import ar.com.padelnec.gym.service.GymCheckinService;
 import ar.com.padelnec.gym.service.GymCheckinService.CheckInResult;
 import ar.com.padelnec.gym.service.GymLocation.Point;
 import ar.com.padelnec.gym.service.GymMemberService;
+import ar.com.padelnec.gym.service.GymMembershipService;
+import ar.com.padelnec.gym.service.GymOverviewService;
+import ar.com.padelnec.gym.service.GymOverviewService.MemberRow;
 import ar.com.padelnec.service.ClubUserService;
 import ar.com.padelnec.web.BusinessRuleException;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
@@ -43,25 +53,19 @@ import org.springframework.test.context.ActiveProfiles;
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, GymCheckinServiceTest.FixedClockConfig.class})
+@Import({TestDatabaseConfig.class, ClubFixture.class, GymFixture.class, TestClockConfig.class})
 class GymCheckinServiceTest {
 
     /** Lunes 14 de septiembre de 2026, 10:00 en Buenos Aires. */
     private static final Instant MONDAY_10AM = Instant.parse("2026-09-14T13:00:00Z");
     private static final LocalDate MONDAY = LocalDate.of(2026, 9, 14);
 
-    @TestConfiguration(proxyBeanMethods = false)
-    static class FixedClockConfig {
-        @Bean
-        @Primary
-        Clock fixedClock() {
-            return MutableClock.at("2026-09-14T13:00:00Z");
-        }
-    }
-
     @Autowired private GymCheckinService checkinService;
+    @Autowired private GymCheckinFeed checkinFeed;
     @Autowired private GymCheckinRepository checkinRepository;
     @Autowired private GymMemberService memberService;
+    @Autowired private GymMembershipService membershipService;
+    @Autowired private GymOverviewService overviewService;
     @Autowired private ClubUserService clubUserService;
     @Autowired private ClubFixture clubFixture;
     @Autowired private GymFixture gym;
@@ -106,8 +110,8 @@ class GymCheckinServiceTest {
 
         assertThat(result.alreadyRegistered()).isFalse();
         assertThat(result.sedeName()).isEqualTo("Necochea");
-        assertThat(result.weekUsed()).isEqualTo(1);
-        assertThat(result.weekLimit()).isEqualTo(3);
+        assertThat(result.used()).isEqualTo(1);
+        assertThat(result.limit()).isEqualTo(3);
         assertThat(result.validUntil()).isEqualTo(MONDAY.plusDays(29));
     }
 
@@ -120,7 +124,7 @@ class GymCheckinServiceTest {
         CheckInResult second = scan(necochea);
 
         assertThat(second.alreadyRegistered()).isTrue();
-        assertThat(second.weekUsed()).isEqualTo(1);
+        assertThat(second.used()).isEqualTo(1);
         assertThat(checkinRepository.count()).isEqualTo(1);
     }
 
@@ -141,7 +145,7 @@ class GymCheckinServiceTest {
 
         assertThat(result.alreadyRegistered()).isFalse();
         // El plan (dias por semana) sigue siendo el de la ultima cuota paga.
-        assertThat(result.weekLimit()).isEqualTo(3);
+        assertThat(result.limit()).isEqualTo(3);
     }
 
     @Test
@@ -190,7 +194,7 @@ class GymCheckinServiceTest {
 
         clock().set(MONDAY_10AM.plusSeconds(7 * 86_400));  // lunes siguiente
         CheckInResult nextWeek = scan(necochea);
-        assertThat(nextWeek.weekUsed()).isEqualTo(1);
+        assertThat(nextWeek.used()).isEqualTo(1);
     }
 
     @Test
@@ -208,7 +212,7 @@ class GymCheckinServiceTest {
         CheckInResult monday = scan(necochea);
 
         assertThat(monday.alreadyRegistered()).isFalse();
-        assertThat(monday.weekUsed()).isEqualTo(1);
+        assertThat(monday.used()).isEqualTo(1);
     }
 
     @Test
@@ -280,12 +284,47 @@ class GymCheckinServiceTest {
         assertThatThrownBy(() -> scan(necochea)).isInstanceOf(BusinessRuleException.class);
         CheckInResult forced = checkinService.forceCheckIn(memberId, necochea.getId(), staff);
 
-        assertThat(forced.weekUsed()).isEqualTo(2);
+        assertThat(forced.used()).isEqualTo(2);
         GymCheckin saved = checkinRepository.findByMemberIdAndLocalDate(memberId, tuesday).orElseThrow();
         assertThat(saved.isOverride()).isTrue();
         assertThat(saved.getRegisteredBy()).isEqualTo(staff);
         // Siempre es el ingreso de HOY: el servicio no admite otra fecha.
         assertThat(saved.getLocalDate()).isEqualTo(tuesday);
+    }
+
+    @Test
+    @DisplayName("La grilla del panel muestra el ultimo dia en que vino cada socio, en cualquier sede")
+    void panelShowsEachMembersLastCheckin() {
+        gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea, quequen);
+        UUID neverCame = gym.member(club, "40222333", "Beto Ruiz").id();
+        scan(necochea);
+        clock().set(MONDAY_10AM.plusSeconds(2 * 86_400));
+        scan(quequen);
+
+        Map<UUID, MemberRow> rows = overviewService.members().stream()
+                .collect(Collectors.toMap(MemberRow::id, Function.identity()));
+
+        assertThat(rows.get(memberId).lastCheckin()).isEqualTo(MONDAY.plusDays(2));
+        assertThat(rows.get(neverCame).lastCheckin()).isNull();
+    }
+
+    @Test
+    @DisplayName("Los ingresos del dia dicen como esta hoy la cuota de cada socio: al dia o debe el mes")
+    void dayCheckinsShowTodaysFeeState() {
+        gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea);
+        UUID owing = gym.member(club, "40222333", "Beto Ruiz").id();
+        gym.sell(club, owing, MONDAY.minusDays(40), MONDAY.minusDays(10), 3, necochea);
+        scan(necochea);
+        checkinService.checkIn(owing, necochea.getQrToken(), null);
+
+        Map<String, GymBillingService.Status> byName = overviewService.checkinsOf(MONDAY).stream()
+                .collect(Collectors.toMap(GymOverviewService.DayCheckin::memberName,
+                        GymOverviewService.DayCheckin::billing));
+
+        assertThat(byName.get("Juan Pérez").paidToday()).isTrue();
+        // Entro por la gracia: debe el mes corriente, una sola cuota.
+        assertThat(byName.get("Beto Ruiz").paidToday()).isFalse();
+        assertThat(byName.get("Beto Ruiz").monthsLate()).isEqualTo(1);
     }
 
     @Test
@@ -307,6 +346,47 @@ class GymCheckinServiceTest {
         assertThatThrownBy(() -> checkinService.forceCheckIn(memberId, necochea.getId(), UUID.randomUUID()))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("No tenés una cuota vigente");
+    }
+
+    // ------------------------------------------------------- aviso del panel
+
+    @Test
+    @DisplayName("El socio que escanea queda en el aviso del panel, una sola vez aunque escanee de nuevo")
+    void scanShowsUpInThePanelFeedOnce() {
+        gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea);
+        Instant before = MONDAY_10AM.minusSeconds(1);
+
+        scan(necochea);
+        scan(necochea);
+
+        assertThat(checkinFeed.since(club.getId(), before))
+                .singleElement()
+                .satisfies(entry -> assertThat(entry.text()).isEqualTo("Ingreso: Juan Pérez · Necochea"));
+        assertThat(checkinFeed.since(UUID.randomUUID(), before)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("El que entra debiendo el mes avisa la deuda, para que el mostrador le cobre")
+    void owingMemberShowsTheDebtInThePanelFeed() {
+        gym.sell(club, memberId, MONDAY.minusDays(40), MONDAY.minusDays(10), 3, necochea);
+
+        scan(necochea);
+
+        assertThat(checkinFeed.since(club.getId(), MONDAY_10AM.minusSeconds(1)))
+                .singleElement()
+                .satisfies(entry -> assertThat(entry.text()).endsWith("· Debe el mes"));
+    }
+
+    @Test
+    @DisplayName("Lo que carga el mostrador no suena en el panel, y un escaneo rechazado tampoco")
+    void manualAndRejectedCheckInsDoNotShowUpInThePanelFeed() {
+        assertThatThrownBy(() -> scan(necochea)).isInstanceOf(BusinessRuleException.class);
+
+        gym.sell(club, memberId, MONDAY, MONDAY.plusDays(29), 3, necochea);
+        UUID staff = clubUserService.createStaff(club, "Mostrador", "mostrador@troncos.test", "clave-larga-1").getId();
+        checkinService.forceCheckIn(memberId, necochea.getId(), staff);
+
+        assertThat(checkinFeed.since(club.getId(), MONDAY_10AM.minusSeconds(1))).isEmpty();
     }
 
     // ---------------------------------------------------------------- ubicacion
@@ -442,7 +522,7 @@ class GymCheckinServiceTest {
                 .hasMessageContaining("Tu cuota no incluye Quequén");
         CheckInResult result = scan(necochea);
 
-        assertThat(result.weekLimit()).isEqualTo(3);
+        assertThat(result.limit()).isEqualTo(3);
         assertThat(checkinRepository.findByMemberIdAndLocalDate(memberId, MONDAY).orElseThrow()
                 .getMembership().getId()).isEqualTo(current);
     }
@@ -456,5 +536,38 @@ class GymCheckinServiceTest {
         assertThatThrownBy(() -> scan(necochea))
                 .isInstanceOf(BusinessRuleException.class)
                 .hasMessageContaining("Tu cuota empieza el 17/09/2026");
+    }
+
+    /** Una cuota cobrada hoy en el mostrador, con el mes arrancando de nuevo en {@code newStart}. */
+    private List<UUID> chargeFrom(LocalDate newStart, int daysPerWeek) {
+        return membershipService.charge(memberId, 1, new BigDecimal("30000"), daysPerWeek, PayMethod.CASH,
+                necochea.getId(), Set.of(necochea.getId()), null, MONDAY, newStart, null);
+    }
+
+    @Test
+    @DisplayName("Con el mes pago y un nuevo inicio de mes mas adelante, entra con la cuota de antes")
+    void aNewStartLaterStillLetsThePaidMonthIn() {
+        UUID september = chargeFrom(LocalDate.of(2026, 9, 1), 3).getFirst();
+        chargeFrom(LocalDate.of(2026, 10, 5), 2);
+
+        CheckInResult result = scan(necochea);
+
+        assertThat(result.alreadyRegistered()).isFalse();
+        // Vale hasta el fin de la de septiembre: el hueco hasta el 05/10 no se salta.
+        assertThat(result.validUntil()).isEqualTo(LocalDate.of(2026, 9, 30));
+        assertThat(result.limit()).isEqualTo(3);
+        assertThat(checkinRepository.findByMemberIdAndLocalDate(memberId, MONDAY).orElseThrow()
+                .getMembership().getId()).isEqualTo(september);
+    }
+
+    @Test
+    @DisplayName("Con la cuota vieja vencida y un nuevo inicio mas adelante, el aviso dice cuando arranca el nuevo")
+    void aNewStartLaterAnnouncesItsOwnDate() {
+        chargeFrom(LocalDate.of(2026, 8, 1), 3);
+        chargeFrom(LocalDate.of(2026, 9, 20), 3);
+
+        assertThatThrownBy(() -> scan(necochea))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("Tu cuota empieza el 20/09/2026");
     }
 }

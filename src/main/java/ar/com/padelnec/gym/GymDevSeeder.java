@@ -2,10 +2,13 @@ package ar.com.padelnec.gym;
 
 import ar.com.padelnec.config.TenantContext;
 import ar.com.padelnec.domain.Tenant;
+import ar.com.padelnec.gym.domain.EntryLimit;
 import ar.com.padelnec.gym.domain.GymClubConfig;
 import ar.com.padelnec.gym.domain.GymMember;
+import ar.com.padelnec.gym.domain.GymMembership;
 import ar.com.padelnec.gym.domain.GymSede;
 import ar.com.padelnec.gym.domain.PayMethod;
+import ar.com.padelnec.gym.domain.PlanLength;
 import ar.com.padelnec.gym.repository.GymCheckinRepository;
 import ar.com.padelnec.gym.repository.GymClubConfigRepository;
 import ar.com.padelnec.gym.repository.GymMemberRepository;
@@ -105,6 +108,108 @@ class GymDevSeeder {
         if (memberRepository.findByDni(ADVANCE_CASES_MARKER_DNI).isEmpty()) {
             seedAdvanceCases();
         }
+        if (memberRepository.findByDni(PASS_CASES_MARKER_DNI).isEmpty()) {
+            seedPassCases();
+        }
+        if (memberRepository.findByDni(MONTHLY_LIMIT_MARKER_DNI).isEmpty()) {
+            seedMonthlyLimitCases();
+        }
+    }
+
+    /** El DNI de Valeria Sosa, que marca que el caso del tope por mes ya se sembro. */
+    private static final String MONTHLY_LIMIT_MARKER_DNI = "37999000";
+
+    /**
+     * El tope por mes: una socia de 2 dias por semana cuyo mes arranco hace 20 dias y que ya vino 9
+     * veces, dia por medio, con su cuota ya contada por mes (como si el club la hubiera cobrado en
+     * ese modo): queda en el tope (9 de 9, u 8 en un periodo de 28 o 29 dias), y la grilla muestra
+     * socios por semana y por mes mezclados, como mientras un club cambia de modo.
+     */
+    private void seedMonthlyLimitCases() {
+        List<GymSede> sedes = sedeService.active();
+        if (sedes.isEmpty()) {
+            return;
+        }
+        GymSede sede = sedes.getFirst();
+        LocalDate today = overviewService.today();
+        UUID valeria = memberService.create(MONTHLY_LIMIT_MARKER_DNI, "Valeria Sosa", null).id();
+        charge(valeria, 1, 2, sede, today, today.minusDays(20), today.minusDays(20), PayMethod.CASH);
+        GymMembership monthly = membershipRepository.findAllByMemberIdAndVoidedAtIsNullOrderByEndsOnDesc(valeria)
+                .getFirst();
+        monthly.setEntryLimit(EntryLimit.MONTH);
+        UUID fee = membershipRepository.save(monthly).getId();
+        for (int daysAgo = 20; daysAgo >= 4; daysAgo -= 2) {
+            checkIn(valeria, fee, sede, today.minusDays(daysAgo));
+        }
+        log.info("Gimnasio de ejemplo: caso del tope por mes sembrado (Valeria Sosa {})", MONTHLY_LIMIT_MARKER_DNI);
+    }
+
+    /** El DNI de Tomás Paso, que marca que los casos de pases de 15 dias ya se sembraron. */
+    private static final String PASS_CASES_MARKER_DNI = "39111222";
+
+    /**
+     * Casos del pase de 15 dias, relativos a hoy, en la primera sede: vigente, vencido, un
+     * mensual con el pase despues, un pase con el mensual despues, y un mensual que debia y
+     * paso a pase (para anularlo y ver que la deuda vuelve).
+     */
+    private void seedPassCases() {
+        List<GymSede> sedes = sedeService.active();
+        if (sedes.isEmpty()) {
+            return;
+        }
+        GymSede sede = sedes.getFirst();
+        LocalDate today = overviewService.today();
+        int[] prices = {10000, 15000, 18000, 21000, 24000, 27000, 30000};
+        for (int days = 1; days <= 7; days++) {
+            if (tariffService.priceOf(PlanLength.FIFTEEN_DAYS, days) == null) {
+                tariffService.setPrice(PlanLength.FIFTEEN_DAYS, days, new BigDecimal(prices[days - 1]));
+            }
+        }
+
+        // Pase vigente desde hoy: el turista que vino a pasar dos semanas.
+        UUID tomas = memberService.create(PASS_CASES_MARKER_DNI, "Tomás Paso", null).id();
+        pass(tomas, 3, sede, today, null, false);
+
+        // Pase vencido hace unos dias: no debe nada, no entra hasta pagar otro.
+        GymMember valeria = memberRepository.findById(memberService.create("39222333", "Valeria Costa", null).id())
+                .orElseThrow();
+        GymMembership expired = new GymMembership();
+        expired.setMember(valeria);
+        expired.setPlanLength(PlanLength.FIFTEEN_DAYS);
+        expired.setStartsOn(today.minusDays(20));
+        expired.setEndsOn(today.minusDays(20).plusDays(PlanLength.PASS_DAYS - 1));
+        expired.setDaysPerWeek(3);
+        expired.setPrice(new BigDecimal("18000.00"));
+        expired.setPaidOn(today.minusDays(20));
+        expired.setPayMethod(PayMethod.CASH);
+        expired.setCollectedSede(sede);
+        expired.setSedes(new java.util.HashSet<>(Set.of(sede)));
+        membershipRepository.save(expired);
+
+        // Mensual al dia con un pase que arranca cuando termina el mes.
+        UUID nicolas = memberService.create("39333444", "Nicolás Ibarra", null).id();
+        charge(nicolas, 1, 3, sede, today, today.minusDays(5), null, PayMethod.CASH);
+        pass(nicolas, 3, sede, today, null, false);
+
+        // Pase vigente y el plan mensual ya cobrado para cuando termine.
+        UUID paula = memberService.create("39444555", "Paula Ferreyra", null).id();
+        pass(paula, 2, sede, today, null, false);
+        charge(paula, 1, 2, sede, today, null, null, PayMethod.TRANSFER);
+
+        // Debia el mes y paso a un pase confirmando que deja de cobrarse (anularlo devuelve la deuda).
+        UUID ramiro = memberService.create("39555666", "Ramiro Sosa", null).id();
+        charge(ramiro, 1, 3, sede, today, today.minusMonths(1).minusDays(10), today.minusMonths(1).minusDays(10),
+                PayMethod.CASH);
+        pass(ramiro, 3, sede, today, null, true);
+
+        log.info("Gimnasio de ejemplo: casos de pases de 15 días sembrados (Tomás Paso 39111222, Valeria Costa, "
+                + "Nicolás Ibarra, Paula Ferreyra, Ramiro Sosa)");
+    }
+
+    private void pass(UUID memberId, int daysPerWeek, GymSede sede, LocalDate today, LocalDate startsOn,
+                      boolean dropMonthlyDebt) {
+        membershipService.chargePass(memberId, startsOn, null, daysPerWeek, PayMethod.CASH, sede.getId(),
+                Set.of(sede.getId()), null, today, null, dropMonthlyDebt);
     }
 
     /** El DNI de Rocio Luna, que marca que los casos de adelantos ya se sembraron. */

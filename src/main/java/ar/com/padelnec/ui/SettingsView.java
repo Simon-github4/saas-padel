@@ -57,6 +57,7 @@ import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.select.Select;
+import com.vaadin.flow.component.shared.Tooltip;
 import com.vaadin.flow.component.tabs.Tab;
 import com.vaadin.flow.component.tabs.TabSheet;
 import com.vaadin.flow.component.textfield.BigDecimalField;
@@ -824,6 +825,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver,
             case CLASSIC -> "Base";
             case SCOREBOARD -> "Marcador de cancha";
             case COURT_SPLIT -> "Vista de cancha partida";
+            case LOGO -> "Logo del club";
         };
     }
 
@@ -881,7 +883,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver,
     /** Circulo clickeable de la paleta rapida: un click carga ese hex en el campo. */
     private Div paletteSwatch(String hex, TextField hexField) {
         Div swatch = new Div();
-        swatch.getElement().setAttribute("title", hex);
+        Tooltip.forComponent(swatch).setText(hex);
         swatch.getStyle()
                 .set("width", "1.25rem")
                 .set("height", "1.25rem")
@@ -1310,7 +1312,7 @@ public class SettingsView extends VerticalLayout implements BeforeEnterObserver,
             Button edit = new Button(VaadinIcon.PENCIL.create(), event -> openProductEditor(product));
             edit.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_SMALL);
             edit.setAriaLabel("Editar " + product.getName());
-            edit.getElement().setAttribute("title", "Editar nombre y precio");
+            edit.setTooltipText("Editar nombre y precio");
             return edit;
         }).setHeader("").setAutoWidth(true).setFlexGrow(0)
                 .setTextAlign(ColumnTextAlign.CENTER);

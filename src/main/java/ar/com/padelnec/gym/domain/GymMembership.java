@@ -46,6 +46,19 @@ public class GymMembership extends TenantScopedEntity {
     @Column(name = "days_per_week", nullable = false)
     private int daysPerWeek;
 
+    /** Mensual (sigue el ciclo del socio) o pase de 15 dias (vence sin deuda). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "plan_length", nullable = false, length = 20)
+    private PlanLength planLength = PlanLength.MONTH;
+
+    /**
+     * Como se cuenta su tope de dias: por semana o en su periodo. Lo toma del club al cobrarse,
+     * asi un cambio del club rige desde la proxima cuota y no a mitad de la que el socio ya pago.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "entry_limit", nullable = false, length = 10)
+    private EntryLimit entryLimit = EntryLimit.WEEK;
+
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal price;
 
@@ -78,6 +91,10 @@ public class GymMembership extends TenantScopedEntity {
     /** Vale ese dia: dentro del periodo y sin anular. */
     public boolean covers(LocalDate day) {
         return voidedAt == null && !day.isBefore(startsOn) && !day.isAfter(endsOn);
+    }
+
+    public boolean isPass() {
+        return planLength == PlanLength.FIFTEEN_DAYS;
     }
 
     public boolean allows(GymSede sede) {

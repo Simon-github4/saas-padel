@@ -1,6 +1,7 @@
 package ar.com.padelnec.gym.web;
 
 import ar.com.padelnec.gym.service.GymAuthService.IssuedSession;
+import ar.com.padelnec.gym.service.GymBillingService.Period;
 import ar.com.padelnec.gym.service.GymCheckinService.CheckInResult;
 import ar.com.padelnec.gym.service.GymStatusService.MembershipView;
 import ar.com.padelnec.gym.service.GymStatusService.RecentCheckin;
@@ -66,20 +67,27 @@ public final class GymDtos {
         }
     }
 
-    public record CheckInResponse(String sedeName, boolean alreadyRegistered, int weekUsed, int weekLimit,
-                                  LocalDate validUntil) {
+    /**
+     * {@code used} y {@code limit}: los ingresos de la semana, del mes de la cuota o del pase
+     * ({@code limitPeriod}: {@code WEEK}, {@code MONTH} o {@code PASS}), que termina el {@code windowEnd}.
+     */
+    public record CheckInResponse(String sedeName, boolean alreadyRegistered, int used, int limit,
+                                  String limitPeriod, LocalDate windowEnd, LocalDate validUntil) {
 
         static CheckInResponse of(CheckInResult result) {
-            return new CheckInResponse(result.sedeName(), result.alreadyRegistered(), result.weekUsed(),
-                    result.weekLimit(), result.validUntil());
+            return new CheckInResponse(result.sedeName(), result.alreadyRegistered(), result.used(),
+                    result.limit(), result.window().name(), result.windowEnd(), result.validUntil());
         }
     }
 
-    public record MembershipResponse(LocalDate startsOn, LocalDate endsOn, int daysPerWeek, List<String> sedes) {
+    /** {@code planLength}: {@code MONTH} o {@code FIFTEEN_DAYS} (pase de 15 dias). */
+    public record MembershipResponse(LocalDate startsOn, LocalDate endsOn, int daysPerWeek, List<String> sedes,
+                                     String planLength) {
 
         static MembershipResponse of(MembershipView view) {
             return view == null ? null
-                    : new MembershipResponse(view.startsOn(), view.endsOn(), view.daysPerWeek(), view.sedes());
+                    : new MembershipResponse(view.startsOn(), view.endsOn(), view.daysPerWeek(), view.sedes(),
+                            view.planLength().name());
         }
     }
 
@@ -90,18 +98,22 @@ public final class GymDtos {
         }
     }
 
-    public record MeResponse(String fullName, MembershipResponse membership, boolean valid, int weekUsed,
-                             int weekLimit, boolean checkedInToday, List<RecentCheckinResponse> recent,
+    /** {@code used}, {@code limit}, {@code limitPeriod} y {@code windowEnd}: como en {@link CheckInResponse}. */
+    public record MeResponse(String fullName, MembershipResponse membership, boolean valid, int used,
+                             int limit, String limitPeriod, LocalDate windowEnd, boolean checkedInToday,
+                             List<RecentCheckinResponse> recent,
                              LocalDate cycleStart, LocalDate periodStart, LocalDate periodEnd,
                              LocalDate paidUntil, boolean paidCurrent, int monthsLate, boolean canEnter,
-                             java.math.BigDecimal owedTotal) {
+                             java.math.BigDecimal owedTotal, boolean onPasses, Period gap, Period paidAhead) {
 
         static MeResponse of(Status status) {
             return new MeResponse(status.fullName(), MembershipResponse.of(status.membership()), status.valid(),
-                    status.weekUsed(), status.weekLimit(), status.checkedInToday(),
+                    status.used(), status.limit(), status.window().name(), status.windowEnd(),
+                    status.checkedInToday(),
                     status.recent().stream().map(RecentCheckinResponse::of).toList(),
                     status.cycleStart(), status.periodStart(), status.periodEnd(), status.paidUntil(),
-                    status.paidCurrent(), status.monthsLate(), status.canEnter(), status.owedTotal());
+                    status.paidCurrent(), status.monthsLate(), status.canEnter(), status.owedTotal(),
+                    status.onPasses(), status.gap(), status.paidAhead());
         }
     }
 }

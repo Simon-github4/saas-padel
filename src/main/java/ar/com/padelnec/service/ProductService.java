@@ -73,18 +73,10 @@ public class ProductService {
         productSaleRepository.delete(sale);
     }
 
-    /**
-     * Marca cobradas las líneas elegidas de un pedido de buffet: lo que tildó el
-     * mostrador para un cobro parcial, así al reabrir el pedido siguen tildadas.
-     */
+    /** Varias líneas de una vez, ej. lo ya cobrado de un producto que se pagó en dos partes: todas o ninguna. */
     @Transactional
-    public void markPaid(Collection<UUID> saleIds) {
-        if (saleIds.isEmpty()) {
-            return;
-        }
-        List<ProductSale> sales = productSaleRepository.findAllById(saleIds);
-        sales.forEach(sale -> sale.setPaid(true));
-        productSaleRepository.saveAll(sales);
+    public void removeSales(Collection<UUID> saleIds) {
+        saleIds.forEach(this::removeSale);
     }
 
     @Transactional(readOnly = true)
@@ -94,7 +86,7 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public List<ProductSale> salesOfOrder(UUID orderId) {
-        return productSaleRepository.findAllByBuffetOrderIdInOrderByCreatedAtAsc(List.of(orderId));
+        return productSaleRepository.findAllByBuffetOrderIdInOrderByCreatedAtAscIdAsc(List.of(orderId));
     }
 
     /** Las ventas de varios pedidos de una sola vez, para listarlos sin una consulta por pedido. */
@@ -103,7 +95,7 @@ public class ProductService {
         if (orderIds.isEmpty()) {
             return List.of();
         }
-        return productSaleRepository.findAllByBuffetOrderIdInOrderByCreatedAtAsc(orderIds);
+        return productSaleRepository.findAllByBuffetOrderIdInOrderByCreatedAtAscIdAsc(orderIds);
     }
 
     private ProductSale newSale(Product product, int quantity, UUID registeredBy) {

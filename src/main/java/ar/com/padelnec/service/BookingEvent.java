@@ -23,6 +23,11 @@ public record BookingEvent(UUID clubId, UUID bookingId, Kind kind) {
         CONFIRMATION_EXPIRED,
         /** El club dio de baja el turno. */
         CANCELLED_BY_CLUB,
+        /**
+         * El jugador cancelo desde su link. Este aviso es para el club, no para el:
+         * el portal ya le confirmo la baja en pantalla.
+         */
+        CANCELLED_BY_CUSTOMER,
         /** Recordatorio previo al turno. */
         REMINDER
     }
