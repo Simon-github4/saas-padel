@@ -1589,3 +1589,90 @@ vaadin-tooltip::part(content) {
   width: var(--lumo-icon-size-s);
   height: var(--lumo-icon-size-s);
 }
+
+/* Historia de turnos libres: la vista previa al lado de los controles, y arriba de
+   todo en el celular. El canvas mide 1080 x 1920; aca se ve achicado. */
+.story-dialog__body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lumo-space-l);
+  align-items: flex-start;
+}
+
+/* Fija mientras se scrollea: la franja se ajusta abajo de todo y hay que ver como
+   queda. En el celular va arriba y mas chica, para que entren los controles. */
+.story-dialog__preview {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: min(17rem, 100%);
+  margin-inline: auto;
+  background: var(--lumo-base-color);
+}
+
+@media (max-width: 40rem) {
+  .story-dialog__preview {
+    width: 10rem;
+    padding-bottom: var(--lumo-space-s);
+  }
+}
+
+canvas.story-preview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  border-radius: var(--lumo-border-radius-l);
+  background: var(--lumo-contrast-10pct);
+  box-shadow: var(--lumo-box-shadow-s);
+}
+
+.story-dialog__controls {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.story-dialog__status,
+.story-dialog__help {
+  margin: 0;
+  color: var(--lumo-secondary-text-color);
+  font-size: var(--lumo-font-size-s);
+}
+
+.story-dialog__design {
+  gap: var(--lumo-space-s);
+}
+
+.story-dialog__template-only {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumo-space-s);
+  width: 100%;
+}
+
+.story-dialog__range {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumo-space-xs);
+  font-size: var(--lumo-font-size-s);
+  color: var(--lumo-secondary-text-color);
+}
+
+.story-dialog__range input[type="range"] {
+  width: 100%;
+  accent-color: var(--lumo-primary-color);
+}
+
+.story-dialog__share-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--lumo-font-size-xs);
+  color: var(--lumo-secondary-text-color);
+}
+
+/* "Instalar app" en la barra: en el celular queda solo el icono, como "Copiar link". */
+@media (max-width: 40rem) {
+  vaadin-button.install-app--compact::part(label) {
+    display: none;
+  }
+}

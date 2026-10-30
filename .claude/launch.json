@@ -2,6 +2,17 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "backend-historias",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--server.port=8091 --app.base-url=http://localhost:8091"
+      ],
+      "env": { "DEV_DB_PORT": "54660", "DEV_DB_DIR": "target/devdb-historias" },
+      "port": 8091
+    },
+    {
       "name": "backend-ver-reserva",
       "runtimeExecutable": "mvn",
       "runtimeArgs": [

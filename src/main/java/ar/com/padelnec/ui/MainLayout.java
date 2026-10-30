@@ -215,7 +215,11 @@ public class MainLayout extends AppLayout implements AfterNavigationObserver {
         // se queda pegado a la izquierda, este bloque es siempre lo mismo y se
         // queda pegado a la derecha, sin que "space-between" los separe a ellos
         // dos entre si.
-        HorizontalLayout actions = new HorizontalLayout(shareLinkButton(), userMenu());
+        // "Instalar app" solo aparece donde se puede instalar y todavia no esta instalada.
+        InstallAppButton install = new InstallAppButton("Instalar app");
+        install.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+        install.addClassName("install-app--compact");
+        HorizontalLayout actions = new HorizontalLayout(shareLinkButton(), install, userMenu());
         actions.setPadding(false);
         actions.setAlignItems(HorizontalLayout.Alignment.CENTER);
         actions.addClassNames(LumoUtility.Gap.SMALL);
