@@ -180,7 +180,10 @@ export function AccountPage() {
 
       {!loading && !error && history && history.length === 0 && recurring.length === 0 && guestBookings.length === 0 && (
         <>
-          <Alert tone="info">Todavía no reservaste ningún turno.</Alert>
+          <Alert tone="info">
+            Todavía no reservaste ningún turno con esta cuenta. Si reservaste sin iniciar sesión, tu
+            turno está en el link que te mandamos por WhatsApp.
+          </Alert>
           {recurringLoaded && <RecurringHint session={session} />}
         </>
       )}

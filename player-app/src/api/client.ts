@@ -19,9 +19,23 @@ export interface PhoneVerificationStart {
   whatsappLink: string | null;
   /** El mismo link como QR (data URI de un SVG), para escanearlo desde la compu. */
   whatsappQr: string | null;
+  /** Para volver a pedir desde esta pestaña y cambiarle el turno al mismo mensaje. */
+  ownerToken: string | null;
 }
 
 export type PhoneVerificationStatus = 'PENDING' | 'VERIFIED' | 'EXPIRED';
+
+/**
+ * En qué anda la confirmación del número. Cuando llega el WhatsApp, el servidor
+ * reserva el turno que la página le mandó al pedirla: ya verificado, viene la
+ * reserva que salió o el error por el que no salió (con la misma forma que los de
+ * la API). Sin ninguno de los dos, la página reserva ella.
+ */
+export interface PhoneVerificationProgress {
+  status: PhoneVerificationStatus;
+  booking: BookingCreated | null;
+  error: { code: string; reason: string | null; message: string } | null;
+}
 
 /** Paredes de la cancha: GLASS es blindex. */
 export type CourtWall = 'GLASS' | 'WALL';
@@ -398,16 +412,30 @@ export const api = {
    * Antes de reservar sin seña: si el número nunca se verificó, el WhatsApp que el
    * jugador nos tiene que mandar desde ese número para confirmarlo. Los verificados
    * pasan directo.
+   *
+   * <p>Lleva el turno que se está reservando (y la sesión, si hay): cuando llega el
+   * WhatsApp el servidor lo reserva solo, aunque esta página ya no esté abierta.
    */
-  startPhoneVerification: (slug: string, phoneNumber: string) =>
+  startPhoneVerification: (
+    slug: string,
+    body: {
+      phoneNumber: string;
+      courtId: string;
+      startTime: string;
+      fullName: string;
+      ownerToken: string | null;
+    },
+    token?: string,
+  ) =>
     request<PhoneVerificationStart>(`/${slug}/phone-verification`, {
       method: 'POST',
-      body: JSON.stringify({ phoneNumber }),
+      body: JSON.stringify(body),
+      token,
     }),
 
-  /** Si ya llegó el WhatsApp. La página pregunta cada par de segundos mientras espera. */
+  /** Si ya llegó el WhatsApp, y la reserva. La página pregunta cada par de segundos mientras espera. */
   phoneVerificationStatus: (slug: string, verificationId: string) =>
-    request<{ status: PhoneVerificationStatus }>(`/${slug}/phone-verification/${verificationId}`),
+    request<PhoneVerificationProgress>(`/${slug}/phone-verification/${verificationId}`),
 
   /**
    * El token va cuando hay sesión iniciada, y es lo que hace que el turno
@@ -422,6 +450,8 @@ export const api = {
       fullName: string;
       phoneNumber: string;
       paymentChoice: PaymentChoice;
+      /** Ya dijo que sí cuando le preguntamos si quería otro turno además del que acaba de reservar. */
+      anotherBooking?: boolean;
     },
     token?: string,
   ) => request<BookingCreated>(`/${slug}/bookings`, {
@@ -442,6 +472,17 @@ export const api = {
   booking: (token: string) => request<BookingDetail>(`/manage/${token}`),
 
   cancel: (token: string) => request<Cancellation>(`/manage/${token}/cancel`, { method: 'POST' }),
+
+  /**
+   * Canjea el código del link que llega en la respuesta de WhatsApp. Solo el primer
+   * navegador que lo abre recibe `saved: true` y guarda el turno en "Mis turnos":
+   * el mismo mensaje reenviado después muestra el turno pero no lo guarda.
+   */
+  saveToDevice: (token: string, code: string) =>
+    request<{ saved: boolean }>(`/manage/${token}/save`, {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
 
   share: (token: string) => request<BookingShareInfo>(`/share/${token}`),
 };

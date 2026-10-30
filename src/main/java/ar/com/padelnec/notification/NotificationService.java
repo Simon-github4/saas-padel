@@ -71,7 +71,13 @@ public class NotificationService {
                 String.valueOf(club.getConfirmationTtlMinutes()),
                 link);
 
-        dispatch(club, booking, NotificationTemplate.CONFIRMATION_REQUEST, variables, """
+        dispatch(club, booking, NotificationTemplate.CONFIRMATION_REQUEST, variables,
+                confirmationRequestMessage(club, booking));
+    }
+
+    /** Mismo texto que manda {@link #confirmationRequest}, para contestarlo en un WhatsApp que nos llego. */
+    public String confirmationRequestMessage(Tenant club, Booking booking) {
+        return """
                 ¡Hola %s! Tu turno en *%s* está casi listo:
                 %s
 
@@ -80,7 +86,7 @@ public class NotificationService {
 
                 Si no lo confirmás, la cancha vuelve a quedar libre."""
                 .formatted(firstName(booking), club.getName(), slotLine(club, booking),
-                        club.getConfirmationTtlMinutes(), link));
+                        club.getConfirmationTtlMinutes(), confirmationLink(booking));
     }
 
     /** Turno confirmado de palabra: se paga en el club. */
@@ -112,6 +118,28 @@ public class NotificationService {
                 %s"""
                 .formatted(firstName(booking), club.getName(), slotLine(club, booking),
                         money(booking.getTotalPrice()), managementLink(booking));
+    }
+
+    /**
+     * La confirmacion que va como respuesta al WhatsApp con que el jugador confirmo
+     * su numero: la de {@link #confirmedUnpaidMessage}, con el link que guarda el
+     * turno en "Mis turnos" del navegador que lo abre. Hace falta: desde Instagram se
+     * reserva en su navegador, y el link de WhatsApp abre otro que no sabe nada.
+     *
+     * @param saveCode el codigo de un solo uso del link, o nulo si reservo con cuenta
+     */
+    public String confirmedByMessageReply(Tenant club, Booking booking, String saveCode) {
+        String link = saveCode == null
+                ? managementLink(booking)
+                : managementLink(booking) + "?guardar=" + saveCode;
+        return """
+                ✅ ¡Listo %s! Tu turno en *%s* quedó reservado.
+                %s
+                💵 Se abona en el club.
+
+                Este mensaje es el comprobante de tu turno. Para verlo o cancelarlo:
+                %s"""
+                .formatted(firstName(booking), club.getName(), slotLine(club, booking), link);
     }
 
     /** Sena acreditada por MercadoPago. */

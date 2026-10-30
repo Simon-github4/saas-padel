@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { track } from '../analytics';
 import { api, ApiError, type Availability, type Slot } from '../api/client';
+import { usePlayerAuth } from '../auth/AuthContext';
 import { useClubTheme } from '../clubTheme';
+import { rememberGuestBooking } from '../guestBookings';
+import { forgetPendingVerification, readPendingVerification } from '../pendingVerification';
 import { roofFromParam, surfaceFromParam, wallFromParam } from '../courtFeatures';
 import { addDays, clockTime, longDate, perPerson, todayIso, whatsappLink } from '../format';
 import { setPageMeta, setStructuredData } from '../seo';
@@ -85,6 +88,63 @@ export function ClubPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // El pedido de confirmación por WhatsApp que dejó esperando una visita anterior
+  // en este navegador: desde Instagram la página muere al ir a WhatsApp, y el turno
+  // sale igual en el servidor. Al volver se le dice cómo terminó, en vez de dejarlo
+  // frente a la grilla sin saber si reservó (y que reserve otro).
+  const { session } = usePlayerAuth();
+  const [resumed, setResumed] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  useEffect(() => {
+    const pending = readPendingVerification(slug);
+    if (!pending) {
+      return;
+    }
+    let cancelled = false;
+    api
+      .phoneVerificationStatus(slug, pending.verificationId)
+      .then((progress) => {
+        if (cancelled) {
+          return;
+        }
+        // En la zona del dispositivo: puede llegar antes que los datos del club, y para
+        // quien reserva en su ciudad es la misma.
+        const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const when = `${longDate(pending.startTime, zone)} a las ${clockTime(pending.startTime, zone)} hs`;
+        if (progress.booking) {
+          forgetPendingVerification();
+          // Con sesión ya aparece en la cuenta; sin ella, solo este navegador lo recuerda.
+          if (!session) {
+            rememberGuestBooking({
+              bookingId: progress.booking.bookingId,
+              managementToken: progress.booking.managementToken,
+              clubName: pending.clubName,
+              clubSlug: pending.clubSlug,
+              courtName: pending.courtName,
+              startTime: pending.startTime,
+              endTime: pending.endTime,
+            });
+          }
+          setResumed({ tone: 'success', text: `Tu turno del ${when} ya quedó reservado.` });
+          setBookings((count) => count + 1);
+        } else if (progress.error) {
+          forgetPendingVerification();
+          setResumed({
+            tone: 'error',
+            text: `Tu número quedó confirmado, pero el turno del ${when} no se pudo reservar. ${progress.error.message}`,
+          });
+        } else if (progress.status !== 'PENDING') {
+          // Venció sin mensaje, o se verificó sin turno: no hay nada que contarle.
+          forgetPendingVerification();
+        }
+      })
+      .catch(() => {
+        // Sin respuesta no se dice nada; se vuelve a preguntar en la próxima visita.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, session]);
 
   // La paleta la elige el club (ver clubTheme.ts). Queda anotada para que "Ver
   // turnos" se vea como este club.
@@ -319,6 +379,11 @@ export function ClubPage() {
       {/* Con key: al reservar en esta misma página se vuelve a armar y trae el
           turno nuevo. Sin esto, quien sube después de reservar ve como "tu
           próximo turno" uno de antes, o ninguno, y duda de si la reserva salió. */}
+      {resumed && (
+        <div className="mx-auto mt-4 max-w-3xl px-4">
+          <Alert tone={resumed.tone}>{resumed.text}</Alert>
+        </div>
+      )}
       <NextBookingCard key={bookings} clubSlug={club.slug} />
 
       {/*

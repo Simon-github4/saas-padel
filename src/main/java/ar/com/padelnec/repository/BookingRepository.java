@@ -209,6 +209,11 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                                      @Param("from") Instant from,
                                      @Param("statuses") Collection<BookingStatus> statuses);
 
+    /** El ultimo turno de este origen que el jugador saco despues de {@code createdAfter} y todavia no empezo. */
+    Optional<Booking> findFirstByCustomerIdAndSourceAndStatusInAndCreatedAtAfterAndStartTimeAfterOrderByCreatedAtDesc(
+            UUID customerId, BookingSource source, Collection<BookingStatus> statuses, Instant createdAfter,
+            Instant startsAfter);
+
     /**
      * Reservas activas del mismo telefono que empiezan en {@code [from, until)},
      * sin contar las de un origen (los turnos fijos). Sirve para frenar al que

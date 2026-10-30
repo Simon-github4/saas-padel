@@ -13,6 +13,17 @@
       "port": 8091
     },
     {
+      "name": "backend-reserva-whatsapp",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": [
+        "spring-boot:run",
+        "-Dspring-boot.run.profiles=dev",
+        "-Dspring-boot.run.arguments=--server.port=8092 --app.base-url=http://localhost:8092 --app.whatsapp.provider=log --app.whatsapp.verify-phones=true --app.whatsapp.from-number=+17017145042 --app.whatsapp.auth-token=token-local-de-prueba"
+      ],
+      "env": { "DEV_DB_PORT": "45442", "DEV_DB_DIR": "target/devdb-reserva-whatsapp" },
+      "port": 8092
+    },
+    {
       "name": "backend-ver-reserva",
       "runtimeExecutable": "mvn",
       "runtimeArgs": [

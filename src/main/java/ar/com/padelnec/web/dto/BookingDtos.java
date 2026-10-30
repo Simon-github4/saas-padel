@@ -23,30 +23,72 @@ public final class BookingDtos {
             @Size(max = 120) String fullName,
             @NotBlank(message = "Necesitamos tu teléfono")
             @Size(max = 25) String phoneNumber,
-            @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice) {
+            @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice,
+            // Ya le preguntamos si quiere otro turno ademas del que acaba de reservar,
+            // y dijo que si (ver BookingService.requireNoRecentWebBooking).
+            Boolean anotherBooking) {
+
+        public boolean wantsAnotherBooking() {
+            return Boolean.TRUE.equals(anotherBooking);
+        }
     }
 
-    /** Antes de reservar sin sena: si este telefono tiene que confirmarse por WhatsApp. */
+    /**
+     * Antes de reservar sin sena: si este telefono tiene que confirmarse por WhatsApp.
+     *
+     * <p>Con el turno que se esta reservando, que sale solo cuando llega el mensaje,
+     * aunque la pagina ya no este abierta. Las paginas viejas no lo mandan y reservan
+     * ellas al enterarse.
+     */
     public record PhoneVerificationRequest(
             @NotBlank(message = "Necesitamos tu teléfono")
-            @Size(max = 25) String phoneNumber) {
+            @Size(max = 25) String phoneNumber,
+            UUID courtId,
+            Instant startTime,
+            @Size(max = 120) String fullName,
+            // El que devolvio el pedido anterior de esta pestana: vuelve a pedir por el
+            // mismo y le cambia el turno, en vez de abrir otro con otro codigo.
+            @Size(max = 64) String ownerToken) {
+
+        public boolean holdsBooking() {
+            return courtId != null && startTime != null && fullName != null && !fullName.isBlank();
+        }
     }
 
     /**
      * Si hace falta confirmar el telefono y, si hace falta, con que: el link abre
      * WhatsApp con el mensaje ya escrito, el QR es ese mismo link para escanearlo
-     * desde la compu, y el id sirve para preguntar si llego.
+     * desde la compu, y el id sirve para preguntar si llego. El ownerToken lo vuelve
+     * a mandar la pagina si pide de nuevo.
      */
     public record PhoneVerificationResponse(boolean verificationRequired, UUID verificationId,
-                                            String whatsappLink, String whatsappQr) {
+                                            String whatsappLink, String whatsappQr, String ownerToken) {
 
         public static PhoneVerificationResponse notRequired() {
-            return new PhoneVerificationResponse(false, null, null, null);
+            return new PhoneVerificationResponse(false, null, null, null, null);
         }
     }
 
-    /** PENDING, VERIFIED o EXPIRED: ver {@code PhoneVerificationService.Status}. */
-    public record PhoneVerificationStatusResponse(String status) {
+    /** El codigo del link que guarda el turno en "Mis turnos" (el {@code ?guardar=} de la URL). */
+    public record SaveBookingRequest(@NotBlank @Size(max = 64) String code) {
+    }
+
+    /** Si este navegador fue el primero en abrir el link y puede guardarse el turno. */
+    public record SaveBookingResponse(boolean saved) {
+    }
+
+    /**
+     * PENDING, VERIFIED o EXPIRED: ver {@code PhoneVerificationService.Status}.
+     *
+     * <p>Ya verificado, la reserva que salio sola al llegar el mensaje o el error por
+     * el que no salio. Sin ninguno de los dos, la pagina reserva ella.
+     */
+    public record PhoneVerificationStatusResponse(String status, CreateBookingResponse booking,
+                                                  BookingErrorResponse error) {
+    }
+
+    /** Un error al reservar con la misma forma que los de la API: codigo, motivo y mensaje. */
+    public record BookingErrorResponse(String code, String reason, String message) {
     }
 
     /** Si el telefono puede reservar y pagar en el club, aunque el club pida sena. */

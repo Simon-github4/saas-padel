@@ -183,6 +183,7 @@ export function Field({
   error,
   inputMode,
   autoComplete,
+  disabled = false,
 }: {
   label: string;
   value: string;
@@ -194,6 +195,7 @@ export function Field({
   error?: string | null;
   inputMode?: 'text' | 'tel' | 'numeric';
   autoComplete?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
@@ -204,9 +206,10 @@ export function Field({
         inputMode={inputMode}
         autoComplete={autoComplete}
         placeholder={placeholder}
+        disabled={disabled}
         aria-invalid={error ? true : undefined}
         onChange={(event) => onChange(event.target.value)}
-        className={`w-full rounded-xl border bg-pista px-4 py-3 text-base text-cal outline-none transition placeholder:text-ink-mute focus:border-ladrillo focus:ring-2 focus:ring-ladrillo/25 ${
+        className={`w-full rounded-xl border bg-pista px-4 py-3 text-base text-cal outline-none transition placeholder:text-ink-mute focus:border-ladrillo focus:ring-2 focus:ring-ladrillo/25 disabled:opacity-60 ${
           error ? 'border-red-500/60' : 'border-cal/10'
         }`}
       />

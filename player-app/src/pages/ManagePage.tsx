@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { api, ApiError, type BookingDetail, type Cancellation } from '../api/client';
 import { useClubTheme } from '../clubTheme';
 import { clockTime, longDate, money, shareBooking, slotLine, whatsappLink } from '../format';
-import { forgetGuestBooking } from '../guestBookings';
+import { forgetGuestBooking, rememberGuestBooking } from '../guestBookings';
 import {
   Alert,
   Button,
@@ -34,19 +34,64 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
   // Con la apariencia del club del turno; mientras carga, la del último club abierto.
   useClubTheme(booking);
 
+  // El código del link que llega como respuesta al WhatsApp con que el jugador
+  // confirmó su número. Ese link abre otro navegador que el de la reserva (desde
+  // Instagram se reserva en el suyo), que no sabe nada del turno: el primero que lo
+  // abre lo guarda en "Mis turnos". Se lee una vez y se saca de la URL, para que
+  // recargar o copiar el link no lo vuelva a mandar.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [saveCode] = useState(() => searchParams.get('guardar'));
+  const [savedHere, setSavedHere] = useState(false);
+  useEffect(() => {
+    if (saveCode) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [saveCode, setSearchParams]);
+
   useEffect(() => {
     (async () => {
       try {
         // En el flujo sin seña, abrir el link es la confirmacion: el jugador ya
         // toco el enlace del WhatsApp y no tiene sentido pedirle un paso mas.
-        setBooking(mode === 'confirm' ? await api.confirm(token) : await api.booking(token));
+        const found = mode === 'confirm' ? await api.confirm(token) : await api.booking(token);
+        setBooking(found);
+        if (saveCode) {
+          await saveToThisDevice(found, saveCode);
+        }
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'No pudimos encontrar el turno.');
       } finally {
         setLoading(false);
       }
     })();
-  }, [token, mode]);
+  }, [token, mode, saveCode]);
+
+  /**
+   * Canjea el código en el servidor, que dice si este es el primer navegador en
+   * abrir el link. Lo hace la página y no el GET del link: WhatsApp visita los
+   * links para la vista previa, y esa visita lo gastaría antes que el jugador.
+   */
+  async function saveToThisDevice(found: BookingDetail, code: string) {
+    try {
+      const { saved } = await api.saveToDevice(token, code);
+      if (!saved) {
+        return;
+      }
+      rememberGuestBooking({
+        bookingId: found.bookingId,
+        managementToken: token,
+        clubName: found.clubName,
+        clubSlug: found.clubSlug,
+        courtName: found.courtName,
+        startTime: found.startTime,
+        endTime: found.endTime,
+        status: found.status,
+      });
+      setSavedHere(true);
+    } catch {
+      // El turno se ve igual; solo no queda en la lista de este navegador.
+    }
+  }
 
   async function cancel() {
     setWorking(true);
@@ -100,6 +145,12 @@ export function ManagePage({ mode }: { mode: 'manage' | 'confirm' }) {
       {mode === 'confirm' && booking.status === 'CONFIRMED' && (
         <div className="mb-4">
           <Alert tone="success">Listo, tu turno quedó confirmado.</Alert>
+        </div>
+      )}
+
+      {savedHere && (
+        <div className="mb-4">
+          <Alert tone="success">Tu turno está reservado y quedó guardado en "Mis turnos" de este celular.</Alert>
         </div>
       )}
 
