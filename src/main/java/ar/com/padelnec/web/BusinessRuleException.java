@@ -32,7 +32,12 @@ public class BusinessRuleException extends RuntimeException {
         /** Pidio confirmar el mismo numero demasiadas veces en el dia. */
         VERIFICATION_LIMIT,
         /** Reserva con sesion y un telefono distinto al verificado de la cuenta. */
-        ACCOUNT_PHONE_LOCKED
+        ACCOUNT_PHONE_LOCKED,
+        /**
+         * Acaba de reservar otro turno sin sena en el club: la pagina le pregunta si
+         * quiere uno mas antes de reservarlo.
+         */
+        RECENT_BOOKING
     }
 
     private final Reason reason;

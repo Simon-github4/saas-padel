@@ -145,7 +145,8 @@ class PhoneVerificationApiIntegrationTest {
         assertThat(status(challenge)).isEqualTo("VERIFIED");
         book(slot(0), NEW_PHONE, "PAY_AT_CLUB").expectStatus().isCreated();
         assertThat(requestVerification(NEW_PHONE).get("verificationRequired").asBoolean()).isFalse();
-        book(slot(1), NEW_PHONE, "PAY_AT_CLUB").expectStatus().isCreated();
+        // El segundo, recien reservado el primero, sale diciendo que si a la pregunta.
+        book(slot(1), NEW_PHONE, "PAY_AT_CLUB", null, true).expectStatus().isCreated();
     }
 
     @Test
@@ -454,13 +455,43 @@ class PhoneVerificationApiIntegrationTest {
     }
 
     @Test
-    @DisplayName("Mandar el mensaje dos veces no reserva dos veces")
+    @DisplayName("Mandar el mensaje dos veces no reserva dos veces, y la segunda respuesta repite la confirmacion entera")
     void sendingTheMessageTwiceBooksOnce() {
         String message = messageIn(requestVerification(NEW_PHONE, slot(0), null).get("whatsappLink").asText());
+        String first = inbound(NEW_PHONE_WHATSAPP, message);
+
+        // Si la primera no le llego (Twilio no la entrego), la segunda tiene todo:
+        // no "esta en el mensaje anterior".
+        String second = inbound(NEW_PHONE_WHATSAPP, message);
+        assertThat(second).contains("quedó reservado", "/manage/" + onlyBooking().getManagementToken() + "?guardar=")
+                .doesNotContain("mensaje anterior");
+        assertThat(second).isEqualTo(first);
+    }
+
+    @Test
+    @DisplayName("Si ya guardo el turno con el link, la confirmacion repetida trae el link sin el codigo gastado")
+    void resentConfirmationDropsAUsedSaveCode() {
+        String message = messageIn(requestVerification(NEW_PHONE, slot(0), null).get("whatsappLink").asText());
+        Matcher link = Pattern.compile("/manage/([\\w-]+)\\?guardar=([\\w-]+)").matcher(inbound(NEW_PHONE_WHATSAPP, message));
+        assertThat(link.find()).isTrue();
+        assertThat(save(link.group(1), link.group(2))).isTrue();
+
+        assertThat(inbound(NEW_PHONE_WHATSAPP, message)).contains("/manage/" + link.group(1)).doesNotContain("guardar=");
+    }
+
+    @Test
+    @DisplayName("Quien acaba de reservar sin sena y pide otro turno recibe la pregunta; diciendo que si, sale")
+    void secondBookingRightAfterAsksFirst() {
+        JsonNode first = slot(0);
+        String message = messageIn(requestVerification(NEW_PHONE, first, null).get("whatsappLink").asText());
         inbound(NEW_PHONE_WHATSAPP, message);
 
-        assertThat(inbound(NEW_PHONE_WHATSAPP, message)).contains("ya quedó reservado");
-        onlyBooking();
+        // Vuelve a la pagina (la de Instagram murio), no ve su turno y elige otro.
+        JsonNode error = bookError(slot(0), NEW_PHONE, "PAY_AT_CLUB");
+        assertThat(error.get("reason").asText()).isEqualTo("RECENT_BOOKING");
+        assertThat(error.get("message").asText()).startsWith("Ya tenés un turno reservado el").contains("¿Querés reservar otro?");
+
+        book(slot(0), NEW_PHONE, "PAY_AT_CLUB", null, true).expectStatus().isCreated();
     }
 
     @Test
@@ -757,7 +788,13 @@ class PhoneVerificationApiIntegrationTest {
     }
 
     private RestTestClient.ResponseSpec book(JsonNode slot, String phone, String paymentChoice, String token) {
+        return book(slot, phone, paymentChoice, token, false);
+    }
+
+    private RestTestClient.ResponseSpec book(JsonNode slot, String phone, String paymentChoice, String token,
+                                             boolean anotherBooking) {
         Map<String, Object> body = new HashMap<>();
+        body.put("anotherBooking", anotherBooking);
         body.put("courtId", courtOf(slot));
         body.put("startTime", Instant.parse(slot.get("startsAt").asText()).toString());
         body.put("fullName", "Simon Diaz");

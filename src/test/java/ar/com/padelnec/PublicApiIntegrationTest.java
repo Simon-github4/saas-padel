@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -147,7 +148,13 @@ class PublicApiIntegrationTest {
         JsonNode slot = firstFreeSlot();
         book(slot).expectStatus().isCreated();
 
-        JsonNode error = book(slot)
+        // Otro jugador: el mismo, recien reservado, recibe antes la pregunta de si quiere otro turno.
+        Map<String, Object> other = new HashMap<>(bookingBody(slot));
+        other.put("phoneNumber", "2262438817");
+        JsonNode error = client.post().uri("/api/public/club-necochea/bookings")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(other)
+                .exchange()
                 .expectStatus().isEqualTo(409)
                 .expectBody(JsonNode.class)
                 .returnResult().getResponseBody();

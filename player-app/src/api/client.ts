@@ -450,6 +450,8 @@ export const api = {
       fullName: string;
       phoneNumber: string;
       paymentChoice: PaymentChoice;
+      /** Ya dijo que sí cuando le preguntamos si quería otro turno además del que acaba de reservar. */
+      anotherBooking?: boolean;
     },
     token?: string,
   ) => request<BookingCreated>(`/${slug}/bookings`, {

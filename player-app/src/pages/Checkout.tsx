@@ -20,6 +20,7 @@ import { ROOF_LABEL, SURFACE_LABEL, WALL_LABEL, courtMatches } from '../courtFea
 import { clockTime, durationMinutes, longDate, money, perPerson, shareBooking, slotLine, whatsappLink } from '../format';
 import { rememberGuestBooking } from '../guestBookings';
 import { forgetGuestContact, readGuestContact, rememberGuestContact, type GuestContact } from '../guestContact';
+import { forgetPendingVerification, rememberPendingVerification } from '../pendingVerification';
 import { phoneProblem } from '../phone';
 import { Alert, Button, Card, Field, SummaryCard, WhatsappLink } from '../components/Ui';
 
@@ -92,6 +93,11 @@ export function Checkout({
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<BookingCreated | null>(null);
+  // Acaba de reservar otro turno sin seña en este club: el servidor pregunta antes
+  // de sacar uno más (desde Instagram, la página muere al ir a WhatsApp, el turno
+  // sale igual y el jugador, sin verlo, reservaba otro). Lo que dice el servidor,
+  // con el turno que ya tiene.
+  const [anotherQuestion, setAnotherQuestion] = useState<string | null>(null);
 
   // Primera reserva sin seña de un número que nunca se verificó: el jugador nos
   // tiene que mandar un WhatsApp desde ese número, con el mensaje que le armó el
@@ -158,6 +164,7 @@ export function Checkout({
    */
   function closeVerification() {
     setVerification(null);
+    forgetPendingVerification();
   }
 
   /**
@@ -186,6 +193,16 @@ export function Checkout({
       link: started.whatsappLink,
       qr: started.whatsappQr,
       status: 'PENDING',
+    });
+    // Si la página muere al ir a WhatsApp (Instagram), la del club pregunta por este
+    // pedido cuando el jugador la vuelve a abrir (ver ClubPage).
+    rememberPendingVerification({
+      verificationId: started.verificationId,
+      clubSlug: slug,
+      clubName: club.name,
+      courtName: court.courtName,
+      startTime: slot.startsAt,
+      endTime: slot.endsAt,
     });
     track('phone_code_sent', { slotAt: slot.startsAt, paymentChoice: 'PAY_AT_CLUB' });
     return true;
@@ -243,9 +260,11 @@ export function Checkout({
    * @param afterVerification llegó el WhatsApp pero el servidor no reservó (el
    *     número se verificó por otro lado): el formulario ya se mandó una vez y el
    *     número ya está confirmado
+   * @param anotherBooking ya dijo que sí quiere otro turno además del que acaba de reservar
    */
-  async function submit(paymentChoice: PaymentChoice, afterVerification = false) {
+  async function submit(paymentChoice: PaymentChoice, afterVerification = false, anotherBooking = false) {
     setError(null);
+    setAnotherQuestion(null);
     if (!validate()) {
       // Borró el nombre mientras esperaba: el número ya quedó confirmado, así que
       // alcanza con que lo corrija y vuelva a tocar reservar.
@@ -275,6 +294,7 @@ export function Checkout({
           fullName,
           phoneNumber: phone,
           paymentChoice,
+          anotherBooking,
         },
         session?.token,
       );
@@ -297,6 +317,8 @@ export function Checkout({
    * verificó por otro lado y la reserva sale desde acá.
    */
   async function settleVerification(progress: PhoneVerificationProgress) {
+    // Esta página se enteró sola: no hay nada que retomar al volver.
+    forgetPendingVerification();
     if (progress.booking) {
       setVerification(null);
       finishBooking(progress.booking, 'PAY_AT_CLUB');
@@ -388,6 +410,10 @@ export function Checkout({
       } catch {
         // Cae al cartel general con el mensaje del servidor.
       }
+    }
+    if (err instanceof ApiError && err.reason === 'RECENT_BOOKING') {
+      setAnotherQuestion(err.message);
+      return;
     }
     if (err instanceof ApiError && err.reason === 'ACCOUNT_PHONE_LOCKED') {
       // La cuenta ya tenía el número verificado y esta sesión no lo sabía.
@@ -572,7 +598,20 @@ export function Checkout({
 
       {error && <Alert>{error}</Alert>}
 
-      {verification ? (
+      {anotherQuestion ? (
+        <div className="space-y-3 rounded-xl border border-cal/10 bg-vidrio p-4">
+          <p className="text-sm font-semibold text-cal">{anotherQuestion}</p>
+          <p className="text-xs text-ink-soft">
+            Si estabas reservando ese mismo turno, no hace falta hacer nada más: ya está reservado.
+          </p>
+          <Button variant="secondary" onClick={() => submit('PAY_AT_CLUB', false, true)} disabled={sending}>
+            Sí, reservar otro turno
+          </Button>
+          <Button variant="secondary" onClick={() => setAnotherQuestion(null)} disabled={sending}>
+            No, me alcanza con ese
+          </Button>
+        </div>
+      ) : verification ? (
         <div className="space-y-4 rounded-xl border border-cal/10 bg-vidrio p-4">
           {verification.status === 'VERIFIED' ? (
             <p className="text-sm font-semibold text-cal">¡Listo, número confirmado! Estamos reservando tu turno…</p>

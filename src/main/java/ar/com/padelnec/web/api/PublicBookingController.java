@@ -293,6 +293,11 @@ public class PublicBookingController {
         // nadie probo que sea de quien reserva.
         if (request.paymentChoice() == PaymentChoiceDto.PAY_AT_CLUB) {
             phoneVerificationService.requireVerified(request.phoneNumber());
+            // Recien reservo otro: que la pagina le pregunte, no que salga un segundo turno
+            // porque no vio el primero (la pagina de Instagram que murio al ir a WhatsApp).
+            if (!request.wantsAnotherBooking()) {
+                bookingService.requireNoRecentWebBooking(club, request.phoneNumber());
+            }
             // Ya probado, pasa a ser el de la cuenta si esta no tenia uno verificado.
             // Antes de reservar: si despues le ganan el turno, el numero ya quedo corregido.
             if (accountId != null) {

@@ -25,8 +25,11 @@ import java.time.Instant;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAdjusters;
 import java.util.EnumSet;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -54,6 +57,12 @@ public class BookingService {
 
     private static final Set<BookingStatus> ACTIVE = EnumSet.of(
             BookingStatus.DRAFT, BookingStatus.AWAITING_CONFIRMATION, BookingStatus.CONFIRMED);
+
+    /** Cuanto despues de una reserva web se pregunta antes de sacar otra (ver {@link #requireNoRecentWebBooking}). */
+    static final Duration RECENT_BOOKING_WINDOW = Duration.ofHours(1);
+    private static final DateTimeFormatter RECENT_DAY =
+            DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", Locale.forLanguageTag("es-AR"));
+    private static final DateTimeFormatter RECENT_TIME = DateTimeFormatter.ofPattern("HH:mm");
 
     private final BookingRepository bookingRepository;
     private final CourtRepository courtRepository;
@@ -141,6 +150,30 @@ public class BookingService {
 
         if (!availabilityService.isCourtFree(court, slot.slot().startsAt(), slot.slot().endsAt())) {
             throw new SlotUnavailableException("Justo tomaron ese turno. Elegí otro horario.");
+        }
+    }
+
+    /**
+     * Frena la reserva sin sena de quien saco otra por la web en este club en la
+     * ultima hora, para que la pagina le pregunte si de verdad quiere una mas.
+     *
+     * <p>Desde Instagram el jugador reserva, va a WhatsApp a confirmar su numero, y
+     * al volver la pagina ya no existe: no ve que su turno salio, elige otro horario
+     * y -- con el numero ya confirmado -- el segundo sale directo. El club queda con
+     * dos turnos de la misma persona y uno no viene. Con sena no hace falta: pagar
+     * dos veces no pasa sin darse cuenta.
+     */
+    @Transactional(readOnly = true)
+    public void requireNoRecentWebBooking(Tenant club, String rawPhone) {
+        Instant now = clock.instant();
+        Optional<Booking> recent = customerService.findByPhone(rawPhone).flatMap(customer -> bookingRepository
+                .findFirstByCustomerIdAndSourceAndStatusInAndCreatedAtAfterAndStartTimeAfterOrderByCreatedAtDesc(
+                        customer.getId(), BookingSource.WEB, ACTIVE, now.minus(RECENT_BOOKING_WINDOW), now));
+        if (recent.isPresent()) {
+            ZonedDateTime start = recent.get().getStartTime().atZone(club.zoneId());
+            throw new BusinessRuleException(Reason.RECENT_BOOKING,
+                    "Ya tenés un turno reservado el %s a las %s hs (%s). ¿Querés reservar otro?".formatted(
+                            RECENT_DAY.format(start), RECENT_TIME.format(start), recent.get().getCourt().getName()));
         }
     }
 

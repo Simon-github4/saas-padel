@@ -23,7 +23,14 @@ public final class BookingDtos {
             @Size(max = 120) String fullName,
             @NotBlank(message = "Necesitamos tu teléfono")
             @Size(max = 25) String phoneNumber,
-            @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice) {
+            @NotNull(message = "Elegí cómo querés pagar") PaymentChoiceDto paymentChoice,
+            // Ya le preguntamos si quiere otro turno ademas del que acaba de reservar,
+            // y dijo que si (ver BookingService.requireNoRecentWebBooking).
+            Boolean anotherBooking) {
+
+        public boolean wantsAnotherBooking() {
+            return Boolean.TRUE.equals(anotherBooking);
+        }
     }
 
     /**

@@ -116,8 +116,14 @@ public class WhatsAppInboxService {
      */
     private String again(PhoneVerification verification) {
         if (verification.getBookingId() != null) {
-            return "Tu número ya está confirmado y tu turno ya quedó reservado: los datos y el link están "
-                    + "en el mensaje anterior.";
+            // La confirmacion entera otra vez, no "esta en el mensaje anterior": si
+            // Twilio no llego a entregarla, ese mensaje nunca existio para el jugador.
+            String resent = resendConfirmation(verification);
+            if (resent != null) {
+                return resent;
+            }
+            return "Tu número ya está confirmado y tu turno ya quedó reservado. Para verlo, entrá a la "
+                    + "página del club y tocá \"Mis turnos\".";
         }
         if (verification.getBookingErrorCode() != null) {
             Tenant club = activeClub(verification);
@@ -157,6 +163,25 @@ public class WhatsAppInboxService {
             return failed(verification, club, new BookingFailure(INTERNAL_ERROR, null,
                     "Tuvimos un problema tomando tu reserva. Probá de nuevo en un momento."));
         }
+    }
+
+    /**
+     * La confirmacion del turno que salio con este pedido, con el link que lo guarda
+     * en "Mis turnos" si ningun navegador lo uso todavia. Nula si el turno ya no
+     * esta (el club lo borro) o el club dejo de tomar reservas.
+     */
+    private String resendConfirmation(PhoneVerification verification) {
+        Tenant club = activeClub(verification);
+        if (club == null) {
+            return null;
+        }
+        String saveCode = verification.getSaveUsedAt() == null ? verification.getSaveCode() : null;
+        return TenantContext.callAs(club.getId(), () -> bookingService.findByIdWithDetails(verification.getBookingId())
+                .map(booking -> booking.getStatus().occupiesSlot()
+                        ? notificationService.confirmedByMessageReply(club, booking, saveCode)
+                        // Lo cancelo el, o el club: no confirmarle un turno que ya no tiene.
+                        : "Ese turno ya no está reservado: se canceló. Podés reservar otro en la página del club.")
+                .orElse(null));
     }
 
     /** Lo mismo que hace el endpoint de reserva sin sena, con el numero ya probado. */
