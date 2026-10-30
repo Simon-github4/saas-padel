@@ -184,6 +184,10 @@ public class SecurityConfig {
                                           ObjectProvider<DevAutoLoginFilter> devAutoLogin,
                                           PanelRememberMeServices rememberMe)
             throws Exception {
+        // La historia de turnos libres baja su dibujo y la plantilla del club fuera de
+        // /admin/ (PanelStoryController). Vaadin niega todo lo que no es suyo aunque haya
+        // sesion, asi que se habilita aca, antes de sus reglas: con la sesion del panel.
+        http.authorizeHttpRequests(auth -> auth.requestMatchers("/panel/historia/**").authenticated());
         http.with(VaadinSecurityConfigurer.vaadin(),
                 configurer -> configurer.loginView(LoginView.class, "/"));
         http.rememberMe(remember -> remember.rememberMeServices(rememberMe));

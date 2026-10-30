@@ -1,5 +1,6 @@
 package ar.com.padelnec.ui;
 
+import ar.com.padelnec.config.AppProperties;
 import ar.com.padelnec.domain.Blackout;
 import ar.com.padelnec.domain.Booking;
 import ar.com.padelnec.domain.Court;
@@ -8,10 +9,12 @@ import ar.com.padelnec.notification.NotificationService;
 import ar.com.padelnec.repository.BlackoutRepository;
 import ar.com.padelnec.repository.CourtRepository;
 import ar.com.padelnec.repository.ProductRepository;
+import ar.com.padelnec.repository.TenantStoryTemplateRepository;
 import ar.com.padelnec.security.ClubUserPrincipal;
 import ar.com.padelnec.service.BlackoutService;
 import ar.com.padelnec.service.BookingService;
 import ar.com.padelnec.service.CustomerService;
+import ar.com.padelnec.service.DayStoryService;
 import ar.com.padelnec.service.PaymentService;
 import ar.com.padelnec.service.ProductService;
 import ar.com.padelnec.service.SlotGenerator;
@@ -108,6 +111,9 @@ public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings
     private final CustomerService customerService;
     private final TournamentService tournamentService;
     private final BlackoutService blackoutService;
+    private final DayStoryService dayStoryService;
+    private final TenantStoryTemplateRepository storyTemplates;
+    private final AppProperties properties;
     private final transient AuthenticationContext authenticationContext;
     private final Clock clock;
 
@@ -163,7 +169,8 @@ public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings
                       ProductService productService, ProductRepository productRepository,
                       PhoneNumbers phoneNumbers, NotificationService notificationService,
                       CustomerService customerService, TournamentService tournamentService,
-                      BlackoutService blackoutService,
+                      BlackoutService blackoutService, DayStoryService dayStoryService,
+                      TenantStoryTemplateRepository storyTemplates, AppProperties properties,
                       AuthenticationContext authenticationContext, Clock clock) {
         this.tenantService = tenantService;
         this.bookingService = bookingService;
@@ -178,6 +185,9 @@ public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings
         this.customerService = customerService;
         this.tournamentService = tournamentService;
         this.blackoutService = blackoutService;
+        this.dayStoryService = dayStoryService;
+        this.storyTemplates = storyTemplates;
+        this.properties = properties;
         this.authenticationContext = authenticationContext;
         this.clock = clock;
 
@@ -334,10 +344,17 @@ public class AgendaView extends VerticalLayout implements RefreshesOnWebBookings
         copyPreviousDay.addClickListener(event -> openCopyPreviousDay());
         copyPreviousDay.setVisible(false);
 
+        // La historia de Instagram con lo que queda libre del dia que se esta mirando.
+        Button story = new Button("Historia", VaadinIcon.PICTURE.create(), event -> new StoryDialog(
+                datePicker.getValue(), dayStoryService, tenantService, storyTemplates,
+                properties.getBaseUrl() + "/club/" + club.getSlug()).open());
+        story.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+        story.setTooltipText("Armar la historia de Instagram con los turnos libres del día");
+
         // Sin label, el campo ya no tiene un renglon extra arriba: las flechas
         // se alinean al centro con el resto del control de un solo bloque.
-        HorizontalLayout dayPicker = new HorizontalLayout(previous, datePicker, next, today, markTournament,
-                copyPreviousDay);
+        HorizontalLayout dayPicker = new HorizontalLayout(previous, datePicker, next, today, story,
+                markTournament, copyPreviousDay);
         dayPicker.setAlignItems(Alignment.CENTER);
         dayPicker.setPadding(false);
         // En el celular "Marcar torneo" baja a otro renglon: en uno solo no

@@ -1,6 +1,7 @@
 package ar.com.padelnec.domain;
 
 import ar.com.padelnec.domain.enums.HeroVariant;
+import ar.com.padelnec.domain.enums.StoryStyle;
 import ar.com.padelnec.domain.enums.ThemeMode;
 import ar.com.padelnec.support.EncryptedStringConverter;
 import ar.com.padelnec.support.InstagramHandles;
@@ -228,6 +229,29 @@ public class Tenant extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "hero_variant", nullable = false, length = 20)
     private HeroVariant heroVariant = HeroVariant.CLASSIC;
+
+    /**
+     * Donde empieza la franja de la plantilla de la historia en la que van los
+     * horarios, en porcentaje del alto. La plantilla se guarda aparte, en
+     * {@link TenantStoryTemplate}.
+     */
+    @Column(name = "story_area_top", nullable = false)
+    private int storyAreaTop = 28;
+
+    /** Donde termina esa franja, en porcentaje del alto. */
+    @Column(name = "story_area_bottom", nullable = false)
+    private int storyAreaBottom = 82;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "story_style", nullable = false, length = 10)
+    private StoryStyle storyStyle = StoryStyle.PILLS;
+
+    /**
+     * Escribir "Turnos disponibles" arriba de los horarios. Casi todas las plantillas
+     * ya lo traen dibujado; sin plantilla el titulo va siempre.
+     */
+    @Column(name = "story_title", nullable = false)
+    private boolean storyTitle;
 
     /** Divisor del precio del turno para mostrar el dato "por persona". Siempre 4 en padel. */
     @Column(name = "players_per_court", nullable = false)
