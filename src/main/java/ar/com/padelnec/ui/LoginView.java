@@ -1,5 +1,6 @@
 package ar.com.padelnec.ui;
 
+import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.html.H1;
 import com.vaadin.flow.component.html.Paragraph;
 import com.vaadin.flow.component.login.LoginForm;
@@ -53,7 +54,12 @@ public class LoginView extends VerticalLayout implements BeforeEnterObserver {
         help.addClassNames(LumoUtility.FontSize.SMALL, LumoUtility.TextColor.SECONDARY,
                 LumoUtility.Margin.NONE, LumoUtility.TextAlignment.CENTER);
 
-        add(brand, usernameHint, login, help);
+        // En un celular o una compu nueva del club, lo primero que se ve es esto: se
+        // puede instalar la app antes de entrar, y despues abrirla desde el icono.
+        InstallAppButton install = new InstallAppButton("Instalar la app del club");
+        install.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+
+        add(brand, usernameHint, login, help, install);
     }
 
     @Override

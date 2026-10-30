@@ -1669,3 +1669,10 @@ canvas.story-preview {
   font-size: var(--lumo-font-size-xs);
   color: var(--lumo-secondary-text-color);
 }
+
+/* "Instalar app" en la barra: en el celular queda solo el icono, como "Copiar link". */
+@media (max-width: 40rem) {
+  vaadin-button.install-app--compact::part(label) {
+    display: none;
+  }
+}

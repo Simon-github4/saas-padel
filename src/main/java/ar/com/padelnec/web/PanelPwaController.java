@@ -1,11 +1,16 @@
 package ar.com.padelnec.web;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -86,10 +91,16 @@ public class PanelPwaController {
                 .body(SERVICE_WORKER);
     }
 
+    /** Los iconos propios de la app del club (ver {@link #icon}). */
+    private static final Set<String> ICONS = Set.of(
+            "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png", "favicon-32.png");
+
     /**
      * Fijo para todos los clubes: se pide sin sesion, y el que lo instala es quien
-     * atiende, no el jugador. Nombre corto distinto de "TurnosPadel" para que en el
-     * inicio del celular no se confunda con la app del jugador, que tiene el mismo icono.
+     * atiende, no el jugador. Nombre e icono distintos de los de "TurnosPadel" para
+     * que en el inicio del celular y en la barra de la compu no se confundan: la del
+     * jugador es la lupa naranja sobre negro, la del club la misma lupa en blanco
+     * sobre el azul de una cancha.
      */
     @GetMapping(value = "/panel.webmanifest", produces = "application/manifest+json")
     public ResponseEntity<Map<String, Object>> manifest() {
@@ -104,14 +115,44 @@ public class PanelPwaController {
                 Map.entry("display", "standalone"),
                 Map.entry("background_color", "#ffffff"),
                 Map.entry("theme_color", THEME_COLOR),
+                Map.entry("categories", List.of("business", "sports")),
                 Map.entry("icons", List.of(
-                        Map.of("src", "/icon-192.png", "sizes", "192x192", "type", "image/png", "purpose", "any"),
-                        Map.of("src", "/icon-512.png", "sizes", "512x512", "type", "image/png", "purpose", "any"),
-                        Map.of("src", "/icon-maskable-512.png", "sizes", "512x512", "type", "image/png",
-                                "purpose", "maskable"))));
+                        Map.of("src", "/panel/icons/icon-192.png", "sizes", "192x192", "type", "image/png",
+                                "purpose", "any"),
+                        Map.of("src", "/panel/icons/icon-512.png", "sizes", "512x512", "type", "image/png",
+                                "purpose", "any"),
+                        Map.of("src", "/panel/icons/icon-maskable-512.png", "sizes", "512x512",
+                                "type", "image/png", "purpose", "maskable"))),
+                // Accesos directos al mantener apretado el icono (o clic derecho en la compu).
+                Map.entry("shortcuts", List.of(
+                        shortcut("Agenda", "/admin/"),
+                        shortcut("Caja", "/admin/caja"),
+                        shortcut("Buffet", "/admin/buffet"))));
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType("application/manifest+json"))
                 .cacheControl(CacheControl.noCache())
                 .body(manifest);
+    }
+
+    private static Map<String, Object> shortcut(String name, String url) {
+        return Map.of("name", name, "url", url,
+                "icons", List.of(Map.of("src", "/panel/icons/icon-192.png", "sizes", "192x192")));
+    }
+
+    /**
+     * Sin sesion, como el manifest: el navegador los pide tambien desde el login, para
+     * ofrecer instalar la app antes de entrar.
+     */
+    @GetMapping("/panel/icons/{name}")
+    public ResponseEntity<byte[]> icon(@PathVariable String name) throws IOException {
+        if (!ICONS.contains(name)) {
+            return ResponseEntity.notFound().build();
+        }
+        try (InputStream in = PanelPwaController.class.getResourceAsStream("/panel/icons/" + name)) {
+            return ResponseEntity.ok()
+                    .contentType(MediaType.IMAGE_PNG)
+                    .cacheControl(CacheControl.maxAge(Duration.ofDays(7)))
+                    .body(in.readAllBytes());
+        }
     }
 }
