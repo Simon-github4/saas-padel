@@ -77,7 +77,11 @@ public class TwilioWhatsAppWebhookController {
         return properties.getBaseUrl() + PATH;
     }
 
+    /** Sin mensaje, una respuesta vacia: Twilio la recibe y no le manda nada al jugador. */
     private static String twiml(String message) {
+        if (message == null) {
+            return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response></Response>";
+        }
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Message>"
                 + escape(message) + "</Message></Response>";
     }

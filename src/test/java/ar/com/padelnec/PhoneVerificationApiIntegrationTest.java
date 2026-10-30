@@ -262,7 +262,25 @@ class PhoneVerificationApiIntegrationTest {
     @Test
     @DisplayName("Un mensaje sin codigo recibe una respuesta que explica para que es el numero")
     void messageWithoutCodeGetsAnExplanation() {
-        assertThat(inbound(NEW_PHONE_WHATSAPP, "Hola, ¿tienen cancha mañana?")).contains("tu club");
+        // Un numero propio: lo que ya se le explico a uno queda en memoria entre tests.
+        String from = "whatsapp:+5492262401234";
+        assertThat(inbound(from, "Hola, ¿tienen cancha mañana?")).contains("tu club");
+
+        // Al "gracias" que sigue no se le contesta: la explicacion sale una vez por dia.
+        assertThat(inbound(from, "gracias")).doesNotContain("<Message>");
+        // Otro numero si la recibe.
+        assertThat(inbound("whatsapp:+5492262401235", "hola")).contains("tu club");
+    }
+
+    @Test
+    @DisplayName("La confirmacion que va en la respuesta no dice el monto")
+    void replyHasNoAmount() {
+        JsonNode challenge = requestVerification(NEW_PHONE, slot(0), null);
+
+        String reply = inbound(NEW_PHONE_WHATSAPP, messageIn(challenge.get("whatsappLink").asText()));
+
+        assertThat(reply).contains("💵 Se abona en el club.", "Este mensaje es el comprobante de tu turno")
+                .doesNotContain("$").doesNotContain("Guardá");
     }
 
     @Test

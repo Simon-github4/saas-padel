@@ -135,12 +135,11 @@ public class NotificationService {
         return """
                 ✅ ¡Listo %s! Tu turno en *%s* quedó reservado.
                 %s
-                💵 Se abona %s en el club.
+                💵 Se abona en el club.
 
-                Guardá este mensaje: es el comprobante de tu turno. Para verlo o cancelarlo:
+                Este mensaje es el comprobante de tu turno. Para verlo o cancelarlo:
                 %s"""
-                .formatted(firstName(booking), club.getName(), slotLine(club, booking),
-                        money(booking.getTotalPrice()), link);
+                .formatted(firstName(booking), club.getName(), slotLine(club, booking), link);
     }
 
     /** Sena acreditada por MercadoPago. */

@@ -15,6 +15,10 @@ import ar.com.padelnec.web.BusinessRuleException;
 import ar.com.padelnec.web.ResourceNotFoundException;
 import ar.com.padelnec.web.SlotUnavailableException;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -55,8 +59,14 @@ public class WhatsAppInboxService {
     private final NotificationService notificationService;
     private final Clock clock;
 
+    /** Cada cuanto se le repite la explicacion a quien escribe sin codigo. */
+    static final Duration EXPLANATION_EVERY = Duration.ofDays(1);
+    /** A quien se le explico para que es el numero, y cuando. */
+    private final Map<String, Instant> explained = new ConcurrentHashMap<>();
+
     /**
-     * Procesa un mensaje que llego y devuelve la respuesta para el jugador.
+     * Procesa un mensaje que llego y devuelve la respuesta para el jugador, o nulo
+     * si no hay que contestarle.
      *
      * @param rawFrom el remitente como lo manda Twilio ({@code whatsapp:+549...})
      */
@@ -76,9 +86,28 @@ public class WhatsAppInboxService {
                     + "sea el de este WhatsApp y volvé a tocar el botón.";
             case UNKNOWN_CODE -> "Ese código venció o no es correcto. Volvé a la página y tocá de nuevo "
                     + "el botón para confirmar tu número.";
-            case NO_CODE -> "Hola, este número es solo para confirmar teléfonos al reservar en TurnosPadel. "
-                    + "Para consultas sobre tu turno, escribile directamente a tu club.";
+            case NO_CODE -> explainedRecently(rawFrom)
+                    ? null
+                    : "Hola, este número es solo para confirmar teléfonos al reservar en TurnosPadel. "
+                            + "Para consultas sobre tu turno, escribile directamente a tu club.";
         };
+    }
+
+    /**
+     * Si a este numero ya se le explico para que es el WhatsApp en el ultimo dia, y
+     * si no, lo anota. Al "gracias", "dale" o "👍" que siguen no se les contesta: la
+     * misma explicacion tres veces seguidas cansa, y cada respuesta se paga.
+     *
+     * <p>En memoria, como los avisos de {@code WebBookingFeed}: si el servidor se
+     * reinicia, a lo sumo se explica una vez de mas.
+     */
+    private boolean explainedRecently(String rawFrom) {
+        if (rawFrom == null || rawFrom.isBlank()) {
+            return false;
+        }
+        Instant now = clock.instant();
+        explained.values().removeIf(at -> at.isBefore(now.minus(EXPLANATION_EVERY)));
+        return explained.putIfAbsent(rawFrom.trim(), now) != null;
     }
 
     /**
